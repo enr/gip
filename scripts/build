@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+
+set -e
+
+TOOL_SOURCE="${BASH_SOURCE[0]}"
+while [ -h "$TOOL_SOURCE" ] ; do TOOL_SOURCE="$(readlink "$TOOL_SOURCE")"; done
+SCRIPTS_DIR="$( cd -P "$( dirname "$TOOL_SOURCE" )" && pwd )"
+PRJ_HOME="$( cd -P "$( dirname "$SCRIPTS_DIR" )" && pwd )"
+
+[[ -d "${PRJ_HOME}/bin" ]] && rm -r "${PRJ_HOME}/bin"
+[[ -d "${PRJ_HOME}/pkg" ]] && rm -r "${PRJ_HOME}/pkg"
+
+hash gb 2>/dev/null || {
+    go get -u github.com/constabulary/gb/...
+}
+
+cd "${PRJ_HOME}"
+gb build gip
