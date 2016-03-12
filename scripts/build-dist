@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+
+set -e
+
+TOOL_SOURCE="${BASH_SOURCE[0]}"
+while [ -h "$TOOL_SOURCE" ] ; do TOOL_SOURCE="$(readlink "$TOOL_SOURCE")"; done
+SCRIPTS_DIR="$( cd -P "$( dirname "$TOOL_SOURCE" )" && pwd )"
+PRJ_HOME="$( cd -P "$( dirname "$SCRIPTS_DIR" )" && pwd )"
+
+source "${SCRIPTS_DIR}/config"
+
+[[ -z "$DIST_DIR" ]] && {
+    echo "no dist dir"
+    exit 1
+}
+
+[[ -d "${PRJ_HOME}/bin" ]] && rm -r "${PRJ_HOME}/bin"
+[[ -d "${PRJ_HOME}/pkg" ]] && rm -r "${PRJ_HOME}/pkg"
+[[ -d "$DIST_DIR" ]] && rm -r "$DIST_DIR"
+mkdir -p "$DIST_DIR"
+
+hash gb 2>/dev/null || {
+    go get -u github.com/constabulary/gb/...
+}
+
+cd "${PRJ_HOME}"
+GOOS=windows GOARCH=amd64 gb build all
+mv "${PRJ_HOME}/bin/gip-windows-amd64.exe" "$DIST_DIR"
+GOOS=linux GOARCH=amd64 gb build all
+mv "${PRJ_HOME}/bin/gip-linux-amd64" "$DIST_DIR"

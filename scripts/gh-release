@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+
+set -e
+
+TOOL_SOURCE="${BASH_SOURCE[0]}"
+while [ -h "$TOOL_SOURCE" ] ; do TOOL_SOURCE="$(readlink "$TOOL_SOURCE")"; done
+OPS_DIR="$( cd -P "$( dirname "$TOOL_SOURCE" )" && pwd )"
+PRJ_HOME="$( cd -P "$( dirname "$OPS_DIR" )" && pwd )"
+
+source "${OPS_DIR}/config"
+
+[[ -z "$GH_TOKEN" ]] && {
+    echo "Missing GH_TOKEN"
+    exit 1
+}
+
+if [ -z "$1" ]; then
+    echo "no release version supplied"
+    exit 1
+else
+    RELEASE_VERSION="$1"
+fi
+
+# https://github.com/tcnksm/ghr/releases/download/v0.4.0/ghr_v0.4.0_linux_amd64.zip
+command -v ghr >/dev/null || {
+    echo "ghr not found"
+    exit 1
+}
+
+if [ "$2" = "--prod" ]; then
+    PRERELEASE=''
+else
+    PRERELEASE='--prerelease'
+fi
+
+echo "Release $PRJ_HOME version $RELEASE_VERSION $PRERELEASE"
+
+[[ -z "$GH_OWNER" ]] && {
+    echo "no gh owner"
+    exit 1
+}
+[[ -z "$GH_REPO" ]] && {
+    echo "no gh repo"
+    exit 1
+}
+[[ -z "$DIST_DIR" ]] && {
+    echo "no dist dir"
+    exit 1
+}
+
+#ghr -t "$GH_TOKEN" -u "$GH_OWNER" -r "$GH_REPO" "$PRERELEASE" "$RELEASE_VERSION" "$DIST_DIR"
+GHR_COMMAND="ghr -t ${GH_TOKEN} -u ${GH_OWNER} -r ${GH_REPO} ${PRERELEASE} ${RELEASE_VERSION} ${DIST_DIR}"
+echo "$GHR_COMMAND"
+sh -c "$GHR_COMMAND"
