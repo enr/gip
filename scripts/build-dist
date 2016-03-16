@@ -32,7 +32,7 @@ hash gb 2>/dev/null || {
     go get -u github.com/constabulary/gb/...
 }
 
-platforms="windows/amd64 linux/amd64"
+platforms="windows/amd64 linux/amd64 darwin/amd64"
 
 for platform in $platforms; do
 	target_goos=$(echo $platform | cut -d/ -f1)
