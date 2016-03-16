@@ -9,6 +9,15 @@ PRJ_HOME="$( cd -P "$( dirname "$SCRIPTS_DIR" )" && pwd )"
 
 source "${SCRIPTS_DIR}/config"
 
+buildtime=$(TZ=UTC date -u '+%Y-%m-%dT%H:%M:%SZ')
+git_hash="$(git rev-parse HEAD)"
+git_dirty="$(test -n "`git status --porcelain`" && echo "+CHANGES" || true)"
+git_commit="${git_hash}${git_dirty}"
+echo "building gip"
+echo "version : ${GIP_VERSION}"
+echo "git : ${git_commit}"
+echo "build time : ${buildtime}"
+
 [[ -z "$DIST_DIR" ]] && {
     echo "no dist dir"
     exit 1
@@ -23,8 +32,22 @@ hash gb 2>/dev/null || {
     go get -u github.com/constabulary/gb/...
 }
 
-cd "${PRJ_HOME}"
-GOOS=windows GOARCH=amd64 gb build all
-mv "${PRJ_HOME}/bin/gip-windows-amd64.exe" "$DIST_DIR"
-GOOS=linux GOARCH=amd64 gb build all
-mv "${PRJ_HOME}/bin/gip-linux-amd64" "$DIST_DIR"
+platforms="windows/amd64 linux/amd64"
+
+for platform in $platforms; do
+	target_goos=$(echo $platform | cut -d/ -f1)
+	target_goarch=$(echo $platform | cut -d/ -f2)
+    echo "building for ${target_goos} ${target_goarch}"
+    GOOS="$target_goos" GOARCH="$target_goarch" gb build -ldflags "-s \
+  -X main.Version=${GIP_VERSION} \
+  -X main.BuildTime=${buildtime} \
+  -X main.GitCommit=${git_commit}" all > /dev/null
+    ext=''
+    [[ "windows" = "$target_goos" ]] && ext='.exe'
+    built="${PRJ_HOME}/bin/gip-${target_goos}-${target_goarch}${ext}"
+    [[ -e "$built" ]] || {
+        echo "expected file not found: ${built}"
+        exit 1
+    }
+    mv "${PRJ_HOME}/bin/gip-${target_goos}-${target_goarch}${ext}" "$DIST_DIR"
+done

@@ -5,15 +5,20 @@ package main
 */
 
 import (
+	"fmt"
 	"os"
 
 	"github.com/codegangsta/cli"
 )
 
 func main() {
+	versionTemplate := `%s
+Revision: %s
+Build date: %s
+`
 	app := cli.NewApp()
 	app.Name = "gip"
-	app.Version = Version
+	app.Version = fmt.Sprintf(versionTemplate, Version, GitCommit, BuildTime)
 	app.Usage = "Keep tracks of your Git projects"
 	app.Flags = []cli.Flag{
 		cli.BoolFlag{Name: "debug, d", Usage: "operates in debug mode: lot of output"},
