@@ -4,7 +4,7 @@
 		{
 			"importpath": "github.com/codegangsta/cli",
 			"repository": "https://github.com/codegangsta/cli",
-			"revision": "f9cc3001e04f9783cb4ad08ca6791aa07134787c",
+			"revision": "aca5b047ed14d17224157c3434ea93bf6cdaadee",
 			"branch": "master"
 		},
 		{
@@ -42,7 +42,7 @@
 		{
 			"importpath": "github.com/mattn/go-colorable",
 			"repository": "https://github.com/mattn/go-colorable",
-			"revision": "3dac7b4f76f6e17fb39b768b89e3783d16e237fe",
+			"revision": "9cbef7c35391cca05f15f8181dc0b18bc9736dbb",
 			"branch": "master"
 		},
 		{
@@ -54,7 +54,7 @@
 		{
 			"importpath": "github.com/mitchellh/go-homedir",
 			"repository": "https://github.com/mitchellh/go-homedir",
-			"revision": "d682a8f0cf139663a984ff12528da460ca963de9",
+			"revision": "981ab348d865cf048eb7d17e78ac7192632d8415",
 			"branch": "master"
 		},
 		{
@@ -66,14 +66,14 @@
 		{
 			"importpath": "golang.org/x/text/transform",
 			"repository": "https://go.googlesource.com/text",
-			"revision": "cf4986612c83df6c55578ba198316d1684a9a287",
+			"revision": "1b466db55e0ba5d56ef5315c728216b42f796491",
 			"branch": "master",
 			"path": "/transform"
 		},
 		{
 			"importpath": "golang.org/x/text/unicode/norm",
 			"repository": "https://go.googlesource.com/text",
-			"revision": "cf4986612c83df6c55578ba198316d1684a9a287",
+			"revision": "1b466db55e0ba5d56ef5315c728216b42f796491",
 			"branch": "master",
 			"path": "/unicode/norm"
 		}
