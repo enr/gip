@@ -26,6 +26,15 @@ command -v ghr >/dev/null || {
     exit 1
 }
 
+[[ -z "$GH_OWNER" ]] && {
+    echo "no gh owner"
+    exit 1
+}
+[[ -z "$GH_REPO" ]] && {
+    echo "no gh repo"
+    exit 1
+}
+
 if [ -z "$GIP_VERSION" ]; then
     echo 'no release version supplied. $GIP_VERSION expected'
     exit 1
@@ -43,16 +52,10 @@ fi
 
 echo "Release $PRJ_HOME version $RELEASE_VERSION $PRERELEASE"
 
-[[ -z "$GH_OWNER" ]] && {
-    echo "no gh owner"
-    exit 1
-}
-[[ -z "$GH_REPO" ]] && {
-    echo "no gh repo"
-    exit 1
-}
+"${OPS_DIR}/build-dist"
+
 [[ -z "$DIST_DIR" ]] && {
-    echo "no dist dir"
+    echo "dist directory not found: ${DIST_DIR}"
     exit 1
 }
 
