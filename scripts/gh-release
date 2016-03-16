@@ -9,23 +9,31 @@ PRJ_HOME="$( cd -P "$( dirname "$OPS_DIR" )" && pwd )"
 
 source "${OPS_DIR}/config"
 
+git_dirty=$(git status --porcelain)
+[[ -n "$git_dirty" ]] && {
+    echo 'uncommitted changes detected: aborting release'
+    exit 1
+}
+
 [[ -z "$GH_TOKEN" ]] && {
     echo "Missing GH_TOKEN"
     exit 1
 }
-
-if [ -z "$1" ]; then
-    echo "no release version supplied"
-    exit 1
-else
-    RELEASE_VERSION="$1"
-fi
 
 # https://github.com/tcnksm/ghr/releases/download/v0.4.0/ghr_v0.4.0_linux_amd64.zip
 command -v ghr >/dev/null || {
     echo "ghr not found"
     exit 1
 }
+
+if [ -z "$GIP_VERSION" ]; then
+    echo 'no release version supplied. $GIP_VERSION expected'
+    exit 1
+fi
+
+RELEASE_VERSION="v$GIP_VERSION"
+git tag -a "${RELEASE_VERSION}" -m "release version ${RELEASE_VERSION}"
+git push origin "${RELEASE_VERSION}"
 
 if [ "$2" = "--prod" ]; then
     PRERELEASE=''

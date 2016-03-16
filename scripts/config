@@ -2,4 +2,4 @@ GH_OWNER='enr'
 GH_REPO='gip'
 DIST_DIR='dist'
 
-GIP_VERSION='0.3'
+GIP_VERSION='0.3.0'
