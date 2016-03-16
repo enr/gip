@@ -35,7 +35,7 @@ RELEASE_VERSION="v$GIP_VERSION"
 git tag -a "${RELEASE_VERSION}" -m "release version ${RELEASE_VERSION}"
 git push origin "${RELEASE_VERSION}"
 
-if [ "$2" = "--prod" ]; then
+if [ "$1" = "--prod" ]; then
     PRERELEASE=''
 else
     PRERELEASE='--prerelease'
