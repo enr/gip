@@ -49,9 +49,9 @@ func main() {
 			ui.VerbosityLevel = verbosityLevel
 		})
 		return nil
-  }
+	}
 
-	app.Commands = Commands
+	app.Commands = commands
 
 	app.Run(os.Args)
 }

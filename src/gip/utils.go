@@ -16,10 +16,10 @@ import (
 )
 
 const (
-	ConfigFileBaseName = ".gip"
+	configFileBaseName = ".gip"
 )
 
-type Project struct {
+type gipProject struct {
 	Name       string
 	Repository string
 	LocalPath  string
@@ -40,7 +40,7 @@ func configurationFilePath() string {
 		ui.Errorf("Error retrieving user home: %v\n", err)
 		os.Exit(1)
 	}
-	configurationFile := filepath.Join(home, ConfigFileBaseName)
+	configurationFile := filepath.Join(home, configFileBaseName)
 	ui.Confidentialf("Using configuration file %s", configurationFile)
 	if !files.Exists(configurationFile) {
 		ui.Errorf("Configuration file %s not found. Exit", configurationFile)
@@ -53,8 +53,8 @@ func normalizePath(dirpath string) string {
 	return strings.TrimSuffix(filepath.ToSlash(dirpath), "/")
 }
 
-func projectsList(configurationPath string) ([]Project, error) {
-	var appz []Project
+func projectsList(configurationPath string) ([]gipProject, error) {
+	var appz []gipProject
 	bytes, err := ioutil.ReadFile(configurationPath)
 	if err != nil {
 		ui.Errorf("Error reading %s: %v", configurationPath, err)

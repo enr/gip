@@ -2,10 +2,11 @@ package main
 
 import (
 	"fmt"
+
 	"github.com/urfave/cli"
 )
 
-var Commands = []cli.Command{
+var commands = []cli.Command{
 	commandStatus,
 	commandStatusFull,
 	commandList,
@@ -47,51 +48,70 @@ var commandPull = cli.Command{
 	},
 }
 
-func doStatus(c *cli.Context) {
-	fmt.Printf("--- %v \n", c.Bool("debug"))
-	gitStatus(false)
+func doStatus(c *cli.Context) error {
+	return gitStatus(false)
 }
 
-func doStatusFull(c *cli.Context) {
-	gitStatus(true)
+func doStatusFull(c *cli.Context) error {
+	return gitStatus(true)
 }
 
-func gitStatus(untracked bool) {
+func gitStatus(untracked bool) error {
 	configurationFile := configurationFilePath()
 	var line string
-	projects, _ := projectsList(configurationFile)
+	projects, err := projectsList(configurationFile)
+	if err != nil {
+		return exitErrorf(1, "Error loading projects list %v ", err)
+	}
 	for _, project := range projects {
-		line, _ = projectPath(project.LocalPath)
+		line, err = projectPath(project.LocalPath)
+		if err != nil {
+			return exitErrorf(1, "Error loading project %v ", err)
+		}
 		if isProjectDir(line) {
 			executeGitStatus(line, untracked)
 		} else {
 			ui.Warnf("%s is not a project dir", line)
 		}
 	}
+	return nil
 }
 
-func doList(c *cli.Context) {
+func doList(c *cli.Context) error {
 	configurationFile := configurationFilePath()
 	var localPath string
-	projects, _ := projectsList(configurationFile)
+	projects, err := projectsList(configurationFile)
+	if err != nil {
+		return exitErrorf(1, "Error loading projects list %v ", err)
+	}
 	for _, project := range projects {
-		localPath, _ = projectPath(project.LocalPath)
+		localPath, err = projectPath(project.LocalPath)
+		if err != nil {
+			return exitErrorf(1, "Error loading project %v ", err)
+		}
 		if isProjectDir(localPath) {
 			ui.Lifecyclef("%s", localPath)
 		} else {
 			ui.Warnf("%s (not a project dir)", localPath)
 		}
 	}
+	return nil
 }
 
-func doPull(c *cli.Context) {
+func doPull(c *cli.Context) error {
 	configurationFile := configurationFilePath()
 	all := c.Bool("all")
 	ui.Confidentialf("%s PULL all? %t", configurationFile, all)
 	var line string
-	projects, _ := projectsList(configurationFile)
+	projects, err := projectsList(configurationFile)
+	if err != nil {
+		return exitErrorf(1, "Error loading projects list %v ", err)
+	}
 	for _, project := range projects {
-		line, _ = projectPath(project.LocalPath)
+		line, err = projectPath(project.LocalPath)
+		if err != nil {
+			return exitErrorf(1, "Error loading project %v ", err)
+		}
 		if isProjectDir(line) {
 			executeGitPull(line)
 		} else {
@@ -104,4 +124,10 @@ func doPull(c *cli.Context) {
 			}
 		}
 	}
+	return nil
+}
+
+func exitErrorf(exitCode int, template string, args ...interface{}) error {
+	ui.Errorf(`Something gone wrong:`)
+	return cli.NewExitError(fmt.Sprintf(template, args...), exitCode)
 }
