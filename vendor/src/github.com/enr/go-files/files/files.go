@@ -182,3 +182,28 @@ func EachLine(path string, walkFn EachLineFunc) error {
 	}
 	return err
 }
+
+func IsSamePath(p1 string, p2 string) bool {
+	first, err := normalizedPath(p1)
+	if err != nil {
+		panic(err)
+	}
+	second, err := normalizedPath(p2)
+	if err != nil {
+		panic(err)
+	}
+	return first == second
+}
+
+func normalizedPath(p string) (string, error) {
+	np := cleanPath(p)
+	if np == "" {
+		return "", nil
+	}
+	np = strings.Replace(np, `\`, `/`, -1)
+	np, err := filepath.Abs(np)
+	if err != nil {
+		return "", err
+	}
+	return np, nil
+}

@@ -39,9 +39,9 @@ for platform in $platforms; do
 	target_goarch=$(echo $platform | cut -d/ -f2)
     echo "building for ${target_goos} ${target_goarch}"
     GOOS="$target_goos" GOARCH="$target_goarch" gb build -ldflags "-s \
-  -X main.Version=${GIP_VERSION} \
-  -X main.BuildTime=${buildtime} \
-  -X main.GitCommit=${git_commit}" all > /dev/null
+  -X main.version=${GIP_VERSION} \
+  -X main.buildTime=${buildtime} \
+  -X main.gitCommit=${git_commit}" all > /dev/null
     ext=''
     [[ "windows" = "$target_goos" ]] && ext='.exe'
     built="${PRJ_HOME}/bin/gip-${target_goos}-${target_goarch}${ext}"

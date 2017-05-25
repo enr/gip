@@ -1,5 +1,5 @@
 package main
 
-var Version = ""
-var BuildTime = ""
-var GitCommit = ""
+var version = ""
+var buildTime = ""
+var gitCommit = ""

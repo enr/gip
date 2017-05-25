@@ -1,7 +1,7 @@
 // Disabling building of yaml support in cases where golang is 1.0 or 1.1
 // as the encoding library is not implemented or supported.
 
-// +build !go1,!go1.1
+// +build go1.2
 
 package altsrc
 
@@ -11,8 +11,10 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"runtime"
+	"strings"
 
-	"github.com/codegangsta/cli"
+	"gopkg.in/urfave/cli.v1"
 
 	"gopkg.in/yaml.v2"
 )
@@ -23,19 +25,19 @@ type yamlSourceContext struct {
 
 // NewYamlSourceFromFile creates a new Yaml InputSourceContext from a filepath.
 func NewYamlSourceFromFile(file string) (InputSourceContext, error) {
-	ymlLoader := &yamlSourceLoader{FilePath: file}
-	var results map[string]interface{}
-	err := readCommandYaml(ysl.FilePath, &results)
+	ysc := &yamlSourceContext{FilePath: file}
+	var results map[interface{}]interface{}
+	err := readCommandYaml(ysc.FilePath, &results)
 	if err != nil {
-		return fmt.Errorf("Unable to load Yaml file '%s': inner error: \n'%v'", filePath, err.Error())
+		return nil, fmt.Errorf("Unable to load Yaml file '%s': inner error: \n'%v'", ysc.FilePath, err.Error())
 	}
 
 	return &MapInputSource{valueMap: results}, nil
 }
 
 // NewYamlSourceFromFlagFunc creates a new Yaml InputSourceContext from a provided flag name and source context.
-func NewYamlSourceFromFlagFunc(flagFileName string) func(InputSourceContext, error) {
-	return func(context cli.Context) {
+func NewYamlSourceFromFlagFunc(flagFileName string) func(context *cli.Context) (InputSourceContext, error) {
+	return func(context *cli.Context) (InputSourceContext, error) {
 		filePath := context.String(flagFileName)
 		return NewYamlSourceFromFile(filePath)
 	}
@@ -74,6 +76,12 @@ func loadDataFrom(filePath string) ([]byte, error) {
 			return nil, fmt.Errorf("scheme of %s is unsupported", filePath)
 		}
 	} else if u.Path != "" { // i dont have a host, but I have a path. I am a local file.
+		if _, notFoundFileErr := os.Stat(filePath); notFoundFileErr != nil {
+			return nil, fmt.Errorf("Cannot read from file: '%s' because it does not exist.", filePath)
+		}
+		return ioutil.ReadFile(filePath)
+	} else if runtime.GOOS == "windows" && strings.Contains(u.String(), "\\") {
+		// on Windows systems u.Path is always empty, so we need to check the string directly.
 		if _, notFoundFileErr := os.Stat(filePath); notFoundFileErr != nil {
 			return nil, fmt.Errorf("Cannot read from file: '%s' because it does not exist.", filePath)
 		}

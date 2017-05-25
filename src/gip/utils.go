@@ -88,10 +88,12 @@ func isProjectDir(dirpath string) bool {
 }
 
 func executeGitStatus(dirpath string, untracked bool) {
+	ui.Confidentialf("Status on %s", dirpath)
 	command := &runcmd.Command{
 		Exe:  gitExecutablePath(),
-		Args: arguments(dirpath, untracked),
+		Args: statusArguments(dirpath, untracked),
 	}
+	ui.Confidentialf("Execute command %s", command)
 	result := command.Run()
 	if !result.Success() {
 		ui.Errorf("Error executing Git (%d): %v", result.ExitStatus(), result.Error())
@@ -105,20 +107,58 @@ func executeGitStatus(dirpath string, untracked bool) {
 	}
 }
 
-func arguments(dirpath string, untracked bool) []string {
-	// git --git-dir=${prj_dir}/.git --work-tree=${prj_dir} ${git_action}
-	// status --porcelain --untracked-files=no
+func statusArguments(dirpath string, untracked bool) []string {
 	untrackedFlag := "=no"
 	if untracked {
 		untrackedFlag = ""
 	}
 	args := []string{
 		fmt.Sprintf("--git-dir=%s/.git", dirpath),
-		//fmt.Sprintf("--git-dir=%s", filepath.Join(dirpath, ".git")),
 		fmt.Sprintf("--work-tree=%s", dirpath),
 		"status",
 		"--porcelain",
 		fmt.Sprintf("--untracked-files%s", untrackedFlag),
 	}
 	return args
+}
+
+func executeGitClone(repourl string, dirpath string) {
+	ui.Confidentialf("Cloning %s to %s", repourl, dirpath)
+	args := []string{
+		"clone",
+		repourl,
+		dirpath,
+	}
+	command := &runcmd.Command{
+		Exe:  gitExecutablePath(),
+		Args: args,
+	}
+	ui.Confidentialf("Execute command %s", command)
+	result := command.Run()
+	if !result.Success() {
+		ui.Errorf("Error executing Git (%d): %v", result.ExitStatus(), result.Error())
+	}
+	gitOutput := result.Stdout().String()
+	ui.Title(dirpath)
+	fmt.Println(string(gitOutput))
+}
+
+func executeGitPull(dirpath string) {
+	ui.Confidentialf("Pulling %s", dirpath)
+	args := []string{
+		fmt.Sprintf("--git-dir=%s/.git", dirpath),
+		"pull",
+	}
+	command := &runcmd.Command{
+		Exe:  gitExecutablePath(),
+		Args: args,
+	}
+	ui.Confidentialf("Execute command %s", command)
+	result := command.Run()
+	if !result.Success() {
+		ui.Errorf("Error executing Git (%d): %v", result.ExitStatus(), result.Error())
+	}
+	gitOutput := result.Stdout().String()
+	ui.Title(dirpath)
+	fmt.Println(string(gitOutput))
 }

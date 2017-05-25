@@ -1,10 +1,12 @@
 package gotenv
 
 import (
-	"github.com/stretchr/testify/assert"
+	"bufio"
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 var formats = []struct {
@@ -19,11 +21,23 @@ var formats = []struct {
 	{`FOO =bar`, Env{"FOO": "bar"}, false},
 	{`FOO= bar`, Env{"FOO": "bar"}, false},
 
+	// parses values with leading spaces
+	{`  FOO=bar`, Env{"FOO": "bar"}, false},
+
+	// parses values with following spaces
+	{`FOO=bar  `, Env{"FOO": "bar"}, false},
+
 	// parses double quoted values
 	{`FOO="bar"`, Env{"FOO": "bar"}, false},
 
+	// parses double quoted values with following spaces
+	{`FOO="bar"  `, Env{"FOO": "bar"}, false},
+
 	// parses single quoted values
 	{`FOO='bar'`, Env{"FOO": "bar"}, false},
+
+	// parses single quoted values with following spaces
+	{`FOO='bar'  `, Env{"FOO": "bar"}, false},
 
 	// parses escaped double quotes
 	{`FOO="escaped\"bar"`, Env{"FOO": `escaped"bar`}, false},
@@ -52,12 +66,16 @@ var formats = []struct {
 	// does not expand escaped variables
 	{`FOO="foo\$BAR"`, Env{"FOO": "foo$BAR"}, false},
 	{`FOO="foo\${BAR}"`, Env{"FOO": "foo${BAR}"}, false},
+	{"FOO=test\nBAR=\"foo\\${FOO} ${FOO}\"", Env{"FOO": "test", "BAR": "foo${FOO} test"}, false},
 
 	// parses yaml style options
 	{"OPTION_A: 1", Env{"OPTION_A": "1"}, false},
 
 	// parses export keyword
 	{"export OPTION_A=2", Env{"OPTION_A": "2"}, false},
+
+	// allows export line if you want to do it that way
+	{"OPTION_A=2\nexport OPTION_A", Env{"OPTION_A": "2"}, false},
 
 	// expands newlines in quoted strings
 	{`FOO="bar\nbaz"`, Env{"FOO": "bar\nbaz"}, false},
@@ -83,6 +101,37 @@ var formats = []struct {
 	// parses # in quoted values
 	{`foo="ba#r"`, Env{"foo": "ba#r"}, false},
 	{"foo='ba#r'", Env{"foo": "ba#r"}, false},
+
+	// parses # in quoted values with following spaces
+	{`foo="ba#r"  `, Env{"foo": "ba#r"}, false},
+	{`foo='ba#r'  `, Env{"foo": "ba#r"}, false},
+
+	// supports carriage return
+	{"FOO=bar\rbaz=fbb", Env{"FOO": "bar", "baz": "fbb"}, false},
+
+	// supports carriage return combine with new line
+	{"FOO=bar\r\nbaz=fbb", Env{"FOO": "bar", "baz": "fbb"}, false},
+
+	// expands carriage return in quoted strings
+	{`FOO="bar\rbaz"`, Env{"FOO": "bar\rbaz"}, false},
+
+	// escape $ properly when no alphabets/numbers/_  are followed by it
+	{`FOO="bar\\$ \\$\\$"`, Env{"FOO": "bar$ $$"}, false},
+
+	// ignore $ when it is not escaped and no variable is followed by it
+	{`FOO="bar $ "`, Env{"FOO": "bar $ "}, false},
+}
+
+var errorFormats = []struct {
+	in  string
+	out Env
+	err error
+}{
+	// allows export line if you want to do it that way and checks for unset variables
+	{"OPTION_A=2\nexport OH_NO_NOT_SET", Env{"OPTION_A": "2"}, ErrFormat{Message: "Line `export OH_NO_NOT_SET` has an unset variable"}},
+
+	// throws an error if line format is incorrect
+	{`lol$wut`, Env{}, ErrFormat{Message: "Line `lol$wut` doesn't match format"}},
 }
 
 var fixtures = []struct {
@@ -137,16 +186,17 @@ func TestParse(t *testing.T) {
 		}
 
 		exp := Parse(strings.NewReader(tt.in))
-		assert.Equal(t, exp, tt.out)
+		assert.Equal(t, tt.out, exp)
 		os.Clearenv()
 	}
 }
 
 func TestStrictParse(t *testing.T) {
-	// incorrect line format
-	env, err := StrictParse(strings.NewReader("lol$wut"))
-	assert.NotNil(t, err)
-	assert.Equal(t, Env{}, env)
+	for _, tt := range errorFormats {
+		env, err := StrictParse(strings.NewReader(tt.in))
+		assert.Equal(t, tt.err, err)
+		assert.Equal(t, tt.out, env)
+	}
 }
 
 func TestLoad(t *testing.T) {
@@ -195,6 +245,34 @@ func TestLoad_nonExist(t *testing.T) {
 	if err == nil {
 		t.Errorf("Load(`%s`) => error: `no such file or directory` != nil", file)
 	}
+}
+
+func TestLoad_unicodeBOMFixture(t *testing.T) {
+	file := "fixtures/bom.env"
+
+	f, err := os.Open(file)
+	assert.Nil(t, err)
+
+	scanner := bufio.NewScanner(f)
+
+	i := 1
+	bom := string([]byte{239, 187, 191})
+
+	for scanner.Scan() {
+		if i == 1 {
+			line := scanner.Text()
+			assert.True(t, strings.HasPrefix(line, bom))
+		}
+	}
+}
+
+func TestLoad_unicodeBOM(t *testing.T) {
+	file := "fixtures/bom.env"
+
+	err := Load(file)
+	assert.Nil(t, err)
+	assert.Equal(t, "UTF-8", os.Getenv("BOM"))
+	os.Clearenv()
 }
 
 func TestMustLoad(t *testing.T) {

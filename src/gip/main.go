@@ -8,17 +8,23 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/codegangsta/cli"
+	"github.com/enr/clui"
+	"github.com/urfave/cli"
 )
 
-func main() {
-	versionTemplate := `%s
+var (
+	ui              *clui.Clui
+	versionTemplate = `%s
 Revision: %s
 Build date: %s
 `
+	appVersion = fmt.Sprintf(versionTemplate, version, gitCommit, buildTime)
+)
+
+func main() {
 	app := cli.NewApp()
 	app.Name = "gip"
-	app.Version = fmt.Sprintf(versionTemplate, Version, GitCommit, BuildTime)
+	app.Version = appVersion
 	app.Usage = "Keep tracks of your Git projects"
 	app.Flags = []cli.Flag{
 		cli.BoolFlag{Name: "debug, d", Usage: "operates in debug mode: lot of output"},
@@ -27,6 +33,23 @@ Build date: %s
 	app.Author = ""
 	app.Email = ""
 	app.EnableBashCompletion = true
+
+	app.Before = func(c *cli.Context) error {
+		if ui != nil {
+			return nil
+		}
+		verbosityLevel := clui.VerbosityLevelMedium
+		if c.Bool("debug") {
+			verbosityLevel = clui.VerbosityLevelHigh
+		}
+		if c.Bool("quiet") {
+			verbosityLevel = clui.VerbosityLevelLow
+		}
+		ui, _ = clui.NewClui(func(ui *clui.Clui) {
+			ui.VerbosityLevel = verbosityLevel
+		})
+		return nil
+  }
 
 	app.Commands = Commands
 

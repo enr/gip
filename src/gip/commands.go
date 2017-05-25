@@ -1,30 +1,9 @@
 package main
 
 import (
-	"github.com/codegangsta/cli"
-	"github.com/enr/clui"
+	"fmt"
+	"github.com/urfave/cli"
 )
-
-var (
-	ui *clui.Clui
-)
-
-func setup(c *cli.Context) error {
-	if ui != nil {
-		return nil
-	}
-	verbosityLevel := clui.VerbosityLevelMedium
-	if c.Bool("debug") {
-		verbosityLevel = clui.VerbosityLevelHigh
-	}
-	if c.Bool("quiet") {
-		verbosityLevel = clui.VerbosityLevelLow
-	}
-	ui, _ = clui.NewClui(func(ui *clui.Clui) {
-		ui.VerbosityLevel = verbosityLevel
-	})
-	return nil
-}
 
 var Commands = []cli.Command{
 	commandStatus,
@@ -39,7 +18,6 @@ var commandStatus = cli.Command{
 	Usage:       "",
 	Description: `Prints modified files.`,
 	Action:      doStatus,
-	Before:      setup,
 }
 
 var commandStatusFull = cli.Command{
@@ -48,16 +26,14 @@ var commandStatusFull = cli.Command{
 	Usage:       "",
 	Description: `Prints modified files and new ones.`,
 	Action:      doStatusFull,
-	Before:      setup,
 }
 
 var commandList = cli.Command{
 	Name:        "list",
 	ShortName:   "ls",
 	Usage:       "",
-	Description: `List projects registered in ~/.gip`,
+	Description: `List projects`,
 	Action:      doList,
-	Before:      setup,
 }
 
 var commandPull = cli.Command{
@@ -66,13 +42,13 @@ var commandPull = cli.Command{
 	Usage:       "",
 	Description: `Pull projects`,
 	Action:      doPull,
-	Before:      setup,
 	Flags: []cli.Flag{
 		cli.BoolFlag{Name: "all, a", Usage: `Pull all registered projects doing a checkout if needed. Otherwise only the projects already present are updated.`},
 	},
 }
 
 func doStatus(c *cli.Context) {
+	fmt.Printf("--- %v \n", c.Bool("debug"))
 	gitStatus(false)
 }
 
@@ -96,11 +72,9 @@ func gitStatus(untracked bool) {
 
 func doList(c *cli.Context) {
 	configurationFile := configurationFilePath()
-	//var name string
 	var localPath string
 	projects, _ := projectsList(configurationFile)
 	for _, project := range projects {
-		//name = project.Name
 		localPath, _ = projectPath(project.LocalPath)
 		if isProjectDir(localPath) {
 			ui.Lifecyclef("%s", localPath)
@@ -111,17 +85,23 @@ func doList(c *cli.Context) {
 }
 
 func doPull(c *cli.Context) {
-	ui.Warnf("PULL COMMAND NOT YET IMPLEMENTED")
 	configurationFile := configurationFilePath()
-	ui.Warnf("%s PULL all? %t", configurationFile, c.Bool("all"))
+	all := c.Bool("all")
+	ui.Confidentialf("%s PULL all? %t", configurationFile, all)
 	var line string
 	projects, _ := projectsList(configurationFile)
 	for _, project := range projects {
 		line, _ = projectPath(project.LocalPath)
 		if isProjectDir(line) {
-			ui.Lifecyclef("%s git pull %s", project.Name, project.Repository)
+			executeGitPull(line)
 		} else {
-			ui.Warnf("%s is not a project dir", line)
+			ui.Confidentialf("%s not a project dir", line)
+			if all {
+				executeGitClone(project.Repository, line)
+				executeGitPull(line)
+			} else {
+				ui.Warnf("%s (not a project dir)", line)
+			}
 		}
 	}
 }
