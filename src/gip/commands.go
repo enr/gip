@@ -108,6 +108,10 @@ func doPull(c *cli.Context) error {
 		return exitErrorf(1, "Error loading projects list %v ", err)
 	}
 	for _, project := range projects {
+		if project.pullNever() {
+			ui.Confidentialf("Skip %s : pull policy never", project.Name)
+			continue
+		}
 		line, err = projectPath(project.LocalPath)
 		if err != nil {
 			return exitErrorf(1, "Error loading project %v ", err)
@@ -116,9 +120,8 @@ func doPull(c *cli.Context) error {
 			executeGitPull(line)
 		} else {
 			ui.Confidentialf("%s not a project dir", line)
-			if all {
+			if all || project.pullAlways() {
 				executeGitClone(project.Repository, line)
-				executeGitPull(line)
 			} else {
 				ui.Warnf("%s (not a project dir)", line)
 			}

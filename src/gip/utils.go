@@ -23,6 +23,15 @@ type gipProject struct {
 	Name       string
 	Repository string
 	LocalPath  string
+	PullPolicy string
+}
+
+func (p *gipProject) pullNever() bool {
+	return "never" == strings.ToLower(strings.TrimSpace(p.PullPolicy))
+}
+
+func (p *gipProject) pullAlways() bool {
+	return "always" == strings.ToLower(strings.TrimSpace(p.PullPolicy))
 }
 
 func gitExecutablePath() string {
