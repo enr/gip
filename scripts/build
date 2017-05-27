@@ -28,6 +28,6 @@ echo "git : ${git_commit}"
 echo "build time : ${buildtime}"
 
 gb build -ldflags "-s \
--X main.Version=${GIP_VERSION} \
--X main.BuildTime=${buildtime} \
--X main.GitCommit=${git_commit}" all
+-X main.version=${GIP_VERSION} \
+-X main.buildTime=${buildtime} \
+-X main.gitCommit=${git_commit}" all
