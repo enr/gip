@@ -19,6 +19,19 @@ Gip reads a JSON file named `.gip` in your home directory.
 ]
 ```
 
+## Install
+
+Put `gip` in your `$PATH` and make it executable:
+
+```
+$ curl -sL https://github.com/enr/gip/releases/download/v0.4.1/gip-linux-amd64 -o ~/bin/gip
+$ chmod +x ~/bin/gip
+$ gip --version
+gip version 0.4.1
+Revision: d0fd984ff7f3140f5f68bb3c6217c337d071d80f
+Build date: 2017-05-27T09:36:12Z
+```
+
 ## License
 
 **Apache 2.0**
