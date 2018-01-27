@@ -89,7 +89,7 @@ func projectPath(ppath string) (string, error) {
 		relpath := strings.TrimPrefix(ppath, "~")
 		retpath = filepath.FromSlash(path.Join(dir, relpath))
 	}
-	return retpath, nil
+	return os.ExpandEnv(retpath), nil
 }
 
 func isProjectDir(dirpath string) bool {
