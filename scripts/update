@@ -4,9 +4,14 @@ set -e
 
 TOOL_SOURCE="${BASH_SOURCE[0]}"
 while [ -h "$TOOL_SOURCE" ] ; do TOOL_SOURCE="$(readlink "$TOOL_SOURCE")"; done
-SCRIPTS_DIR="$( cd -P "$( dirname "$TOOL_SOURCE" )" && pwd )"
-PRJ_HOME="$( cd -P "$( dirname "$SCRIPTS_DIR" )" && pwd )"
+HACK_DIR="$( cd -P "$( dirname "$TOOL_SOURCE" )" && pwd )"
+PRJ_HOME="$( cd -P "$( dirname "$HACK_DIR" )" && pwd )"
 
-go get -u github.com/constabulary/gb/...
+cd "$PRJ_HOME"
 
-gb vendor update -all
+command -v dep >/dev/null || {
+    echo "dep not found"
+    exit 1
+}
+
+dep ensure -update

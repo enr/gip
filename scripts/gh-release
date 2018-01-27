@@ -4,62 +4,46 @@ set -e
 
 TOOL_SOURCE="${BASH_SOURCE[0]}"
 while [ -h "$TOOL_SOURCE" ] ; do TOOL_SOURCE="$(readlink "$TOOL_SOURCE")"; done
-OPS_DIR="$( cd -P "$( dirname "$TOOL_SOURCE" )" && pwd )"
-PRJ_HOME="$( cd -P "$( dirname "$OPS_DIR" )" && pwd )"
+HACK_DIR="$( cd -P "$( dirname "$TOOL_SOURCE" )" && pwd )"
+PRJ_HOME="$( cd -P "$( dirname "$HACK_DIR" )" && pwd )"
 
-source "${OPS_DIR}/config"
+source "${HACK_DIR}/config"
+app_name="$GH_REPO"
 
-git_dirty=$(git status --porcelain)
-[[ -n "$git_dirty" ]] && {
-    echo 'uncommitted changes detected: aborting release'
-    exit 1
+SRC_DIR="${PRJ_HOME}/src"
+CMDS_DIR="${PRJ_HOME}/cmd"
+BIN_DIR="${PRJ_HOME}/bin"
+
+[[ -d "${PRJ_HOME}/bin" ]] && rm -r "${PRJ_HOME}/bin"
+
+hash golint 2>/dev/null || {
+  go get -u github.com/golang/lint/golint
 }
 
-[[ -z "$GH_TOKEN" ]] && {
-    echo "Missing GH_TOKEN"
-    exit 1
+hash goimports 2>/dev/null || {
+  go get golang.org/x/tools/cmd/goimports
 }
 
-# https://github.com/tcnksm/ghr/releases/download/v0.4.0/ghr_v0.4.0_linux_amd64.zip
-command -v ghr >/dev/null || {
-    echo "ghr not found"
-    exit 1
-}
+cd "${PRJ_HOME}"
 
-[[ -z "$GH_OWNER" ]] && {
-    echo "no gh owner"
-    exit 1
-}
-[[ -z "$GH_REPO" ]] && {
-    echo "no gh repo"
-    exit 1
-}
-
-if [ -z "$GIP_VERSION" ]; then
-    echo 'no release version supplied. $GIP_VERSION expected'
-    exit 1
-fi
-
-RELEASE_VERSION="v$GIP_VERSION"
-git tag -a "${RELEASE_VERSION}" -m "release version ${RELEASE_VERSION}"
-git push origin "${RELEASE_VERSION}"
-
-if [ "$1" = "--prod" ]; then
-    PRERELEASE=''
-else
-    PRERELEASE='--prerelease'
-fi
-
-echo "Release $PRJ_HOME version $RELEASE_VERSION $PRERELEASE"
-
-"${OPS_DIR}/build-dist"
-
-[[ -z "$DIST_DIR" ]] && {
-    echo "dist directory not found: ${DIST_DIR}"
-    exit 1
-}
-
-#ghr -t "$GH_TOKEN" -u "$GH_OWNER" -r "$GH_REPO" "$PRERELEASE" "$RELEASE_VERSION" "$DIST_DIR"
-GHR_COMMAND="ghr -t ${GH_TOKEN} -u ${GH_OWNER} -r ${GH_REPO} ${PRERELEASE} ${RELEASE_VERSION} ${DIST_DIR}"
-echo "$GHR_COMMAND"
-sh -c "$GHR_COMMAND"
+for dir in $(find "$CMDS_DIR" -mindepth 1 -maxdepth 1 -type d); do
+  app_name=$(basename "$dir")
+  echo "===== Process ${app_name} [${dir}]"
+  cd "$dir"
+  echo "----- golint"
+  diff <(golint ./...) <(printf "")
+  echo "----- go fmt"
+  go fmt ./...
+  echo "----- go vet"
+  go vet ./...
+  echo "----- goimports"
+  goimports -w .
+  diff <(goimports -d .) <(printf "")
+  cd "$PRJ_HOME"
+  echo "----- go build"
+  # we need binaries for some e2e test
+  go build -o "${BIN_DIR}/${app_name}" "github.com/${GH_OWNER}/${GH_REPO}/cmd/${app_name}"
+  cd "$dir"
+  echo "----- go test -cover ./..."
+  go test -cover ./...
+done

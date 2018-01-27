@@ -11,13 +11,10 @@ source "${HACK_DIR}/config"
 app_name="$GH_REPO"
 
 SRC_DIR="${PRJ_HOME}/src"
+CMDS_DIR="${PRJ_HOME}/cmd"
+BIN_DIR="${PRJ_HOME}/bin"
 
 [[ -d "${PRJ_HOME}/bin" ]] && rm -r "${PRJ_HOME}/bin"
-[[ -d "${PRJ_HOME}/pkg" ]] && rm -r "${PRJ_HOME}/pkg"
-
-hash gb 2>/dev/null || {
-  go get -u github.com/constabulary/gb/...
-}
 
 hash golint 2>/dev/null || {
   go get -u github.com/golang/lint/golint
@@ -27,27 +24,25 @@ hash goimports 2>/dev/null || {
   go get golang.org/x/tools/cmd/goimports
 }
 
-export GOPATH="${PRJ_HOME}:${PRJ_HOME}/vendor"
-
 cd "${PRJ_HOME}"
 
-for dir in $(find "$SRC_DIR" -mindepth 1 -maxdepth 1 -type d); do
+for dir in $(find "$CMDS_DIR" -mindepth 1 -maxdepth 1 -type d); do
   app_name=$(basename "$dir")
   echo "===== Process ${app_name} [${dir}]"
   cd "$dir"
   echo "----- golint"
-  golint
+  diff <(golint ./...) <(printf "")
   echo "----- go fmt"
   go fmt ./...
   echo "----- go vet"
   go vet ./...
   echo "----- goimports"
   goimports -w .
-  # - diff <(goimports -d .) <(printf "")
-  # - diff <(golint ./...) <(printf "")
+  diff <(goimports -d .) <(printf "")
   cd "$PRJ_HOME"
-  echo "----- gb build"
-  gb build "$app_name"
+  echo "----- go build"
+  # we need binaries for some e2e test
+  go build -o "${BIN_DIR}/${app_name}" "github.com/${GH_OWNER}/${GH_REPO}/cmd/${app_name}"
   cd "$dir"
   echo "----- go test -cover ./..."
   go test -cover ./...
