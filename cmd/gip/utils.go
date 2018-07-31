@@ -159,8 +159,9 @@ func executeGitPull(dirpath string) {
 		"pull",
 	}
 	command := &runcmd.Command{
-		Exe:  gitExecutablePath(),
-		Args: args,
+		Exe:        gitExecutablePath(),
+		Args:       args,
+		WorkingDir: dirpath,
 	}
 	ui.Confidentialf("Execute command %s", command)
 	result := command.Run()
