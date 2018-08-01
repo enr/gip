@@ -31,32 +31,32 @@ mkdir -p "$DIST_DIR"
 platforms="windows/amd64 linux/amd64 darwin/amd64"
 
 for dir in $(find "$CMDS_DIR" -mindepth 1 -maxdepth 1 -type d); do
-	app_name=$(basename "$dir")
+  app_name=$(basename "$dir")
     echo " =====     Process ${app_name} ${dir}     ====="
     for platform in $platforms; do
-        cd "$PRJ_HOME"
-        target_goos=$(echo $platform | cut -d/ -f1)
-        target_goarch=$(echo $platform | cut -d/ -f2)
-        echo "building for ${target_goos} ${target_goarch}"
-        platform_dist_basename="${GH_REPO}-${APP_VERSION}_${target_goos}_${target_goarch}"
-        platform_dist_dir="${DIST_DIR}/${platform_dist_basename}"
-        mkdir -p "$platform_dist_dir"
-        ext=''
-        [[ "windows" = "$target_goos" ]] && ext='.exe'
-        built="${PRJ_HOME}/bin/${app_name}-${target_goos}-${target_goarch}${ext}"
-        GOOS="$target_goos" GOARCH="$target_goarch" go build -ldflags "-s \
-      -X main.Version=${APP_VERSION} \
-      -X main.BuildTime=${buildtime} \
-      -X main.GitCommit=${git_commit}" \
+      cd "$PRJ_HOME"
+      target_goos=$(echo $platform | cut -d/ -f1)
+      target_goarch=$(echo $platform | cut -d/ -f2)
+      echo "building for ${target_goos} ${target_goarch}"
+      platform_dist_basename="${GH_REPO}-${APP_VERSION}_${target_goos}_${target_goarch}"
+      platform_dist_dir="${DIST_DIR}/${platform_dist_basename}"
+      mkdir -p "$platform_dist_dir"
+      ext=''
+      [[ "windows" = "$target_goos" ]] && ext='.exe'
+      built="${PRJ_HOME}/bin/${app_name}-${target_goos}-${target_goarch}${ext}"
+      GOOS="$target_goos" GOARCH="$target_goarch" go build -ldflags "-s \
+      -X github.com/${GH_OWNER}/${GH_REPO}/lib/core.Version=${APP_VERSION} \
+      -X github.com/${GH_OWNER}/${GH_REPO}/lib/core.BuildTime=${buildtime} \
+      -X github.com/${GH_OWNER}/${GH_REPO}/lib/core.GitCommit=${git_commit}" \
       -o "$built" \
       "github.com/${GH_OWNER}/${GH_REPO}/cmd/${app_name}"
-        [[ -e "$built" ]] || {
-            echo "expected file not found: ${built}"
-            exit 1
-        }
-        mv "${PRJ_HOME}/bin/${app_name}-${target_goos}-${target_goarch}${ext}" "${platform_dist_dir}/${app_name}${ext}"
-        # cd "$DIST_DIR"
-        # zip -r "${platform_dist_basename}.zip" "$platform_dist_basename"
-        # rm -r "$platform_dist_basename"
+      [[ -e "$built" ]] || {
+        echo "expected file not found: ${built}"
+        exit 1
+      }
+      mv "${PRJ_HOME}/bin/${app_name}-${target_goos}-${target_goarch}${ext}" "${platform_dist_dir}/${app_name}${ext}"
+      # cd "$DIST_DIR"
+      # zip -r "${platform_dist_basename}.zip" "$platform_dist_basename"
+      # rm -r "$platform_dist_basename"
     done
 done
