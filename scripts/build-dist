@@ -8,6 +8,7 @@ SCRIPTS_DIR="$( cd -P "$( dirname "$TOOL_SOURCE" )" && pwd )"
 PRJ_HOME="$( cd -P "$( dirname "$SCRIPTS_DIR" )" && pwd )"
 
 source "${SCRIPTS_DIR}/config"
+DIST_DIR="${PRJ_HOME}/${DIST_DIR}"
 CMDS_DIR="${PRJ_HOME}/cmd"
 
 buildtime=$(TZ=UTC date -u '+%Y-%m-%dT%H:%M:%SZ')
@@ -59,4 +60,12 @@ for dir in $(find "$CMDS_DIR" -mindepth 1 -maxdepth 1 -type d); do
       # zip -r "${platform_dist_basename}.zip" "$platform_dist_basename"
       # rm -r "$platform_dist_basename"
     done
+done
+
+cd "$DIST_DIR"
+for dir in $(find "$DIST_DIR" -mindepth 1 -maxdepth 1 -type d); do
+  dist_folder=$(basename "$dir")
+  echo " =====     Create dist ${dist_folder} ${dir}     ====="
+  zip -r "${dist_folder}.zip" "$dist_folder"
+  rm -r "$dist_folder"
 done
