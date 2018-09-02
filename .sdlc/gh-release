@@ -4,10 +4,10 @@ set -e
 
 TOOL_SOURCE="${BASH_SOURCE[0]}"
 while [ -h "$TOOL_SOURCE" ] ; do TOOL_SOURCE="$(readlink "$TOOL_SOURCE")"; done
-HACK_DIR="$( cd -P "$( dirname "$TOOL_SOURCE" )" && pwd )"
-PRJ_HOME="$( cd -P "$( dirname "$HACK_DIR" )" && pwd )"
+SDLC_DIR="$( cd -P "$( dirname "$TOOL_SOURCE" )" && pwd )"
+PRJ_HOME="$( cd -P "$( dirname "$SDLC_DIR" )" && pwd )"
 
-source "${HACK_DIR}/config"
+source "${SDLC_DIR}/config"
 
 git_dirty=$(git status --porcelain)
 [[ -n "$git_dirty" ]] && {
@@ -52,7 +52,7 @@ fi
 
 echo "Release $PRJ_HOME version $RELEASE_VERSION $PRERELEASE"
 
-"${HACK_DIR}/build-dist"
+"${SDLC_DIR}/build-dist"
 
 [[ -z "$DIST_DIR" ]] && {
   echo "dist directory not found: ${DIST_DIR}"
