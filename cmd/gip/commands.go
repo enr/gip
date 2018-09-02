@@ -100,6 +100,10 @@ func doList(c *cli.Context) error {
 
 func doPull(c *cli.Context) error {
 	configurationFile := configurationFilePath()
+	args := c.Args()
+	if len(args) > 0 {
+		return exitErrorf(1, "Pull command does not accept any argument, found: %v ", args)
+	}
 	all := c.Bool("all")
 	ui.Confidentialf("%s PULL all? %t", configurationFile, all)
 	var line string
