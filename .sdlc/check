@@ -28,22 +28,22 @@ cd "${PRJ_HOME}"
 
 for dir in $(find "$CMDS_DIR" -mindepth 1 -maxdepth 1 -type d); do
   app_name=$(basename "$dir")
-  echo "===== Process ${app_name} [${dir}]"
+  echo "===  Process ${app_name} [${dir}]"
   cd "$dir"
-  echo "----- golint"
+  echo "--- golint"
   diff <(golint ./...) <(printf "")
-  echo "----- go fmt"
+  echo "--- go fmt"
   go fmt ./...
-  echo "----- go vet"
+  echo "--- go vet"
   go vet ./...
-  echo "----- goimports"
+  echo "--- goimports"
   goimports -w .
   diff <(goimports -d .) <(printf "")
   cd "$PRJ_HOME"
-  echo "----- go build"
+  echo "--- go build"
   # we need binaries for some e2e test
   go build -o "${BIN_DIR}/${app_name}" "github.com/${GH_OWNER}/${GH_REPO}/cmd/${app_name}"
   cd "$dir"
-  echo "----- go test -cover ./..."
+  echo "--- go test -cover ./..."
   go test -cover ./...
 done

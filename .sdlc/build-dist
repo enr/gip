@@ -33,7 +33,7 @@ platforms="windows/amd64 linux/amd64 darwin/amd64"
 
 for dir in $(find "$CMDS_DIR" -mindepth 1 -maxdepth 1 -type d); do
   app_name=$(basename "$dir")
-  echo " =====     Process ${app_name} ${dir}     ====="
+  echo "===  Process ${app_name} ${dir}"
   for platform in $platforms; do
     cd "$PRJ_HOME"
     target_goos=$(echo $platform | cut -d/ -f1)
@@ -45,7 +45,7 @@ for dir in $(find "$CMDS_DIR" -mindepth 1 -maxdepth 1 -type d); do
     ext=''
     [[ "windows" = "$target_goos" ]] && ext='.exe'
     built="${PRJ_HOME}/bin/${app_name}-${target_goos}-${target_goarch}${ext}"
-    GOOS="$target_goos" GOARCH="$target_goarch" go build -ldflags "-s \
+    GOOS="$target_goos" GOARCH="$target_goarch" go build -mod vendor -ldflags "-s \
     -X github.com/${GH_OWNER}/${GH_REPO}/lib/core.Version=${APP_VERSION} \
     -X github.com/${GH_OWNER}/${GH_REPO}/lib/core.BuildTime=${buildtime} \
     -X github.com/${GH_OWNER}/${GH_REPO}/lib/core.GitCommit=${git_commit}" \
@@ -65,7 +65,7 @@ done
 cd "$DIST_DIR"
 for dir in $(find "$DIST_DIR" -mindepth 1 -maxdepth 1 -type d); do
   dist_folder=$(basename "$dir")
-  echo " =====     Create dist ${dist_folder} ${dir}     ====="
+  echo "===  Create dist ${dist_folder} ${dir}"
   zip -r "${dist_folder}.zip" "$dist_folder"
   rm -r "$dist_folder"
 done

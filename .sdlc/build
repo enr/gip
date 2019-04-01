@@ -25,17 +25,17 @@ echo "version : ${APP_VERSION}"
 echo "git : ${git_commit}"
 echo "build time : ${buildtime}"
 
-command -v dep >/dev/null || {
-  echo "dep not found"
-  exit 1
-}
-echo 'Running dep ensure'
-dep ensure -v
+# command -v dep >/dev/null || {
+#   echo "dep not found"
+#   exit 1
+# }
+# echo 'Running dep ensure'
+# dep ensure -v
 
 for dir in $(find "$CMDS_DIR" -mindepth 1 -maxdepth 1 -type d); do
   app_name=$(basename "$dir")
-  echo " =====     Process ${app_name} ${dir}     ====="
-  go build -ldflags "-s \
+  echo "===  Process ${app_name} ${dir}"
+  go build -mod vendor -ldflags "-s \
   -X github.com/${GH_OWNER}/${GH_REPO}/lib/core.Version=${APP_VERSION} \
   -X github.com/${GH_OWNER}/${GH_REPO}/lib/core.BuildTime=${buildtime} \
   -X github.com/${GH_OWNER}/${GH_REPO}/lib/core.GitCommit=${git_commit}" \
