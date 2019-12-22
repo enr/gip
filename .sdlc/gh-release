@@ -26,11 +26,11 @@ command -v ghr >/dev/null || {
   exit 1
 }
 
-[[ -z "$GH_OWNER" ]] && {
+[[ -z "$REPO_OWNER" ]] && {
   echo "no gh owner"
   exit 1
 }
-[[ -z "$GH_REPO" ]] && {
+[[ -z "$REPO_NAME" ]] && {
   echo "no gh repo"
   exit 1
 }
@@ -59,7 +59,7 @@ echo "Release $PRJ_HOME version $RELEASE_VERSION $PRERELEASE"
   exit 1
 }
 
-#ghr -t "$GH_TOKEN" -u "$GH_OWNER" -r "$GH_REPO" "$PRERELEASE" "$RELEASE_VERSION" "$DIST_DIR"
-GHR_COMMAND="ghr -t ${GH_TOKEN} -u ${GH_OWNER} -r ${GH_REPO} ${PRERELEASE} ${RELEASE_VERSION} ${DIST_DIR}"
+#ghr -t "$GH_TOKEN" -u "$REPO_OWNER" -r "$REPO_NAME" "$PRERELEASE" "$RELEASE_VERSION" "$DIST_DIR"
+GHR_COMMAND="ghr -t ${GH_TOKEN} -u ${REPO_OWNER} -r ${REPO_NAME} ${PRERELEASE} ${RELEASE_VERSION} ${DIST_DIR}"
 echo "$GHR_COMMAND"
 sh -c "$GHR_COMMAND"
