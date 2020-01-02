@@ -3,19 +3,19 @@ package main
 import (
 	"fmt"
 
-	"github.com/urfave/cli"
+	"github.com/urfave/cli/v2"
 )
 
-var commands = []cli.Command{
-	commandStatus,
-	commandStatusFull,
-	commandList,
-	commandPull,
+var commands = []*cli.Command{
+	&commandStatus,
+	&commandStatusFull,
+	&commandList,
+	&commandPull,
 }
 
 var commandStatus = cli.Command{
 	Name:        "status",
-	ShortName:   "s",
+	Aliases:     []string{"s"},
 	Usage:       "",
 	Description: `Prints modified files.`,
 	Action:      doStatus,
@@ -23,7 +23,7 @@ var commandStatus = cli.Command{
 
 var commandStatusFull = cli.Command{
 	Name:        "statusfull",
-	ShortName:   "sf",
+	Aliases:     []string{"sf"},
 	Usage:       "",
 	Description: `Prints modified files and new ones.`,
 	Action:      doStatusFull,
@@ -31,7 +31,7 @@ var commandStatusFull = cli.Command{
 
 var commandList = cli.Command{
 	Name:        "list",
-	ShortName:   "ls",
+	Aliases:     []string{"ls"},
 	Usage:       "",
 	Description: `List projects`,
 	Action:      doList,
@@ -39,12 +39,11 @@ var commandList = cli.Command{
 
 var commandPull = cli.Command{
 	Name:        "pull",
-	ShortName:   "",
 	Usage:       "",
 	Description: `Pull projects`,
 	Action:      doPull,
 	Flags: []cli.Flag{
-		cli.BoolFlag{Name: "all, a", Usage: `Pull all registered projects doing a checkout if needed. Otherwise only the projects already present are updated.`},
+		&cli.BoolFlag{Name: "all", Aliases: []string{"a"}, Usage: `Pull all registered projects doing a checkout if needed. Otherwise only the projects already present are updated.`},
 	},
 }
 
@@ -100,7 +99,7 @@ func doList(c *cli.Context) error {
 
 func doPull(c *cli.Context) error {
 	configurationFile := configurationFilePath()
-	args := c.Args()
+	args := c.Args().Slice()
 	if len(args) > 0 {
 		return exitErrorf(1, "Pull command does not accept any argument, found: %v ", args)
 	}

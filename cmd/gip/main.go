@@ -9,7 +9,7 @@ import (
 	"os"
 
 	"github.com/enr/clui"
-	"github.com/urfave/cli"
+	"github.com/urfave/cli/v2"
 
 	"github.com/enr/gip/lib/core"
 )
@@ -30,12 +30,10 @@ func main() {
 	app.Version = appVersion
 	app.Usage = "Keep tracks of your Git projects"
 	app.Flags = []cli.Flag{
-		cli.BoolFlag{Name: "debug, d", Usage: "operates in debug mode: lot of output"},
-		cli.BoolFlag{Name: "quiet, q", Usage: "operates in quiet mode"},
-		cli.BoolFlag{Name: "ignore-missing, m", Usage: "ignores missing local directories, otherwise prints a warn"},
+		&cli.BoolFlag{Name: "debug", Aliases: []string{"d"}, Usage: "operates in debug mode: lot of output"},
+		&cli.BoolFlag{Name: "quiet", Aliases: []string{"q"}, Usage: "operates in quiet mode"},
+		&cli.BoolFlag{Name: "ignore-missing", Aliases: []string{"m"}, Usage: "ignores missing local directories, otherwise prints a warn"},
 	}
-	app.Author = ""
-	app.Email = ""
 	app.EnableBashCompletion = true
 
 	app.Before = func(c *cli.Context) error {
