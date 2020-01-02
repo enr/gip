@@ -70,7 +70,7 @@ func gitStatus(untracked bool) error {
 		}
 		if isProjectDir(line) {
 			executeGitStatus(line, untracked)
-		} else {
+		} else if !ignoreMissingDirs {
 			ui.Warnf("%s is not a project dir", line)
 		}
 	}

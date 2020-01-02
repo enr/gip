@@ -20,7 +20,8 @@ var (
 Revision: %s
 Build date: %s
 `
-	appVersion = fmt.Sprintf(versionTemplate, core.Version, core.GitCommit, core.BuildTime)
+	appVersion        = fmt.Sprintf(versionTemplate, core.Version, core.GitCommit, core.BuildTime)
+	ignoreMissingDirs bool
 )
 
 func main() {
@@ -31,6 +32,7 @@ func main() {
 	app.Flags = []cli.Flag{
 		cli.BoolFlag{Name: "debug, d", Usage: "operates in debug mode: lot of output"},
 		cli.BoolFlag{Name: "quiet, q", Usage: "operates in quiet mode"},
+		cli.BoolFlag{Name: "ignore-missing, m", Usage: "ignores missing local directories, otherwise prints a warn"},
 	}
 	app.Author = ""
 	app.Email = ""
@@ -50,6 +52,7 @@ func main() {
 		ui, _ = clui.NewClui(func(ui *clui.Clui) {
 			ui.VerbosityLevel = verbosityLevel
 		})
+		ignoreMissingDirs = c.Bool("m")
 		return nil
 	}
 
