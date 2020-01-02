@@ -61,9 +61,6 @@ for dir in $(find "$CMDS_DIR" -mindepth 1 -maxdepth 1 -type d); do
       exit 1
     }
     mv "${PRJ_HOME}/bin/${app_name}-${target_goos}-${target_goarch}${ext}" "${platform_dist_dir}/${app_name}${ext}"
-    # cd "$DIST_DIR"
-    # zip -r "${platform_dist_basename}.zip" "$platform_dist_basename"
-    # rm -r "$platform_dist_basename"
   done
 done
 

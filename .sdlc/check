@@ -77,3 +77,4 @@ for dir in $(find "$CMDS_DIR" -mindepth 1 -maxdepth 1 -type d); do
   echo "--- go test -cover ./..."
   go test -cover ./...
 done
+

@@ -25,13 +25,6 @@ echo "version : ${APP_VERSION}"
 echo "git : ${git_commit}"
 echo "build time : ${buildtime}"
 
-# command -v dep >/dev/null || {
-#   echo "dep not found"
-#   exit 1
-# }
-# echo 'Running dep ensure'
-# dep ensure -v
-
 for dir in $(find "$CMDS_DIR" -mindepth 1 -maxdepth 1 -type d); do
   app_name=$(basename "$dir")
   echo "===  Process ${app_name} ${dir}"
