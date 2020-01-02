@@ -24,9 +24,11 @@ hash goimports 2>/dev/null || {
   go get golang.org/x/tools/cmd/goimports
 }
 
-cd "${PRJ_HOME}"
+hash gocyclo 2>/dev/null || {
+  go get github.com/fzipp/gocyclo
+}
 
-# TODO: add https://github.com/fzipp/gocyclo
+cd "${PRJ_HOME}"
 
 for dir in $(find "$LIB_DIR" -mindepth 1 -maxdepth 1 -type d); do
   app_name=$(basename "$dir")
@@ -41,6 +43,8 @@ for dir in $(find "$LIB_DIR" -mindepth 1 -maxdepth 1 -type d); do
   echo "--- goimports"
   goimports -w .
   diff <(goimports -d .) <(printf "")
+  echo "--- gocyclo"
+  diff <(gocyclo -over 10 .) <(printf "")
   cd "$PRJ_HOME"
   echo "--- go build"
   cd "$dir"
@@ -63,6 +67,8 @@ for dir in $(find "$CMDS_DIR" -mindepth 1 -maxdepth 1 -type d); do
   echo "--- goimports"
   goimports -w .
   diff <(goimports -d .) <(printf "")
+  echo "--- gocyclo"
+  diff <(gocyclo -over 10 .) <(printf "")
   cd "$PRJ_HOME"
   echo "--- go build"
   # we need binaries for some e2e test
@@ -71,4 +77,3 @@ for dir in $(find "$CMDS_DIR" -mindepth 1 -maxdepth 1 -type d); do
   echo "--- go test -cover ./..."
   go test -cover ./...
 done
-
