@@ -17,7 +17,7 @@ BIN_DIR="${PRJ_HOME}/bin"
 [[ -d "${BIN_DIR}" ]] && rm -r "${BIN_DIR}"
 
 hash golint 2>/dev/null || {
-  go get -u golang.org/x/lint
+  go get -u golang.org/x/lint/golint
 }
 
 hash goimports 2>/dev/null || {
