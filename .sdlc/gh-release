@@ -38,6 +38,8 @@ command -v ghr >/dev/null || {
   go get -u github.com/tcnksm/ghr
 }
 
+RELEASE_VERSION="v$APP_VERSION"
+
 if [ "$1" = "--prod" ]; then
   PRERELEASE=''
 else
