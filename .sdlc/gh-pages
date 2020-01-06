@@ -25,6 +25,7 @@ mkdir -p "${PRJ_HOME}/build/work"
 cd "${PRJ_HOME}/build/work"
 git clone "https://${GH_TOKEN}@github.com/${REPO_OWNER}/${REPO_NAME}.git" gh-pages
 cd gh-pages
+# check gh-pages branch exists!
 git checkout gh-pages
 echo branches in gh-pages/
 git branch
