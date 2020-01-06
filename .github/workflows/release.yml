@@ -16,6 +16,7 @@ jobs:
     steps:
     - name: Prepare container
       run: |
+        apt-get update -y
         apt-get -y install zip
     - name: Checkout code
       uses: actions/checkout@v1
