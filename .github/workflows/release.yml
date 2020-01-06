@@ -16,7 +16,7 @@ jobs:
     steps:
     - name: Prepare container
       run: |
-        apt-get install git
+        apt-get -y install zip
     - name: Checkout code
       uses: actions/checkout@v1
     - name: Create release
