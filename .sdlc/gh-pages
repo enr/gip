@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+
+set -e
+
+TOOL_SOURCE="${BASH_SOURCE[0]}"
+while [ -h "$TOOL_SOURCE" ] ; do TOOL_SOURCE="$(readlink "$TOOL_SOURCE")"; done
+SDLC_DIR="$( cd -P "$( dirname "$TOOL_SOURCE" )" && pwd )"
+PRJ_HOME="$( cd -P "$( dirname "$SDLC_DIR" )" && pwd )"
+
+source "${SDLC_DIR}/config"
+
+[[ -z "$GH_TOKEN" ]] && {
+    echo "Missing GH_TOKEN"
+    exit 1
+}
+
+WEBSITE_DIR="${PRJ_HOME}/build/website"
+
+sh -c "${SDLC_DIR}/website"
+
+echo publishing GH pages
+
+[[ -e "${PRJ_HOME}/build/work" ]] && rm -rf "${PRJ_HOME}/build/work"
+mkdir -p "${PRJ_HOME}/build/work"
+cd "${PRJ_HOME}/build/work"
+git clone "https://${GH_TOKEN}@github.com/${REPO_OWNER}/${REPO_NAME}.git" gh-pages
+cd gh-pages
+git checkout gh-pages
+echo branches in gh-pages/
+git branch
+git rm -rf .
+cp -r $WEBSITE_DIR/* "${PRJ_HOME}/build/work/gh-pages"
+git add .
+git commit -a -m "Update website"
+git push origin gh-pages
