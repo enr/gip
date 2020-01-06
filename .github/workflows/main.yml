@@ -19,6 +19,7 @@ jobs:
     - name: Prepare container
       run: |
         apk add --update bash
+        apk add --update git
     - name: Checkout code
       uses: actions/checkout@v1
     - name: Test
