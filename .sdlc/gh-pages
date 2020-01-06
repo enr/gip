@@ -25,20 +25,24 @@ commit_email=$(git show -s --format='%ae' "$GITHUB_SHA")
 echo "Using ${commit_user} / ${commit_email} ${GITHUB_SHA}"
 git config --global user.name "${commit_user}"
 git config --global user.email "${commit_email}"
-git config --global credential.helper "store --file=~/.git-credentials"
-echo "https://${GITHUB_ACTOR}:${GH_TOKEN}:@github.com" > ~/.git-credentials
+git_credentials_file=$(mktemp)
+git config --global credential.helper "store --file=${git_credentials_file}"
+echo "https://${GITHUB_ACTOR}:${GH_TOKEN}:@github.com" > "$git_credentials_file"
 
 [[ -e "${PRJ_HOME}/build/work" ]] && rm -rf "${PRJ_HOME}/build/work"
 mkdir -p "${PRJ_HOME}/build/work"
 cd "${PRJ_HOME}/build/work"
 git clone "https://${GITHUB_ACTOR}:${GH_TOKEN}@github.com/${REPO_OWNER}/${REPO_NAME}.git" gh-pages
 cd gh-pages
+gh_pages_dir=$(pwd)
 # check gh-pages branch exists!
 git checkout gh-pages
-echo branches in gh-pages/
+echo "Branches in ${gh_pages_dir}"
 git branch
-git rm -rf .
-cp -r $WEBSITE_DIR/* "${PRJ_HOME}/build/work/gh-pages"
-git add .
-git commit -a -m "Update website"
+git rm --quiet -rf .
+cp -r $WEBSITE_DIR/* "${gh_pages_dir}"
+ls -al
+git add -A
+git status
+git commit --quiet -a -m "Update website"
 git push origin gh-pages
