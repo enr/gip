@@ -41,6 +41,7 @@ echo "Branches in ${gh_pages_dir}"
 git branch
 git rm --quiet -rf .
 cp -r $WEBSITE_DIR/* "${gh_pages_dir}"
+touch .nojekyll
 ls -al
 git add -A
 git status
