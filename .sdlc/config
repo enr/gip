@@ -1,8 +1,0 @@
-REPO_HOST='github.com'
-REPO_OWNER='enr'
-REPO_NAME='gip'
-DIST_DIR='dist'
-GOPROXY='off'
-
-APP_VERSION='0.4.7-dev' # APP_VERSION_AUTOLINE this line is automatically managed
-
