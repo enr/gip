@@ -7,8 +7,6 @@ on:
 name: Create Release
 
 jobs:
-
-jobs:
   build:
     strategy:
       matrix:
