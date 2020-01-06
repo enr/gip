@@ -20,12 +20,6 @@ source "${SDLC_DIR}/config"
   exit 1
 }
 
-# https://github.com/tcnksm/ghr/releases/download/v0.5.4/ghr_v0.5.4_linux_amd64.zip
-# command -v ghr >/dev/null || {
-#   echo "ghr not found"
-#   exit 1
-# }
-
 [[ -z "$REPO_OWNER" ]] && {
   echo "no gh owner"
   exit 1
@@ -40,30 +34,25 @@ if [ -z "$APP_VERSION" ]; then
   exit 1
 fi
 
-cat "${SDLC_DIR}/config"
+command -v ghr >/dev/null || {
+  go get -u github.com/tcnksm/ghr
+}
 
-exit 0
+if [ "$1" = "--prod" ]; then
+  PRERELEASE=''
+else
+  PRERELEASE='--prerelease'
+fi
 
-# RELEASE_VERSION="v$APP_VERSION"
-# git tag -a "${RELEASE_VERSION}" -m "release version ${RELEASE_VERSION}"
-# git push origin "${RELEASE_VERSION}"
-#
-# if [ "$1" = "--prod" ]; then
-#   PRERELEASE=''
-# else
-#   PRERELEASE='--prerelease'
-# fi
-#
-# echo "Release $PRJ_HOME version $RELEASE_VERSION $PRERELEASE"
-#
-# "${SDLC_DIR}/build-dist"
-#
-# [[ -z "$DIST_DIR" ]] && {
-#   echo "dist directory not found: ${DIST_DIR}"
-#   exit 1
-# }
-#
-# #ghr -t "$GH_TOKEN" -u "$REPO_OWNER" -r "$REPO_NAME" "$PRERELEASE" "$RELEASE_VERSION" "$DIST_DIR"
-# GHR_COMMAND="ghr -t ${GH_TOKEN} -u ${REPO_OWNER} -r ${REPO_NAME} ${PRERELEASE} ${RELEASE_VERSION} ${DIST_DIR}"
-# echo "$GHR_COMMAND"
-# sh -c "$GHR_COMMAND"
+echo "Release $PRJ_HOME version $RELEASE_VERSION $PRERELEASE"
+
+"${SDLC_DIR}/build-dist"
+
+[[ -z "$DIST_DIR" ]] && {
+  echo "dist directory not found: ${DIST_DIR}"
+  exit 1
+}
+
+GHR_COMMAND="ghr -t ${GH_TOKEN} -u ${REPO_OWNER} -r ${REPO_NAME} ${PRERELEASE} ${RELEASE_VERSION} ${DIST_DIR}"
+echo "$GHR_COMMAND"
+sh -c "$GHR_COMMAND"
