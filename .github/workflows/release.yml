@@ -22,3 +22,6 @@ jobs:
     - name: Create release
       run: |
         echo Release ${{ github.ref }}
+    - name: Create release
+      run: |
+        .sdlc/gh-release
