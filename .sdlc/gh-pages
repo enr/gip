@@ -26,12 +26,12 @@ echo "Using ${commit_user} / ${commit_email} ${GITHUB_SHA}"
 git config --global user.name "${commit_user}"
 git config --global user.email "${commit_email}"
 git config --global credential.helper "store --file=~/.git-credentials"
-echo "https://$GH_TOKEN:@github.com" > ~/.git-credentials
+echo "https://${GITHUB_ACTOR}:${GH_TOKEN}:@github.com" > ~/.git-credentials
 
 [[ -e "${PRJ_HOME}/build/work" ]] && rm -rf "${PRJ_HOME}/build/work"
 mkdir -p "${PRJ_HOME}/build/work"
 cd "${PRJ_HOME}/build/work"
-git clone "https://${GH_TOKEN}@github.com/${REPO_OWNER}/${REPO_NAME}.git" gh-pages
+git clone "https://${GITHUB_ACTOR}:${GH_TOKEN}@github.com/${REPO_OWNER}/${REPO_NAME}.git" gh-pages
 cd gh-pages
 # check gh-pages branch exists!
 git checkout gh-pages
