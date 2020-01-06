@@ -16,7 +16,7 @@ jobs:
         platform: [ubuntu-latest]
     runs-on: ${{ matrix.platform }}
     container: 'golang:1.13'
-    if: "!contains(github.event.head_commit.message, '[skip ci]')"
+    if: "!contains(github.event.head_commit.message, 'skip ci')"
     steps:
     # - name: Install Go
     #   uses: actions/setup-go@v1
