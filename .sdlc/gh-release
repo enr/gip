@@ -34,8 +34,22 @@ if [ -z "$APP_VERSION" ]; then
   exit 1
 fi
 
-command -v ghr >/dev/null || {
-  go get -u github.com/tcnksm/ghr
+echo 'Now in'
+pwd
+
+ghr_exe='ghr'
+command -v "$ghr_exe" >/dev/null || {
+  bin_dir="${PRJ_HOME}/bin"
+  mkdir -p "$bin_dir"
+  ghr_version='0.13.0'
+  ghr_url="https://github.com/tcnksm/ghr/releases/download/v${ghr_version}/ghr_v${ghr_version}_linux_amd64.tar.gz"
+  cd /tmp
+  curl -fSL -o ghr.tar.gz "$ghr_url"
+  tar -xvzf ghr.tar.gz
+  mv "ghr_v${ghr_version}_linux_amd64/ghr" "${bin_dir}/ghr"
+  chmod +x "${bin_dir}/ghr"
+  ghr_exe="${bin_dir}/ghr"
+  cd "${PRJ_HOME}"
 }
 
 RELEASE_VERSION="v$APP_VERSION"
@@ -58,6 +72,7 @@ echo "Release $PRJ_HOME version $RELEASE_VERSION $PRERELEASE"
   exit 1
 }
 
-GHR_COMMAND="ghr -t ${GH_TOKEN} -u ${REPO_OWNER} -r ${REPO_NAME} ${PRERELEASE} ${RELEASE_VERSION} ${DIST_DIR}"
+GHR_COMMAND="${ghr_exe} -t ${GH_TOKEN} -u ${REPO_OWNER} -r ${REPO_NAME} ${PRERELEASE} ${RELEASE_VERSION} ${DIST_DIR}"
+echo 'Execute ghr command:'
 echo "$GHR_COMMAND"
 sh -c "$GHR_COMMAND"
