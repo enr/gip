@@ -40,7 +40,10 @@ command -v ghr >/dev/null || {
 
 RELEASE_VERSION="v$APP_VERSION"
 
-if [ "$1" = "--prod" ]; then
+prerelease_marker=$(echo "$APP_VERSION" | cut --delimiter '-' --only-delimited --fields 2)
+echo "Prerelease marker _${prerelease_marker}_"
+
+if [ -z "$prerelease_marker" ]; then
   PRERELEASE=''
 else
   PRERELEASE='--prerelease'
