@@ -36,6 +36,9 @@ mkdir -p "$DIST_DIR"
 
 platforms="windows/amd64 linux/amd64 darwin/amd64"
 
+echo '============ before build cmd '
+git status
+
 for dir in $(find "$CMDS_DIR" -mindepth 1 -maxdepth 1 -type d); do
   app_name=$(basename "$dir")
   echo "===  Process ${app_name} ${dir}"
