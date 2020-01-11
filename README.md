@@ -24,12 +24,13 @@ Gip reads a JSON file named `.gip` in your home directory.
 Put `gip` in your `$PATH` and make it executable:
 
 ```
-$ curl -sL https://github.com/enr/gip/releases/download/v0.4.1/gip-linux-amd64 -o ~/bin/gip
-$ chmod +x ~/bin/gip
+$ curl -sL https://github.com/enr/gip/releases/download/v0.4.7/gip-0.4.7_linux_amd64.zip -o gip-0.4.7_linux_amd64.zip
+$ unzip gip-0.4.7_linux_amd64.zip
+$ cp /tmp/gip-0.4.7_linux_amd64/gip ~/bin/gip
 $ gip --version
-gip version 0.4.1
-Revision: d0fd984ff7f3140f5f68bb3c6217c337d071d80f
-Build date: 2017-05-27T09:36:12Z
+gip version 0.4.7
+Revision: 8ba918924e71c57303fa4679571ec639cc8ba001
+Build date: 2020-01-11T17:03:34Z
 ```
 
 ## License
