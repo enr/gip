@@ -7,6 +7,15 @@ while [ -h "$TOOL_SOURCE" ] ; do TOOL_SOURCE="$(readlink "$TOOL_SOURCE")"; done
 SDLC_DIR="$( cd -P "$( dirname "$TOOL_SOURCE" )" && pwd )"
 PRJ_HOME="$( cd -P "$( dirname "$SDLC_DIR" )" && pwd )"
 
+echo "event name $GITHUB_EVENT_NAME"
+git_hash="$(git rev-parse HEAD)"
+git_message=$(git log --format=%B -n 1 "${git_hash}")
+echo "git message ${git_message}"
+[[ "$git_message" == '[skip ci]'* ]] && {
+  echo "skip ci"
+  exit 0
+}
+
 source "${SDLC_DIR}/config"
 app_name="${REPO_NAME}"
 
@@ -77,4 +86,3 @@ for dir in $(find "$CMDS_DIR" -mindepth 1 -maxdepth 1 -type d); do
   echo "--- go test -cover ./..."
   go test -cover ./...
 done
-
