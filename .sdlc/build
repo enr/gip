@@ -25,6 +25,14 @@ echo "version : ${APP_VERSION}"
 echo "git : ${git_commit}"
 echo "build time : ${buildtime}"
 
+echo "event name $GITHUB_EVENT_NAME"
+git_message=$(git log --format=%B -n 1 "${git_hash}")
+echo "git message ${git_message}"
+[[ "$git_message" == '[skip ci]'* ]] && {
+  echo "skip ci"
+  exit 0
+}
+
 for dir in $(find "$CMDS_DIR" -mindepth 1 -maxdepth 1 -type d); do
   app_name=$(basename "$dir")
   echo "===  Process ${app_name} ${dir}"
