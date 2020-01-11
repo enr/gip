@@ -89,9 +89,9 @@ func doList(c *cli.Context) error {
 			return exitErrorf(1, "Error loading project %v ", err)
 		}
 		if isProjectDir(localPath) {
-			ui.Lifecyclef("%s", localPath)
+			ui.Lifecyclef("- %s - %s (%s)", project.Name, localPath, project.repoProvider())
 		} else {
-			ui.Warnf("%s (not a project dir)", localPath)
+			ui.Warnf("- missing %s - %s (%s)", project.Name, localPath, project.repoProvider())
 		}
 	}
 	return nil

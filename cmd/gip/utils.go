@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"net/url"
 	"os"
 	"os/user"
 	"path"
@@ -32,6 +33,17 @@ func (p *gipProject) pullNever() bool {
 
 func (p *gipProject) pullAlways() bool {
 	return "always" == strings.ToLower(strings.TrimSpace(p.PullPolicy))
+}
+
+func (p *gipProject) repoProvider() string {
+	if p.Repository == "" {
+		return ""
+	}
+	u, err := url.Parse(p.Repository)
+	if err != nil {
+		return ""
+	}
+	return u.Host
 }
 
 func gitExecutablePath() string {
