@@ -60,17 +60,17 @@ func gitStatus(untracked bool) error {
 	var line string
 	projects, err := projectsList(configurationFile)
 	if err != nil {
-		return exitErrorf(1, "Error loading projects list %v ", err)
+		return exitErrorf(1, "Error loading projects list: %v", err)
 	}
 	for _, project := range projects {
 		line, err = projectPath(project.LocalPath)
 		if err != nil {
-			return exitErrorf(1, "Error loading project %v ", err)
+			return exitErrorf(1, "Error loading project %s: %v", project.Name, err)
 		}
 		if isProjectDir(line) {
 			executeGitStatus(line, untracked)
 		} else if !ignoreMissingDirs {
-			ui.Warnf("%s is not a project dir", line)
+			ui.Warnf("%s is not a project directory", line)
 		}
 	}
 	return nil
@@ -81,16 +81,16 @@ func doList(c *cli.Context) error {
 	var localPath string
 	projects, err := projectsList(configurationFile)
 	if err != nil {
-		return exitErrorf(1, "Error loading projects list %v ", err)
+		return exitErrorf(1, "Error loading projects list: %v", err)
 	}
 	for _, project := range projects {
 		localPath, err = projectPath(project.LocalPath)
 		if err != nil {
-			return exitErrorf(1, "Error loading project %v ", err)
+			return exitErrorf(1, "Error loading project %s: %v", project.Name, err)
 		}
 		if isProjectDir(localPath) {
 			ui.Lifecyclef("- %s - %s (%s)", project.Name, localPath, project.repoProvider())
-		} else {
+		} else if !ignoreMissingDirs {
 			ui.Warnf("- missing %s - %s (%s)", project.Name, localPath, project.repoProvider())
 		}
 	}
@@ -101,14 +101,14 @@ func doPull(c *cli.Context) error {
 	configurationFile := configurationFilePath()
 	args := c.Args().Slice()
 	if len(args) > 0 {
-		return exitErrorf(1, "Pull command does not accept any argument, found: %v ", args)
+		return exitErrorf(1, "Pull command does not accept any argument, found: %v", args)
 	}
 	all := c.Bool("all")
 	ui.Confidentialf("%s PULL all? %t", configurationFile, all)
 	var line string
 	projects, err := projectsList(configurationFile)
 	if err != nil {
-		return exitErrorf(1, "Error loading projects list %v ", err)
+		return exitErrorf(1, "Error loading projects list: %v", err)
 	}
 	for _, project := range projects {
 		if project.pullNever() {
@@ -117,7 +117,7 @@ func doPull(c *cli.Context) error {
 		}
 		line, err = projectPath(project.LocalPath)
 		if err != nil {
-			return exitErrorf(1, "Error loading project %v ", err)
+			return exitErrorf(1, "Error loading project %s: %v", project.Name, err)
 		}
 		if isProjectDir(line) {
 			executeGitPull(line)
@@ -125,7 +125,7 @@ func doPull(c *cli.Context) error {
 			ui.Confidentialf("%s not a project dir", line)
 			if all || project.pullAlways() {
 				executeGitClone(project.Repository, line)
-			} else {
+			} else if !ignoreMissingDirs {
 				ui.Warnf("%s (not a project dir)", line)
 			}
 		}

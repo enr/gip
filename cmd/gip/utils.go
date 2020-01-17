@@ -117,7 +117,8 @@ func executeGitStatus(dirpath string, untracked bool) {
 	ui.Confidentialf("Execute command %s", command)
 	result := command.Run()
 	if !result.Success() {
-		ui.Errorf("Error executing Git (%d): %v", result.ExitStatus(), result.Error())
+		ui.Errorf("Error executing Git in %s", dirpath)
+		ui.Errorf("(%d) %v", result.ExitStatus(), result.Error())
 	}
 	gitOutput := result.Stdout().String()
 	if len(gitOutput) == 0 {
@@ -157,7 +158,8 @@ func executeGitClone(repourl string, dirpath string) {
 	ui.Confidentialf("Execute command %s", command)
 	result := command.Run()
 	if !result.Success() {
-		ui.Errorf("Error executing Git (%d): %v", result.ExitStatus(), result.Error())
+		ui.Errorf("Error executing Git in %s", dirpath)
+		ui.Errorf("(%d) %v", result.ExitStatus(), result.Error())
 	}
 	gitOutput := result.Stdout().String()
 	ui.Title(dirpath)
@@ -178,7 +180,8 @@ func executeGitPull(dirpath string) {
 	ui.Confidentialf("Execute command %s", command)
 	result := command.Run()
 	if !result.Success() {
-		ui.Errorf("Error executing Git (%d): %v", result.ExitStatus(), result.Error())
+		ui.Errorf("Error executing Git in %s", dirpath)
+		ui.Errorf("(%d) %v", result.ExitStatus(), result.Error())
 	}
 	gitOutput := result.Stdout().String()
 	ui.Title(dirpath)
