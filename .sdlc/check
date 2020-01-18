@@ -24,6 +24,19 @@ CMDS_DIR="${PRJ_HOME}/cmd"
 BIN_DIR="${PRJ_HOME}/bin"
 [[ -d "${BIN_DIR}" ]] && rm -r "${BIN_DIR}"
 
+# Ensure GOPATH is on PATH. (Needed from Go tools)
+# If GOPATH is defined assume it is on $PATH
+echo "Environment GOPATH=${GOPATH}"
+[[ -z "$GOPATH" ]] || {
+  # GOPATH undefined
+  default_gopath=$(go env GOPATH)
+  echo "No GOPATH from environment, using 'go env' ${default_gopath}"
+  mkdir -p "${default_gopath}"
+  # go env -w GOPATH="${gopath_dir}"
+  export GOPATH="${default_gopath}"
+  export PATH="${GOPATH}/bin:${PATH}"
+}
+
 hash golint 2>/dev/null || {
   go get -u golang.org/x/lint/golint
 }
