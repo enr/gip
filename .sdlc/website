@@ -25,5 +25,6 @@ echo "<html><head></head><body>
 <h1>${REPO_NAME} ${APP_VERSION}</h2>
 <p>${REPO_NAME} ${APP_VERSION} " >> "${WEBSITE_DIR}/index.html"
 date >> "${WEBSITE_DIR}/index.html"
+echo '<p><a href="https://github.com/enr/gip/releases/latest">Latest release</a>' >> "${WEBSITE_DIR}/index.html"
 echo '</body>
 </html>' >> "${WEBSITE_DIR}/index.html"

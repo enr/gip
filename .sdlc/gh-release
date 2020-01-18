@@ -9,11 +9,11 @@ PRJ_HOME="$( cd -P "$( dirname "$SDLC_DIR" )" && pwd )"
 
 source "${SDLC_DIR}/config"
 
-# git_dirty=$(git status --porcelain)
-# [[ -n "$git_dirty" ]] && {
-#   echo 'uncommitted changes detected: aborting release'
-#   exit 1
-# }
+git_dirty=$(git status --porcelain)
+[[ -n "$git_dirty" ]] && {
+  echo 'uncommitted changes detected: aborting release'
+  exit 1
+}
 
 [[ -z "$GH_TOKEN" ]] && {
   echo "Missing GH_TOKEN"
@@ -52,7 +52,7 @@ command -v "$ghr_exe" >/dev/null || {
 RELEASE_VERSION="v$APP_VERSION"
 
 prerelease_marker=$(echo "$APP_VERSION" | cut --delimiter '-' --only-delimited --fields 2)
-echo "Prerelease marker _${prerelease_marker}_"
+echo "Prerelease marker '${prerelease_marker}'"
 
 if [ -z "$prerelease_marker" ]; then
   PRERELEASE=''

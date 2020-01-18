@@ -9,12 +9,5 @@ PRJ_HOME="$( cd -P "$( dirname "$SDLC_DIR" )" && pwd )"
 
 cd "$PRJ_HOME"
 
-# command -v dep >/dev/null || {
-#   echo "dep not found"
-#   exit 1
-# }
-#
-# dep ensure -update -v
-
 go mod tidy
 go mod vendor

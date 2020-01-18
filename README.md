@@ -2,6 +2,8 @@
 
 Manage your Git projects.
 
+https://enr.github.io/gip/
+
 Gip reads a JSON file named `.gip` in your home directory.
 
 ```json

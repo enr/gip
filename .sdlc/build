@@ -25,7 +25,6 @@ echo "version : ${APP_VERSION}"
 echo "git : ${git_commit}"
 echo "build time : ${buildtime}"
 
-echo "event name $GITHUB_EVENT_NAME"
 git_message=$(git log --format=%B -n 1 "${git_hash}")
 echo "git message ${git_message}"
 [[ "$git_message" == '[skip ci]'* ]] && {
