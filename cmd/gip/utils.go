@@ -55,7 +55,7 @@ func gitExecutablePath() string {
 	return gitExecutable
 }
 
-func configurationFilePath() string {
+func defaultConfigurationFilePath() string {
 	home, err := environment.UserHome()
 	if err != nil {
 		ui.Errorf("Error retrieving user home: %v\n", err)

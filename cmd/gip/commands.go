@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"path/filepath"
 
 	"github.com/urfave/cli/v2"
 )
@@ -48,15 +49,18 @@ var commandPull = cli.Command{
 }
 
 func doStatus(c *cli.Context) error {
-	return gitStatus(false)
+	return gitStatus(c, false)
 }
 
 func doStatusFull(c *cli.Context) error {
-	return gitStatus(true)
+	return gitStatus(c, true)
 }
 
-func gitStatus(untracked bool) error {
-	configurationFile := configurationFilePath()
+func gitStatus(c *cli.Context, untracked bool) error {
+	configurationFile, err := configurationFilePath(c)
+	if err != nil {
+		return exitErrorf(1, "Error loading configuration file %s: %v", c.String("f"), err)
+	}
 	var line string
 	projects, err := projectsList(configurationFile)
 	if err != nil {
@@ -69,15 +73,17 @@ func gitStatus(untracked bool) error {
 		}
 		if isProjectDir(line) {
 			executeGitStatus(line, untracked)
-		} else if !ignoreMissingDirs {
-			ui.Warnf("%s is not a project directory", line)
 		}
+		warnMissingDir(line)
 	}
 	return nil
 }
 
 func doList(c *cli.Context) error {
-	configurationFile := configurationFilePath()
+	configurationFile, err := configurationFilePath(c)
+	if err != nil {
+		return exitErrorf(1, "Error loading configuration file %s: %v", c.String("f"), err)
+	}
 	var localPath string
 	projects, err := projectsList(configurationFile)
 	if err != nil {
@@ -90,15 +96,17 @@ func doList(c *cli.Context) error {
 		}
 		if isProjectDir(localPath) {
 			ui.Lifecyclef("- %s - %s (%s)", project.Name, localPath, project.repoProvider())
-		} else if !ignoreMissingDirs {
-			ui.Warnf("- missing %s - %s (%s)", project.Name, localPath, project.repoProvider())
 		}
+		warnMissingDir(localPath)
 	}
 	return nil
 }
 
 func doPull(c *cli.Context) error {
-	configurationFile := configurationFilePath()
+	configurationFile, err := configurationFilePath(c)
+	if err != nil {
+		return exitErrorf(1, "Error loading configuration file %s: %v", c.String("f"), err)
+	}
 	args := c.Args().Slice()
 	if len(args) > 0 {
 		return exitErrorf(1, "Pull command does not accept any argument, found: %v", args)
@@ -123,17 +131,34 @@ func doPull(c *cli.Context) error {
 			executeGitPull(line)
 		} else {
 			ui.Confidentialf("%s not a project dir", line)
+			warnMissingDir(line)
 			if all || project.pullAlways() {
 				executeGitClone(project.Repository, line)
-			} else if !ignoreMissingDirs {
-				ui.Warnf("%s (not a project dir)", line)
 			}
 		}
 	}
 	return nil
 }
 
+func warnMissingDir(dir string) {
+	if ignoreMissingDirs {
+		return
+	}
+	ui.Warnf("%s (not a project dir)", dir)
+}
+
 func exitErrorf(exitCode int, template string, args ...interface{}) error {
 	ui.Errorf(`Something gone wrong:`)
 	return cli.NewExitError(fmt.Sprintf(template, args...), exitCode)
+}
+
+func configurationFilePath(c *cli.Context) (string, error) {
+	if c.String("f") != "" {
+		abs, err := filepath.Abs(c.String("f"))
+		if err != nil {
+			return "", err
+		}
+		return filepath.FromSlash(filepath.Clean(abs)), nil
+	}
+	return defaultConfigurationFilePath(), nil
 }
