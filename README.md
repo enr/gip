@@ -2,9 +2,9 @@
 
 Manage your Git projects.
 
-https://enr.github.io/gip/
+![](https://github.com/enr/gip/workflows/CI/badge.svg) https://enr.github.io/gip/
 
-Gip reads a JSON file named `.gip` in your home directory.
+Gip reads a JSON file named declaring all the repositories you want to manage.
 
 ```json
 [
@@ -20,6 +20,13 @@ Gip reads a JSON file named `.gip` in your home directory.
   }
 ]
 ```
+You can set the path using the `-f` flag:
+
+```
+gip -f examples/linux.json -d pull -a
+```
+
+Otherwise it defaults to the file `.gip` in your home directory.
 
 ## Install
 
@@ -108,7 +115,7 @@ $ gip pull
 **Apache 2.0**
 
 ```
-Copyright 2014 gip contributors
+Copyright 2020 gip contributors
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.

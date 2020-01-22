@@ -1,0 +1,18 @@
+[
+  {
+    "Name": "gip",
+    "Repository": "https://github.com/enr/gip.git",
+    "LocalPath": "/tmp/gip"
+  },
+  {
+    "Name": "nowhere",
+    "Repository": "https://nowhere.git",
+    "LocalPath": "/nowhere/not/found",
+    "PullPolicy": "never"
+  },
+  {
+    "Name": "gip-invalid-path",
+    "Repository": "https://github.com/enr/gip.git",
+    "LocalPath": "/nowhere2/not/found"
+  }
+]

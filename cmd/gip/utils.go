@@ -146,6 +146,12 @@ func statusArguments(dirpath string, untracked bool) []string {
 
 func executeGitClone(repourl string, dirpath string) {
 	ui.Confidentialf("Cloning %s to %s", repourl, dirpath)
+	err := os.MkdirAll(dirpath, 0755)
+	if err != nil {
+		ui.Errorf("Error preparing for clone path %s:", dirpath)
+		ui.Errorf("%v", err)
+		return
+	}
 	args := []string{
 		"clone",
 		repourl,
