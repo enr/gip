@@ -25,7 +25,7 @@ cd %project_dir%
 for /f %%x in ('dir /AD /B /S lib') do (
     echo --- %%x
     cd %%x
-    go test  -mod vendor -cover ./...
+    go test -mod vendor -cover ./...
 )
 
 cd %project_dir%
@@ -40,5 +40,5 @@ call go build -mod vendor -ldflags "-s -X %module_name%/lib/core.Version=%APP_VE
 for /f %%x in ('dir /AD /B /S cmd') do (
     echo --- %%x
     cd %%x
-    go test  -mod vendor -cover ./...
+    go test -mod vendor -cover ./...
 )
