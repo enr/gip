@@ -1,7 +1,7 @@
 set REPO_HOST=github.com
 set REPO_OWNER=enr
 set REPO_NAME=gip
-set TIMESTAMP='%date%-%time%'
+set TIMESTAMP=win-dev-timestamp
 
 set GOPROXY='off'
 
