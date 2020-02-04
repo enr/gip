@@ -3,7 +3,7 @@
 Manage your Git projects.
 
 ![CI Linux Mac](https://github.com/enr/gip/workflows/CI%20Linux%20Mac/badge.svg)
-![CI Windows](https://github.com/enr/zipp/workflows/CI%20Windows/badge.svg) https://enr.github.io/gip/
+![CI Windows](https://github.com/enr/gip/workflows/CI%20Windows/badge.svg) https://enr.github.io/gip/
 
 Gip reads a JSON file named declaring all the repositories you want to manage.
 
