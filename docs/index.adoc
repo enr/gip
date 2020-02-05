@@ -4,6 +4,9 @@
 
 <<<
 
+[[_book]]
+## Usage
+
 ifdef::basebackend-html[]
 https://github.com/enr/gip/releases/latest[Download last artifacts]
 
@@ -13,9 +16,6 @@ ci_ns={ci-ns}
 
 ci_build_id={ci-build-id}
 endif::[]
-
-[[_book]]
-## Usage
 
 Gip c...
 
