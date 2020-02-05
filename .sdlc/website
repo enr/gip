@@ -23,7 +23,7 @@ cp -r "$docs_dir" /documents
 
 # Asciidoctor attributes
 ci_ns="${REPO_OWNER}/${REPO_NAME}"
-ci_build_id="$CI_BUILD_ID"
+ci_build_id="$GITHUB_SHA"
 project_authors="${REPO_NAME} contributors"
 
 asciidoctor --doctype book \
