@@ -36,42 +36,14 @@ The latest release is in: https://github.com/enr/gip/releases/latest
 Put `gip` in your `$PATH` and make it executable:
 
 ```
-$ curl -sL https://github.com/enr/gip/releases/download/v0.4.7/gip-0.4.7_linux_amd64.zip -o gip-0.4.7_linux_amd64.zip
-$ unzip gip-0.4.7_linux_amd64.zip
-$ cp /tmp/gip-0.4.7_linux_amd64/gip ~/bin/gip
-$ gip --version
-gip version 0.4.8-dev
-Revision: a475d370b57496460b19c8f254cf312d0a5cb979+CHANGES
-Build date: 2020-01-18T00:08:51Z
+$ curl -sL https://github.com/enr/gip/releases/download/v4.8.0/gip-4.8.0_linux_amd64.zip -o gip-4.8.0_linux_amd64.zip
 
-$ gip --help
-NAME:
-   gip - Keep tracks of your Git projects
+$ unzip gip-4.8.0_linux_amd64.zip
+Archive:  gip-4.8.0_linux_amd64.zip
+   creating: gip-4.8.0_linux_amd64/
+  inflating: gip-4.8.0_linux_amd64/gip
 
-USAGE:
-   gip [global options] command [command options] [arguments...]
-
-VERSION:
-   0.4.8-dev
-Revision: a475d370b57496460b19c8f254cf312d0a5cb979+CHANGES
-Build date: 2020-01-18T00:08:51Z
-
-
-COMMANDS:
-   status, s       
-   statusfull, sf  
-   list, ls        
-   pull            
-   help, h         Shows a list of commands or help for one command
-
-GLOBAL OPTIONS:
-   --file value, -f value  path to the configuration file to use (if not set will be picked ${HOME}/.gip)
-   --debug, -d             operates in debug mode: lot of output (default: false)
-   --quiet, -q             operates in quiet mode (default: false)
-   --ignore-missing, -m    ignores missing local directories, otherwise prints a warn (default: false)
-   --help, -h              show help (default: false)
-   --version, -v           print the version (default: false)
-
+$ cp gip-4.8.0_linux_amd64/gip ~/bin/gip
 ```
 
 List managed projects:
