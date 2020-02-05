@@ -4,18 +4,10 @@
 
 <<<
 
-ifeval::["{backend}" == "html"]
-html
-endif::[]
-
 ifeval::["{backend}" == "html5"]
-https://github.com/enr/gip/releases/latest[Download last artifacts]
-
-https://enr.github.io/gip/pdf/gip_manual.pdf[Pdf manual]
-
-ci_ns={ci-ns}
-
-ci_build_id={ci-build-id}
+ https://github.com/enr/gip/releases/latest[Download last artifacts] |
+ https://enr.github.io/gip/pdf/gip_manual.pdf[Pdf manual] |
+ Build revision `{ci-build-id}`
 endif::[]
 
 [[_book]]
