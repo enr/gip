@@ -1,0 +1,18 @@
+= Gip
+:author: {project-authors}
+:revnumber: {project-version}
+
+<<<
+
+ifdef::basebackend-html[]
+https://github.com/enr/gip/releases/latest[Download last artifacts]
+endif::[]
+
+[[_book]]
+## Usage
+
+Gip c...
+
+## License
+
+Copyright (C) 2020 {project-authors}.
