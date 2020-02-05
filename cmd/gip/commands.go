@@ -73,8 +73,9 @@ func gitStatus(c *cli.Context, untracked bool) error {
 		}
 		if isProjectDir(line) {
 			executeGitStatus(line, untracked)
+		} else {
+			warnMissingDir(line)
 		}
-		warnMissingDir(line)
 	}
 	return nil
 }
@@ -96,8 +97,9 @@ func doList(c *cli.Context) error {
 		}
 		if isProjectDir(localPath) {
 			ui.Lifecyclef("- %s - %s (%s)", project.Name, localPath, project.repoProvider())
+		} else {
+			warnMissingDir(localPath)
 		}
-		warnMissingDir(localPath)
 	}
 	return nil
 }
@@ -130,7 +132,6 @@ func doPull(c *cli.Context) error {
 		if isProjectDir(line) {
 			executeGitPull(line)
 		} else {
-			ui.Confidentialf("%s not a project dir", line)
 			warnMissingDir(line)
 			if all || project.pullAlways() {
 				executeGitClone(project.Repository, line)
