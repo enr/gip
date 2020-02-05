@@ -4,7 +4,11 @@
 
 <<<
 
-ifndef::backend-pdf[]
+ifeval::["{backend}" == "html"]
+html
+endif::[]
+
+ifeval::["{backend}" == "html5"]
 https://github.com/enr/gip/releases/latest[Download last artifacts]
 
 https://enr.github.io/gip/pdf/gip_manual.pdf[Pdf manual]
