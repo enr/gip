@@ -1,6 +1,7 @@
 = Gip
 :author: {project-authors}
 :revnumber: {project-version}
+:source-highlighter: rouge
 
 <<<
 
