@@ -4,10 +4,7 @@
 
 <<<
 
-[[_book]]
-## Usage
-
-ifdef::basebackend-html[]
+ifndef::backend-pdf[]
 https://github.com/enr/gip/releases/latest[Download last artifacts]
 
 https://enr.github.io/gip/pdf/gip_manual.pdf[Pdf manual]
@@ -16,6 +13,9 @@ ci_ns={ci-ns}
 
 ci_build_id={ci-build-id}
 endif::[]
+
+[[_book]]
+## Usage
 
 Gip c...
 

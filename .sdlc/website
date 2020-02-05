@@ -23,7 +23,7 @@ cp -r "$docs_dir" /documents
 
 # Asciidoctor attributes
 ci_ns="${REPO_OWNER}/${REPO_NAME}"
-ci_build_id="$GITHUB_SHA"
+ci_build_id="$CI_BUILD_ID"
 project_authors="${REPO_NAME} contributors"
 
 asciidoctor --doctype book \
@@ -31,6 +31,7 @@ asciidoctor --doctype book \
             --attribute "project-authors=${project_authors}" \
             --attribute "ci-ns=${ci_ns}" \
             --attribute "ci-build-id=${ci_build_id}" \
+            --attribute "backend-pdf=true" \
             --destination-dir "$website_build_dir" \
             index.adoc
 
