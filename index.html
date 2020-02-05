@@ -442,7 +442,7 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 <h1>Gip</h1>
 <div class="details">
 <span id="author" class="author">gip contributors</span><br>
-<span id="revnumber">version 0.4.8-dev</span>
+<span id="revnumber">version 4.8.0</span>
 </div>
 </div>
 <div id="content">
@@ -462,7 +462,7 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 <div class="paragraph">
 <p><a href="https://github.com/enr/gip/releases/latest">Download last artifacts</a> |
  <a href="https://enr.github.io/gip/pdf/gip_manual.pdf">Pdf manual</a> |
- Build revision <code>5437325f1897ebbfc1ca30bf8ae56a2e90a213d8</code></p>
+ Build revision <code>359819e2a81d7b5bc827af1adec84eb42632f706</code></p>
 </div>
 </div>
 </div>
@@ -477,18 +477,18 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 </div>
 <div class="listingblock">
 <div class="content">
-<pre class="highlight"><code class="language-json" data-lang="json">[
-  {
-    "Name": "gip",
-    "Repository": "https://github.com/enr/gip.git",
-    "LocalPath": "~/Projects/gip"
-  },
-  {
-    "Name": "...",
-    "Repository": "...",
-    "LocalPath": "..."
-  }
-]</code></pre>
+<pre class="rouge highlight"><code data-lang="json"><span class="p">[</span><span class="w">
+  </span><span class="p">{</span><span class="w">
+    </span><span class="nl">"Name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"gip"</span><span class="p">,</span><span class="w">
+    </span><span class="nl">"Repository"</span><span class="p">:</span><span class="w"> </span><span class="s2">"https://github.com/enr/gip.git"</span><span class="p">,</span><span class="w">
+    </span><span class="nl">"LocalPath"</span><span class="p">:</span><span class="w"> </span><span class="s2">"~/Projects/gip"</span><span class="w">
+  </span><span class="p">},</span><span class="w">
+  </span><span class="p">{</span><span class="w">
+    </span><span class="nl">"Name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"..."</span><span class="p">,</span><span class="w">
+    </span><span class="nl">"Repository"</span><span class="p">:</span><span class="w"> </span><span class="s2">"..."</span><span class="p">,</span><span class="w">
+    </span><span class="nl">"LocalPath"</span><span class="p">:</span><span class="w"> </span><span class="s2">"..."</span><span class="w">
+  </span><span class="p">}</span><span class="w">
+</span><span class="p">]</span></code></pre>
 </div>
 </div>
 <div class="paragraph">
@@ -496,7 +496,7 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 </div>
 <div class="listingblock">
 <div class="content">
-<pre class="highlight"><code>gip -f examples/linux.json -d pull -a</code></pre>
+<pre class="rouge highlight"><code>gip -f examples/linux.json -d pull -a</code></pre>
 </div>
 </div>
 <div class="paragraph">
@@ -515,7 +515,7 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 </div>
 <div class="listingblock">
 <div class="content">
-<pre class="highlight"><code>$ curl -sL https://github.com/enr/gip/releases/download/v0.4.7/gip-0.4.7_linux_amd64.zip -o gip-0.4.7_linux_amd64.zip
+<pre class="rouge highlight"><code>$ curl -sL https://github.com/enr/gip/releases/download/v0.4.7/gip-0.4.7_linux_amd64.zip -o gip-0.4.7_linux_amd64.zip
 $ unzip gip-0.4.7_linux_amd64.zip
 $ cp /tmp/gip-0.4.7_linux_amd64/gip ~/bin/gip
 $ gip --version
@@ -557,7 +557,7 @@ GLOBAL OPTIONS:
 </div>
 <div class="listingblock">
 <div class="content">
-<pre class="highlight"><code>$ gip ls</code></pre>
+<pre class="rouge highlight"><code>$ gip ls</code></pre>
 </div>
 </div>
 <div class="paragraph">
@@ -565,7 +565,7 @@ GLOBAL OPTIONS:
 </div>
 <div class="listingblock">
 <div class="content">
-<pre class="highlight"><code>$ gip sf</code></pre>
+<pre class="rouge highlight"><code>$ gip sf</code></pre>
 </div>
 </div>
 <div class="paragraph">
@@ -573,7 +573,7 @@ GLOBAL OPTIONS:
 </div>
 <div class="listingblock">
 <div class="content">
-<pre class="highlight"><code>$ gip -m sf</code></pre>
+<pre class="rouge highlight"><code>$ gip -m sf</code></pre>
 </div>
 </div>
 <div class="paragraph">
@@ -581,7 +581,7 @@ GLOBAL OPTIONS:
 </div>
 <div class="listingblock">
 <div class="content">
-<pre class="highlight"><code>$ gip -d sf</code></pre>
+<pre class="rouge highlight"><code>$ gip -d sf</code></pre>
 </div>
 </div>
 <div class="paragraph">
@@ -589,7 +589,7 @@ GLOBAL OPTIONS:
 </div>
 <div class="listingblock">
 <div class="content">
-<pre class="highlight"><code>$ gip -f ~/.config/local/gip.json -d sf</code></pre>
+<pre class="rouge highlight"><code>$ gip -f ~/.config/local/gip.json -d sf</code></pre>
 </div>
 </div>
 <div class="paragraph">
@@ -597,7 +597,7 @@ GLOBAL OPTIONS:
 </div>
 <div class="listingblock">
 <div class="content">
-<pre class="highlight"><code>$ gip pull</code></pre>
+<pre class="rouge highlight"><code>$ gip pull</code></pre>
 </div>
 </div>
 </div>
@@ -613,9 +613,220 @@ GLOBAL OPTIONS:
 </div>
 <div id="footer">
 <div id="footer-text">
-Version 0.4.8-dev<br>
-Last updated 2020-02-05 22:23:53 UTC
+Version 4.8.0<br>
+Last updated 2020-02-05 22:30:35 UTC
 </div>
 </div>
+<style>
+pre.rouge table td { padding: 5px; }
+pre.rouge table pre { margin: 0; }
+pre.rouge .cm {
+  color: #999988;
+  font-style: italic;
+}
+pre.rouge .cp {
+  color: #999999;
+  font-weight: bold;
+}
+pre.rouge .c1 {
+  color: #999988;
+  font-style: italic;
+}
+pre.rouge .cs {
+  color: #999999;
+  font-weight: bold;
+  font-style: italic;
+}
+pre.rouge .c, pre.rouge .ch, pre.rouge .cd, pre.rouge .cpf {
+  color: #999988;
+  font-style: italic;
+}
+pre.rouge .err {
+  color: #a61717;
+  background-color: #e3d2d2;
+}
+pre.rouge .gd {
+  color: #000000;
+  background-color: #ffdddd;
+}
+pre.rouge .ge {
+  color: #000000;
+  font-style: italic;
+}
+pre.rouge .gr {
+  color: #aa0000;
+}
+pre.rouge .gh {
+  color: #999999;
+}
+pre.rouge .gi {
+  color: #000000;
+  background-color: #ddffdd;
+}
+pre.rouge .go {
+  color: #888888;
+}
+pre.rouge .gp {
+  color: #555555;
+}
+pre.rouge .gs {
+  font-weight: bold;
+}
+pre.rouge .gu {
+  color: #aaaaaa;
+}
+pre.rouge .gt {
+  color: #aa0000;
+}
+pre.rouge .kc {
+  color: #000000;
+  font-weight: bold;
+}
+pre.rouge .kd {
+  color: #000000;
+  font-weight: bold;
+}
+pre.rouge .kn {
+  color: #000000;
+  font-weight: bold;
+}
+pre.rouge .kp {
+  color: #000000;
+  font-weight: bold;
+}
+pre.rouge .kr {
+  color: #000000;
+  font-weight: bold;
+}
+pre.rouge .kt {
+  color: #445588;
+  font-weight: bold;
+}
+pre.rouge .k, pre.rouge .kv {
+  color: #000000;
+  font-weight: bold;
+}
+pre.rouge .mf {
+  color: #009999;
+}
+pre.rouge .mh {
+  color: #009999;
+}
+pre.rouge .il {
+  color: #009999;
+}
+pre.rouge .mi {
+  color: #009999;
+}
+pre.rouge .mo {
+  color: #009999;
+}
+pre.rouge .m, pre.rouge .mb, pre.rouge .mx {
+  color: #009999;
+}
+pre.rouge .sb {
+  color: #d14;
+}
+pre.rouge .sc {
+  color: #d14;
+}
+pre.rouge .sd {
+  color: #d14;
+}
+pre.rouge .s2 {
+  color: #d14;
+}
+pre.rouge .se {
+  color: #d14;
+}
+pre.rouge .sh {
+  color: #d14;
+}
+pre.rouge .si {
+  color: #d14;
+}
+pre.rouge .sx {
+  color: #d14;
+}
+pre.rouge .sr {
+  color: #009926;
+}
+pre.rouge .s1 {
+  color: #d14;
+}
+pre.rouge .ss {
+  color: #990073;
+}
+pre.rouge .s, pre.rouge .sa, pre.rouge .dl {
+  color: #d14;
+}
+pre.rouge .na {
+  color: #008080;
+}
+pre.rouge .bp {
+  color: #999999;
+}
+pre.rouge .nb {
+  color: #0086B3;
+}
+pre.rouge .nc {
+  color: #445588;
+  font-weight: bold;
+}
+pre.rouge .no {
+  color: #008080;
+}
+pre.rouge .nd {
+  color: #3c5d5d;
+  font-weight: bold;
+}
+pre.rouge .ni {
+  color: #800080;
+}
+pre.rouge .ne {
+  color: #990000;
+  font-weight: bold;
+}
+pre.rouge .nf, pre.rouge .fm {
+  color: #990000;
+  font-weight: bold;
+}
+pre.rouge .nl {
+  color: #990000;
+  font-weight: bold;
+}
+pre.rouge .nn {
+  color: #555555;
+}
+pre.rouge .nt {
+  color: #000080;
+}
+pre.rouge .vc {
+  color: #008080;
+}
+pre.rouge .vg {
+  color: #008080;
+}
+pre.rouge .vi {
+  color: #008080;
+}
+pre.rouge .nv, pre.rouge .vm {
+  color: #008080;
+}
+pre.rouge .ow {
+  color: #000000;
+  font-weight: bold;
+}
+pre.rouge .o {
+  color: #000000;
+  font-weight: bold;
+}
+pre.rouge .w {
+  color: #bbbbbb;
+}
+pre.rouge {
+  background-color: #f8f8f8;
+}
+</style>
 </body>
 </html>
