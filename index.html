@@ -449,12 +449,20 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 <div id="preamble">
 <div class="sectionbody">
 <div style="page-break-after: always;"></div>
-<div class="literalblock">
+<div class="imageblock">
 <div class="content">
-<pre>https://github.com/enr/gip/releases/latest[Download last artifacts] |
-https://enr.github.io/gip/pdf/gip_manual.pdf[Pdf manual] |
-Build revision `{ci-build-id}`</pre>
+<img src="https://github.com/enr/gip/workflows/CI%20Linux%20Mac/badge.svg" alt="CI Linux Mac">
 </div>
+</div>
+<div class="imageblock">
+<div class="content">
+<img src="https://github.com/enr/gip/workflows/CI%20Windows/badge.svg" alt="CI Windows">
+</div>
+</div>
+<div class="paragraph">
+<p><a href="https://github.com/enr/gip/releases/latest">Download last artifacts</a> |
+ <a href="https://enr.github.io/gip/pdf/gip_manual.pdf">Pdf manual</a> |
+ Build revision <code>5437325f1897ebbfc1ca30bf8ae56a2e90a213d8</code></p>
 </div>
 </div>
 </div>
@@ -462,7 +470,135 @@ Build revision `{ci-build-id}`</pre>
 <h2 id="_book">Usage</h2>
 <div class="sectionbody">
 <div class="paragraph">
-<p>Gip c&#8230;&#8203;</p>
+<p>Gip manages your Git projects.</p>
+</div>
+<div class="paragraph">
+<p>Gip reads a JSON file declaring all the repositories you want to manage.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlight"><code class="language-json" data-lang="json">[
+  {
+    "Name": "gip",
+    "Repository": "https://github.com/enr/gip.git",
+    "LocalPath": "~/Projects/gip"
+  },
+  {
+    "Name": "...",
+    "Repository": "...",
+    "LocalPath": "..."
+  }
+]</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>You can set the path using the <code>-f</code> flag:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlight"><code>gip -f examples/linux.json -d pull -a</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Otherwise it defaults to the file <code>.gip</code> in your home directory.</p>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_install">Install</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>The latest release is in: <a href="https://github.com/enr/gip/releases/latest" class="bare">https://github.com/enr/gip/releases/latest</a></p>
+</div>
+<div class="paragraph">
+<p>Put <code>gip</code> in your <code>$PATH</code> and make it executable:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlight"><code>$ curl -sL https://github.com/enr/gip/releases/download/v0.4.7/gip-0.4.7_linux_amd64.zip -o gip-0.4.7_linux_amd64.zip
+$ unzip gip-0.4.7_linux_amd64.zip
+$ cp /tmp/gip-0.4.7_linux_amd64/gip ~/bin/gip
+$ gip --version
+gip version 0.4.8-dev
+Revision: a475d370b57496460b19c8f254cf312d0a5cb979+CHANGES
+Build date: 2020-01-18T00:08:51Z
+
+$ gip --help
+NAME:
+   gip - Keep tracks of your Git projects
+
+USAGE:
+   gip [global options] command [command options] [arguments...]
+
+VERSION:
+   0.4.8-dev
+Revision: a475d370b57496460b19c8f254cf312d0a5cb979+CHANGES
+Build date: 2020-01-18T00:08:51Z
+
+
+COMMANDS:
+   status, s
+   statusfull, sf
+   list, ls
+   pull
+   help, h         Shows a list of commands or help for one command
+
+GLOBAL OPTIONS:
+   --file value, -f value  path to the configuration file to use (if not set will be picked ${HOME}/.gip)
+   --debug, -d             operates in debug mode: lot of output (default: false)
+   --quiet, -q             operates in quiet mode (default: false)
+   --ignore-missing, -m    ignores missing local directories, otherwise prints a warn (default: false)
+   --help, -h              show help (default: false)
+   --version, -v           print the version (default: false)</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>List managed projects:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlight"><code>$ gip ls</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Status:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlight"><code>$ gip sf</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Status hiding the warn about missing local directory:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlight"><code>$ gip -m sf</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Verbose output:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlight"><code>$ gip -d sf</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Choose a path other than <code>~/.gip</code> for configuration file:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlight"><code>$ gip -f ~/.config/local/gip.json -d sf</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Pull:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlight"><code>$ gip pull</code></pre>
+</div>
 </div>
 </div>
 </div>
@@ -478,7 +614,7 @@ Build revision `{ci-build-id}`</pre>
 <div id="footer">
 <div id="footer-text">
 Version 0.4.8-dev<br>
-Last updated 2020-02-05 22:11:03 UTC
+Last updated 2020-02-05 22:23:53 UTC
 </div>
 </div>
 </body>
