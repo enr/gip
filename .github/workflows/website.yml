@@ -1,8 +1,10 @@
 
 on:
   push:
-    tags:
-      - 'v*'
+    branches:
+      - test-ci
+    # tags:
+    #   - 'v*'
 
 name: Create Website
 
