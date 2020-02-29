@@ -4,5 +4,4 @@ REPO_NAME='gip'
 DIST_DIR='dist'
 GOPROXY='off'
 
-APP_VERSION='4.9.0-dev' # APP_VERSION_AUTOLINE this line is automatically managed
-
+APP_VERSION='0.4.10-dev' # APP_VERSION_AUTOLINE this line is automatically managed

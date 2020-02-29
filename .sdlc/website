@@ -14,12 +14,14 @@ source "${project_scripts_dir}/config"
     exit 1
 }
 docs_dir="${project_home}/docs"
+[[ -d "$docs_dir" ]] || {
+    echo "Missing docs dir ${docs_dir}"
+    exit 1
+}
 cd "$docs_dir"
 
 website_build_dir="${project_home}/build/website"
 mkdir -p "$website_build_dir"
-
-cp -r "$docs_dir" /documents
 
 # Asciidoctor attributes
 ci_ns="${REPO_OWNER}/${REPO_NAME}"
