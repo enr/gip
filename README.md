@@ -5,83 +5,59 @@ Manage your Git projects.
 ![CI Linux Mac](https://github.com/enr/gip/workflows/CI%20Linux%20Mac/badge.svg)
 ![CI Windows](https://github.com/enr/gip/workflows/CI%20Windows/badge.svg) https://enr.github.io/gip/
 
-Gip reads a JSON file named declaring all the repositories you want to manage.
+Gip run Git commands on a set of repositories.
+
+Repositories can be registered in a YAML or JSON file, eg:
 
 ```json
 [
   {
-    "Name": "gip",
-    "Repository": "https://github.com/enr/gip.git",
-    "LocalPath": "~/Projects/gip"
+    "name": "gip",
+    "repository": "https://github.com/enr/gip.git",
+    "local_path": "/tmp/gip"
   },
   {
-    "Name": "...",
-    "Repository": "...",
-    "LocalPath": "..."
+    "name": "nowhere",
+    "repository": "https://nowhere.git",
+    "local_path": "/nowhere/not/found",
+    "pull_policy": "never"
   }
 ]
 ```
-You can set the path using the `-f` flag:
 
-```
-gip -f examples/linux.json -d pull -a
-```
-
-Otherwise it defaults to the file `.gip` in your home directory.
-
-## Install
-
-The latest release is in: https://github.com/enr/gip/releases/latest
-
-Put `gip` in your `$PATH` and make it executable:
-
-```
-$ curl -sL https://github.com/enr/gip/releases/download/v4.8.0/gip-4.8.0_linux_amd64.zip -o gip-4.8.0_linux_amd64.zip
-
-$ unzip gip-4.8.0_linux_amd64.zip
-Archive:  gip-4.8.0_linux_amd64.zip
-   creating: gip-4.8.0_linux_amd64/
-  inflating: gip-4.8.0_linux_amd64/gip
-
-$ cp gip-4.8.0_linux_amd64/gip ~/bin/gip
+```yaml
+- name: gip
+  repository: "https://github.com/enr/gip.git"
+  local_path: /tmp/gip
+- name: nowhere
+  repository: "https://nowhere.git"
+  local_path: /nowhere/not/found
+  pull_policy: never
 ```
 
-List managed projects:
+Available commands:
+
+- status
+- pull
+- list
+
+See https://enr.github.io/gip/ for more.
+
+## Development
+
+Download or clone repository.
+
+Build (binaries will be created in `bin/`):
 
 ```
-$ gip ls
+./.sdlc/build
 ```
 
-Status:
+Check (code quality and tests);
 
 ```
-$ gip sf
+./.sdlc/check
 ```
-
-Status hiding the warn about missing local directory:
-
-```
-$ gip -m sf
-```
-
-Verbose output:
-
-```
-$ gip -d sf
-```
-
-Choose a path other than `~/.gip` for configuration file:
-
-```
-$ gip -f ~/.config/local/gip.json -d sf
-```
-
-Pull:
-
-```
-$ gip pull
-```
-
 
 ## License
 

@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"net/url"
@@ -11,9 +10,13 @@ import (
 	"path/filepath"
 	"strings"
 
+	yaml "gopkg.in/yaml.v2"
+
 	"github.com/enr/go-commons/environment"
 	"github.com/enr/go-files/files"
 	"github.com/enr/runcmd"
+
+	"github.com/mitchellh/go-homedir"
 )
 
 const (
@@ -21,10 +24,10 @@ const (
 )
 
 type gipProject struct {
-	Name       string
-	Repository string
-	LocalPath  string
-	PullPolicy string
+	Name       string `json:"name" yaml:"name"`
+	Repository string `json:"repository" yaml:"repository"`
+	LocalPath  string `json:"local_path" yaml:"local_path"`
+	PullPolicy string `json:"pull_policy" yaml:"pull_policy"`
 }
 
 func (p *gipProject) pullNever() bool {
@@ -56,7 +59,7 @@ func gitExecutablePath() string {
 }
 
 func defaultConfigurationFilePath() string {
-	home, err := environment.UserHome()
+	home, err := homedir.Dir()
 	if err != nil {
 		ui.Errorf("Error retrieving user home: %v\n", err)
 		os.Exit(1)
@@ -75,19 +78,19 @@ func normalizePath(dirpath string) string {
 }
 
 func projectsList(configurationPath string) ([]gipProject, error) {
-	var appz []gipProject
+	var projects []gipProject
 	bytes, err := ioutil.ReadFile(configurationPath)
 	if err != nil {
 		ui.Errorf("Error reading %s: %v", configurationPath, err)
-		return appz, err
+		return projects, err
 	}
-	err = json.Unmarshal(bytes, &appz)
+	err = yaml.Unmarshal(bytes, &projects)
 	if err != nil {
 		ui.Errorf("Error reading configuration: %v", err)
-		ui.Lifecyclef("Check the format of %s: it should be Json", configurationPath)
-		return appz, err
+		ui.Lifecyclef("Check the format of %s: it should be Yaml or Json", configurationPath)
+		return projects, err
 	}
-	return appz, nil
+	return projects, nil
 }
 
 func projectPath(ppath string) (string, error) {

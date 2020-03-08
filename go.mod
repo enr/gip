@@ -10,10 +10,11 @@ require (
 	github.com/extemporalgenome/slug v0.0.0-20150414033109-0320c85e32e0 // indirect
 	github.com/mattn/go-colorable v0.0.9 // indirect
 	github.com/mattn/go-isatty v0.0.4 // indirect
-	github.com/mitchellh/go-homedir v1.0.0 // indirect
+	github.com/mitchellh/go-homedir v1.0.0
 	github.com/stretchr/testify v1.3.0 // indirect
 	github.com/subosito/gotenv v1.1.1 // indirect
 	github.com/urfave/cli/v2 v2.1.1
 	golang.org/x/sys v0.0.0-20180831094639-fa5fdf94c789 // indirect
 	golang.org/x/text v0.3.0 // indirect
+	gopkg.in/yaml.v2 v2.2.2
 )

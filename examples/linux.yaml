@@ -1,0 +1,10 @@
+- name: gip
+  repository: "https://github.com/enr/gip.git"
+  local_path: /tmp/gip
+- name: nowhere
+  repository: "https://nowhere.git"
+  local_path: /nowhere/not/found
+  pull_policy: never
+- name: gip-invalid-path
+  repository: "https://github.com/enr/gip.git"
+  local_path: /nowhere2/not/found

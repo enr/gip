@@ -21,7 +21,18 @@ endif::[]
 
 Gip manages your Git projects.
 
-Gip reads a JSON file declaring all the repositories you want to manage.
+Gip reads a JSON or YAML file declaring all the repositories you want to manage.
+
+[source,yaml]
+----
+- name: gip
+  repository: "https://github.com/enr/gip.git"
+  local_path: /tmp/gip
+- name: nowhere
+  repository: "https://nowhere.git"
+  local_path: /nowhere/not/found
+  pull_policy: never
+----
 
 [source,json]
 ----
@@ -47,6 +58,61 @@ gip -f examples/linux.json -d pull -a
 
 Otherwise it defaults to the file `.gip` in your home directory.
 
+### Available commands
+
+**ls**
+
+List all managed projects
+
+```
+gip -f examples/linux.json -d ls
+```
+
+**pull**
+
+Run git pull on managed projects.
+
+The default behaviour is to pull only projects which `local_path` exists.
+
+Projects with `pull_policy` set to `never` will be skipped, projects with `pull_policy` set to always will be pulled even if local path does not exist.
+
+```
+gip -f examples/linux.json -d pull
+```
+
+**status**
+
+Run `git status` on all managed projects.
+
+`statusfull` shows untracked files too.
+
+```
+gip -f examples/linux.json -d status
+```
+
+Get status hiding the warn about missing local directory:
+
+```
+gip -m sf
+```
+
+**other options**
+
+Verbose output:
+
+```
+$ gip -d sf
+```
+
+Choose a path other than `~/.gip` for configuration file:
+
+```
+$ gip -f ~/.config/local/gip.json -d sf
+```
+
+
+
+
 ## Install
 
 The latest release is in: https://github.com/enr/gip/releases/latest
@@ -54,19 +120,19 @@ The latest release is in: https://github.com/enr/gip/releases/latest
 Put `gip` in your `$PATH` and make it executable:
 
 ```
-$ curl -sL https://github.com/enr/gip/releases/download/v4.8.0/gip-4.8.0_linux_amd64.zip -o gip-4.8.0_linux_amd64.zip
+$ curl -sL https://github.com/enr/gip/releases/download/v0.4.8/gip-0.4.8_linux_amd64.zip -o gip-0.4.8_linux_amd64.zip
 
-$ unzip gip-4.8.0_linux_amd64.zip
-Archive:  gip-4.8.0_linux_amd64.zip
-   creating: gip-4.8.0_linux_amd64/
-  inflating: gip-4.8.0_linux_amd64/gip
+$ unzip gip-0.4.8_linux_amd64.zip
+Archive:  gip-0.4.8_linux_amd64.zip
+   creating: gip-0.4.8_linux_amd64/
+  inflating: gip-0.4.8_linux_amd64/gip
 
-$ ./gip-4.8.0_linux_amd64/gip --version
-gip version 4.8.0
+$ ./gip-0.4.8_linux_amd64/gip --version
+gip version 0.4.8
 Revision: 359819e2a81d7b5bc827af1adec84eb42632f706
 Build date: 2020-02-05T22:30:46Z
 
-$ ./gip-4.8.0_linux_amd64/gip --help
+$ ./gip-0.4.8_linux_amd64/gip --help
 NAME:
    gip - Keep tracks of your Git projects
 
@@ -74,7 +140,7 @@ USAGE:
    gip [global options] command [command options] [arguments...]
 
 VERSION:
-   4.8.0
+   0.4.8
 Revision: 359819e2a81d7b5bc827af1adec84eb42632f706
 Build date: 2020-02-05T22:30:46Z
 
@@ -92,42 +158,6 @@ GLOBAL OPTIONS:
    --ignore-missing, -m    ignores missing local directories, otherwise prints a warn (default: false)
    --help, -h              show help (default: false)
    --version, -v           print the version (default: false)
-```
-
-List managed projects:
-
-```
-$ gip ls
-```
-
-Status:
-
-```
-$ gip sf
-```
-
-Status hiding the warn about missing local directory:
-
-```
-$ gip -m sf
-```
-
-Verbose output:
-
-```
-$ gip -d sf
-```
-
-Choose a path other than `~/.gip` for configuration file:
-
-```
-$ gip -f ~/.config/local/gip.json -d sf
-```
-
-Pull:
-
-```
-$ gip pull
 ```
 
 
