@@ -19,9 +19,11 @@ endif::[]
 [[_book]]
 ## Usage
 
-Gip manages your Git projects.
+Gip offers bulk management for your Git projects running Git commands on a set of repositories.
 
-Gip reads a JSON or YAML file declaring all the repositories you want to manage.
+Repositories can be registered in a YAML or JSON file.
+
+YAML example:
 
 [source,yaml]
 ----
@@ -34,18 +36,21 @@ Gip reads a JSON or YAML file declaring all the repositories you want to manage.
   pull_policy: never
 ----
 
+JSON example:
+
 [source,json]
 ----
 [
   {
-    "Name": "gip",
-    "Repository": "https://github.com/enr/gip.git",
-    "LocalPath": "~/Projects/gip"
+    "name": "gip",
+    "repository": "https://github.com/enr/gip.git",
+    "local_path": "/tmp/gip"
   },
   {
-    "Name": "...",
-    "Repository": "...",
-    "LocalPath": "..."
+    "name": "nowhere",
+    "repository": "https://nowhere.git",
+    "local_path": "/nowhere/not/found",
+    "pull_policy": "never"
   }
 ]
 ----
@@ -60,7 +65,7 @@ Otherwise it defaults to the file `.gip` in your home directory.
 
 ### Available commands
 
-**ls**
+**list**
 
 List all managed projects
 
