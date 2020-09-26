@@ -23,6 +23,13 @@ Gip offers bulk management for your Git projects running Git commands on a set o
 
 Repositories can be registered in a YAML or JSON file.
 
+Fields are:
+
+- `name`: a descriptive name for the project
+- `repository`: the remote repository url
+- `local_path`: local directory where operate into
+- `pull_policy`: behaviour when pull command is ran
+
 YAML example:
 
 [source,yaml]
@@ -79,7 +86,9 @@ Run git pull on managed projects.
 
 The default behaviour is to pull only projects which `local_path` exists.
 
-Projects with `pull_policy` set to `never` will be skipped, projects with `pull_policy` set to always will be pulled even if local path does not exist.
+Projects with `pull_policy` set to `never` will be skipped, projects with `pull_policy` set to `always` will be pulled even if local path does not exist.
+
+Use `never` for repositories that you don't want to pull (for example because they are reachable only using VPN).
 
 ```
 gip -f examples/linux.json -d pull
@@ -114,8 +123,6 @@ Choose a path other than `~/.gip` for configuration file:
 ```
 $ gip -f ~/.config/local/gip.json -d sf
 ```
-
-
 
 
 ## Install
