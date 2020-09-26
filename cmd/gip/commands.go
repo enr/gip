@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"path/filepath"
 
@@ -66,18 +67,36 @@ func gitStatus(c *cli.Context, untracked bool) error {
 	if err != nil {
 		return exitErrorf(1, "Error loading projects list: %v", err)
 	}
+	errors := map[string]error{}
 	for _, project := range projects {
 		line, err = projectPath(project.LocalPath)
 		if err != nil {
-			return exitErrorf(1, "Error loading project %s: %v", project.Name, err)
+			// return exitErrorf(1, "Error loading project %s: %v", project.Name, err)
+			errors[project.Name] = err
+			continue
 		}
 		if isProjectDir(line) {
-			executeGitStatus(line, untracked)
+			err = executeGitStatus(line, untracked)
+			if err != nil {
+				errors[project.Name] = err
+				continue
+			}
 		} else {
 			warnMissingDir(line)
 		}
 	}
-	return nil
+	return buildError(errors)
+}
+
+func buildError(errors map[string]error) error {
+	if len(errors) == 0 {
+		return nil
+	}
+	var buffer bytes.Buffer
+	for key, value := range errors {
+		buffer.WriteString(fmt.Sprintf("- %s: %v\n", key, value))
+	}
+	return exitError(1, buffer.String())
 }
 
 func doList(c *cli.Context) error {
@@ -90,10 +109,13 @@ func doList(c *cli.Context) error {
 	if err != nil {
 		return exitErrorf(1, "Error loading projects list: %v", err)
 	}
+	errors := map[string]error{}
 	for _, project := range projects {
 		localPath, err = projectPath(project.LocalPath)
 		if err != nil {
-			return exitErrorf(1, "Error loading project %s: %v", project.Name, err)
+			//return exitErrorf(1, "Error loading project %s: %v", project.Name, err)
+			errors[project.Name] = err
+			continue
 		}
 		if isProjectDir(localPath) {
 			ui.Lifecyclef("- %s - %s (%s)", project.Name, localPath, project.repoProvider())
@@ -101,7 +123,7 @@ func doList(c *cli.Context) error {
 			warnMissingDir(localPath)
 		}
 	}
-	return nil
+	return buildError(errors)
 }
 
 func doPull(c *cli.Context) error {
@@ -120,6 +142,7 @@ func doPull(c *cli.Context) error {
 	if err != nil {
 		return exitErrorf(1, "Error loading projects list: %v", err)
 	}
+	errors := map[string]error{}
 	for _, project := range projects {
 		if project.pullNever() {
 			ui.Confidentialf("Skip %s : pull policy never", project.Name)
@@ -127,18 +150,27 @@ func doPull(c *cli.Context) error {
 		}
 		line, err = projectPath(project.LocalPath)
 		if err != nil {
-			return exitErrorf(1, "Error loading project %s: %v", project.Name, err)
+			// return exitErrorf(1, "Error loading project %s: %v", project.Name, err)
+			errors[project.Name] = err
+			continue
 		}
-		if isProjectDir(line) {
-			executeGitPull(line)
-		} else {
+		if !isProjectDir(line) {
 			warnMissingDir(line)
 			if all || project.pullAlways() {
-				executeGitClone(project.Repository, line)
+				err = executeGitClone(project.Repository, line)
+				if err != nil {
+					errors[project.Name] = err
+				}
 			}
+			continue
+		}
+		err = executeGitPull(line)
+		if err != nil {
+			errors[project.Name] = err
+			continue
 		}
 	}
-	return nil
+	return buildError(errors)
 }
 
 func warnMissingDir(dir string) {
@@ -149,8 +181,12 @@ func warnMissingDir(dir string) {
 }
 
 func exitErrorf(exitCode int, template string, args ...interface{}) error {
+	return exitError(exitCode, fmt.Sprintf(template, args...))
+}
+
+func exitError(exitCode int, message string) error {
 	ui.Errorf(`Something gone wrong:`)
-	return cli.NewExitError(fmt.Sprintf(template, args...), exitCode)
+	return cli.NewExitError(message, exitCode)
 }
 
 func configurationFilePath(c *cli.Context) (string, error) {

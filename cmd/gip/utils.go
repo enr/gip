@@ -111,7 +111,8 @@ func isProjectDir(dirpath string) bool {
 	return files.IsDir(filepath.Join(dirpath, ".git"))
 }
 
-func executeGitStatus(dirpath string, untracked bool) {
+func executeGitStatus(dirpath string, untracked bool) error {
+	var err error
 	ui.Confidentialf("Status on %s", dirpath)
 	command := &runcmd.Command{
 		Exe:  gitExecutablePath(),
@@ -122,6 +123,7 @@ func executeGitStatus(dirpath string, untracked bool) {
 	if !result.Success() {
 		ui.Errorf("Error executing Git in %s", dirpath)
 		ui.Errorf("(%d) %v", result.ExitStatus(), result.Error())
+		err = result.Error()
 	}
 	gitOutput := result.Stdout().String()
 	if len(gitOutput) == 0 {
@@ -130,6 +132,7 @@ func executeGitStatus(dirpath string, untracked bool) {
 		ui.Title(dirpath)
 		fmt.Println(string(gitOutput))
 	}
+	return err
 }
 
 func statusArguments(dirpath string, untracked bool) []string {
@@ -147,13 +150,14 @@ func statusArguments(dirpath string, untracked bool) []string {
 	return args
 }
 
-func executeGitClone(repourl string, dirpath string) {
+func executeGitClone(repourl string, dirpath string) error {
+	var err error
 	ui.Confidentialf("Cloning %s to %s", repourl, dirpath)
-	err := os.MkdirAll(dirpath, 0755)
+	err = os.MkdirAll(dirpath, 0755)
 	if err != nil {
 		ui.Errorf("Error preparing for clone path %s:", dirpath)
 		ui.Errorf("%v", err)
-		return
+		return err
 	}
 	args := []string{
 		"clone",
@@ -169,13 +173,16 @@ func executeGitClone(repourl string, dirpath string) {
 	if !result.Success() {
 		ui.Errorf("Error executing Git in %s", dirpath)
 		ui.Errorf("(%d) %v", result.ExitStatus(), result.Error())
+		err = result.Error()
 	}
 	gitOutput := result.Stdout().String()
 	ui.Title(dirpath)
 	fmt.Println(string(gitOutput))
+	return err
 }
 
-func executeGitPull(dirpath string) {
+func executeGitPull(dirpath string) error {
+	var err error
 	ui.Confidentialf("Pulling %s", dirpath)
 	args := []string{
 		fmt.Sprintf("--git-dir=%s/.git", dirpath),
@@ -191,8 +198,10 @@ func executeGitPull(dirpath string) {
 	if !result.Success() {
 		ui.Errorf("Error executing Git in %s", dirpath)
 		ui.Errorf("(%d) %v", result.ExitStatus(), result.Error())
+		err = result.Error()
 	}
 	gitOutput := result.Stdout().String()
 	ui.Title(dirpath)
 	fmt.Println(string(gitOutput))
+	return err
 }
