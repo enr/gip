@@ -3,7 +3,8 @@
 Manage your Git projects.
 
 ![CI Linux Mac](https://github.com/enr/gip/workflows/CI%20Linux%20Mac/badge.svg)
-![CI Windows](https://github.com/enr/gip/workflows/CI%20Windows/badge.svg) https://enr.github.io/gip/
+![CI Windows](https://github.com/enr/gip/workflows/CI%20Windows/badge.svg)
+[![Documentation](https://img.shields.io/badge/Website-Documentation-orange)](https://enr.github.io/gip/)
 
 Gip run Git commands on a set of repositories.
 
