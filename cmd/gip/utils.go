@@ -40,12 +40,16 @@ func (p *gipProject) pullAlways() bool {
 
 func (p *gipProject) repoProvider() string {
 	if p.Repository == "" {
+		ui.Warnf(`No repository URL for project %s`, p.Name)
 		return ""
 	}
 	u, err := url.Parse(p.Repository)
 	if err != nil {
 		ui.Warnf(`Error parsing %s repository URL %s : %v`, p.Name, p.Repository, err)
 		return ""
+	}
+	if u.Host == "" {
+		ui.Warnf(`Unable to detect provider for project %s using repository URL %s`, p.Name, p.Repository)
 	}
 	return u.Host
 }
