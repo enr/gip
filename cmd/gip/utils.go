@@ -44,6 +44,7 @@ func (p *gipProject) repoProvider() string {
 	}
 	u, err := url.Parse(p.Repository)
 	if err != nil {
+		ui.Warnf(`Error parsing %s repository URL %s : %v`, p.Name, p.Repository, err)
 		return ""
 	}
 	return u.Host
