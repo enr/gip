@@ -8,11 +8,11 @@
 
 ifeval::["{backend}" == "html5"]
 
-image::https://github.com/enr/gip/workflows/CI%20Linux%20Mac/badge.svg[CI Linux Mac]
-image::https://github.com/enr/gip/workflows/CI%20Windows/badge.svg[CI Windows]
+image::https://github.com/{ci-ns}/workflows/CI%20Linux%20Mac/badge.svg[CI Linux Mac]
+image::https://github.com/{ci-ns}/workflows/CI%20Windows/badge.svg[CI Windows]
 
-https://github.com/enr/gip/releases/latest[Download last artifacts] |
- https://enr.github.io/gip/pdf/gip_manual.pdf[Pdf manual] |
+https://github.com/{ci-ns}/releases/latest[Download last artifacts] |
+ https://{repo-owner}.github.io/{repo-name}/pdf/{repo-name}_manual.pdf[Pdf manual] |
  Build revision `{ci-build-id}`
 endif::[]
 

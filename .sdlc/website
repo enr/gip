@@ -33,6 +33,8 @@ asciidoctor --doctype book \
             --attribute "project-version=${APP_VERSION}" \
             --attribute "project-authors=${project_authors}" \
             --attribute "ci-ns=${ci_ns}" \
+            --attribute "repo-owner=${REPO_OWNER}" \
+            --attribute "repo-name=${REPO_NAME}" \
             --attribute "ci-build-id=${ci_build_id}" \
             --destination-dir "$website_build_dir" \
             index.adoc
@@ -41,6 +43,8 @@ asciidoctor-pdf --doctype book \
                 --attribute "project-version=${APP_VERSION}" \
                 --attribute "project-authors=${project_authors}" \
                 --attribute "ci-ns=${ci_ns}" \
+                --attribute "repo-owner=${REPO_OWNER}" \
+                --attribute "repo-name=${REPO_NAME}" \
                 --attribute "ci-build-id=${ci_build_id}" \
                 --destination-dir "${website_build_dir}/pdf" \
                 --out-file="${REPO_NAME}_manual.pdf" \
