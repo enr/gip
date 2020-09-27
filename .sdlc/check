@@ -91,7 +91,7 @@ for dir in $(find "$CMDS_DIR" -mindepth 1 -maxdepth 1 -type d); do
   goimports -w .
   diff <(goimports -d .) <(printf "")
   echo "--- gocyclo"
-  diff <(gocyclo -over 12 .) <(printf "")
+  diff <(gocyclo -over 15 .) <(printf "")
   cd "${PRJ_HOME}"
   echo "--- go build"
   # we need binaries for some e2e test

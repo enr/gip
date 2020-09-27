@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"path/filepath"
 
+	"github.com/enr/gip/lib/core"
+
 	"github.com/urfave/cli/v2"
 )
 
@@ -62,11 +64,15 @@ func gitStatus(c *cli.Context, untracked bool) error {
 	if err != nil {
 		return exitErrorf(1, "Error loading configuration file %s: %v", c.String("f"), err)
 	}
-	var line string
 	projects, err := projectsList(configurationFile)
 	if err != nil {
 		return exitErrorf(1, "Error loading projects list: %v", err)
 	}
+	git, err := core.NewGit(ui)
+	if err != nil {
+		return exitErrorf(1, "Error loading git: %v", err)
+	}
+	var line string
 	errors := map[string]error{}
 	for _, project := range projects {
 		line, err = projectPath(project.LocalPath)
@@ -76,7 +82,7 @@ func gitStatus(c *cli.Context, untracked bool) error {
 			continue
 		}
 		if isProjectDir(line) {
-			err = executeGitStatus(line, untracked)
+			err = git.Status(line, untracked)
 			if err != nil {
 				errors[project.Name] = err
 				continue
@@ -104,11 +110,11 @@ func doList(c *cli.Context) error {
 	if err != nil {
 		return exitErrorf(1, "Error loading configuration file %s: %v", c.String("f"), err)
 	}
-	var localPath string
 	projects, err := projectsList(configurationFile)
 	if err != nil {
 		return exitErrorf(1, "Error loading projects list: %v", err)
 	}
+	var localPath string
 	errors := map[string]error{}
 	for _, project := range projects {
 		localPath, err = projectPath(project.LocalPath)
@@ -137,12 +143,16 @@ func doPull(c *cli.Context) error {
 	}
 	all := c.Bool("all")
 	ui.Confidentialf("%s PULL all? %t", configurationFile, all)
-	var line string
 	projects, err := projectsList(configurationFile)
 	if err != nil {
 		return exitErrorf(1, "Error loading projects list: %v", err)
 	}
+	git, err := core.NewGit(ui)
+	if err != nil {
+		return exitErrorf(1, "Error loading git: %v", err)
+	}
 	errors := map[string]error{}
+	var line string
 	for _, project := range projects {
 		if project.pullNever() {
 			ui.Confidentialf("Skip %s : pull policy never", project.Name)
@@ -157,14 +167,14 @@ func doPull(c *cli.Context) error {
 		if !isProjectDir(line) {
 			warnMissingDir(line)
 			if all || project.pullAlways() {
-				err = executeGitClone(project.Repository, line)
+				err = git.Clone(project.Repository, line)
 				if err != nil {
 					errors[project.Name] = err
 				}
 			}
 			continue
 		}
-		err = executeGitPull(line)
+		err = git.Pull(line)
 		if err != nil {
 			errors[project.Name] = err
 			continue
