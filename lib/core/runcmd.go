@@ -1,6 +1,8 @@
 package core
 
 import (
+	"bytes"
+
 	"github.com/enr/clui"
 	"github.com/enr/runcmd"
 )
@@ -9,8 +11,17 @@ type runcmdWrapperRequest struct {
 	args       []string
 	workingDir string
 }
+
 type runcmdWrapper interface {
-	exec(r runcmdWrapperRequest) *runcmd.ExecResult
+	exec(r runcmdWrapperRequest) runcmdResult
+}
+
+type runcmdResult interface {
+	Success() bool
+	Stderr() *bytes.Buffer
+	Stdout() *bytes.Buffer
+	ExitStatus() int
+	Error() error
 }
 
 func newGitExecutor(ui *clui.Clui) (runcmdWrapper, error) {
@@ -29,7 +40,7 @@ type defaultGitWrapper struct {
 	ui  *clui.Clui
 }
 
-func (g defaultGitWrapper) exec(r runcmdWrapperRequest) *runcmd.ExecResult {
+func (g defaultGitWrapper) exec(r runcmdWrapperRequest) runcmdResult {
 	command := &runcmd.Command{
 		Exe:        g.git,
 		Args:       r.args,
