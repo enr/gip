@@ -42,7 +42,7 @@ Available commands:
 - pull
 - list
 
-See https://enr.github.io/gip/ for more.
+See [website](https://enr.github.io/gip/) for more.
 
 ## Development
 
