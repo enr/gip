@@ -442,7 +442,7 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 <h1>Gip</h1>
 <div class="details">
 <span id="author" class="author">gip contributors</span><br>
-<span id="revnumber">version 0.5.0</span>
+<span id="revnumber">version 0.5.1</span>
 </div>
 </div>
 <div id="content">
@@ -462,7 +462,7 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 <div class="paragraph">
 <p><a href="https://github.com/enr/gip/releases/latest">Download last artifacts</a> |
  <a href="https://enr.github.io/gip/pdf/gip_manual.pdf">Pdf manual</a> |
- Build revision <code>3c407cb0db804b4e79a5c783447f20da4cc475d1</code></p>
+ Build revision <code>477a95fa92589044c924c6af0236c95d66fe5aee</code></p>
 </div>
 </div>
 </div>
@@ -470,10 +470,32 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 <h2 id="_book">Usage</h2>
 <div class="sectionbody">
 <div class="paragraph">
-<p>Gip manages your Git projects.</p>
+<p>Gip offers bulk management for your Git projects running Git commands on a set of repositories.</p>
 </div>
 <div class="paragraph">
-<p>Gip reads a JSON or YAML file declaring all the repositories you want to manage.</p>
+<p>Repositories can be registered in a YAML or JSON file.</p>
+</div>
+<div class="paragraph">
+<p>Fields are:</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p><code>name</code>: a descriptive name for the project</p>
+</li>
+<li>
+<p><code>repository</code>: the remote repository url</p>
+</li>
+<li>
+<p><code>local_path</code>: local directory where operate into</p>
+</li>
+<li>
+<p><code>pull_policy</code>: behaviour when pull command is ran</p>
+</li>
+</ul>
+</div>
+<div class="paragraph">
+<p>YAML example:</p>
 </div>
 <div class="listingblock">
 <div class="content">
@@ -486,18 +508,22 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
   <span class="na">pull_policy</span><span class="pi">:</span> <span class="s">never</span></code></pre>
 </div>
 </div>
+<div class="paragraph">
+<p>JSON example:</p>
+</div>
 <div class="listingblock">
 <div class="content">
 <pre class="rouge highlight"><code data-lang="json"><span class="p">[</span><span class="w">
   </span><span class="p">{</span><span class="w">
-    </span><span class="nl">"Name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"gip"</span><span class="p">,</span><span class="w">
-    </span><span class="nl">"Repository"</span><span class="p">:</span><span class="w"> </span><span class="s2">"https://github.com/enr/gip.git"</span><span class="p">,</span><span class="w">
-    </span><span class="nl">"LocalPath"</span><span class="p">:</span><span class="w"> </span><span class="s2">"~/Projects/gip"</span><span class="w">
+    </span><span class="nl">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"gip"</span><span class="p">,</span><span class="w">
+    </span><span class="nl">"repository"</span><span class="p">:</span><span class="w"> </span><span class="s2">"https://github.com/enr/gip.git"</span><span class="p">,</span><span class="w">
+    </span><span class="nl">"local_path"</span><span class="p">:</span><span class="w"> </span><span class="s2">"/tmp/gip"</span><span class="w">
   </span><span class="p">},</span><span class="w">
   </span><span class="p">{</span><span class="w">
-    </span><span class="nl">"Name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"..."</span><span class="p">,</span><span class="w">
-    </span><span class="nl">"Repository"</span><span class="p">:</span><span class="w"> </span><span class="s2">"..."</span><span class="p">,</span><span class="w">
-    </span><span class="nl">"LocalPath"</span><span class="p">:</span><span class="w"> </span><span class="s2">"..."</span><span class="w">
+    </span><span class="nl">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"nowhere"</span><span class="p">,</span><span class="w">
+    </span><span class="nl">"repository"</span><span class="p">:</span><span class="w"> </span><span class="s2">"https://nowhere.git"</span><span class="p">,</span><span class="w">
+    </span><span class="nl">"local_path"</span><span class="p">:</span><span class="w"> </span><span class="s2">"/nowhere/not/found"</span><span class="p">,</span><span class="w">
+    </span><span class="nl">"pull_policy"</span><span class="p">:</span><span class="w"> </span><span class="s2">"never"</span><span class="w">
   </span><span class="p">}</span><span class="w">
 </span><span class="p">]</span></code></pre>
 </div>
@@ -516,7 +542,7 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 <div class="sect2">
 <h3 id="_available_commands">Available commands</h3>
 <div class="paragraph">
-<p><strong>ls</strong></p>
+<p><strong>list</strong></p>
 </div>
 <div class="paragraph">
 <p>List all managed projects</p>
@@ -536,7 +562,10 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 <p>The default behaviour is to pull only projects which <code>local_path</code> exists.</p>
 </div>
 <div class="paragraph">
-<p>Projects with <code>pull_policy</code> set to <code>never</code> will be skipped, projects with <code>pull_policy</code> set to always will be pulled even if local path does not exist.</p>
+<p>Projects with <code>pull_policy</code> set to <code>never</code> will be skipped, projects with <code>pull_policy</code> set to <code>always</code> will be pulled even if local path does not exist.</p>
+</div>
+<div class="paragraph">
+<p>Use <code>never</code> for repositories that you don&#8217;t want to pull (for example because they are reachable only using VPN).</p>
 </div>
 <div class="listingblock">
 <div class="content">
@@ -651,8 +680,8 @@ GLOBAL OPTIONS:
 </div>
 <div id="footer">
 <div id="footer-text">
-Version 0.5.0<br>
-Last updated 2020-03-08 11:30:06 UTC
+Version 0.5.1<br>
+Last updated 2020-09-29 13:14:04 UTC
 </div>
 </div>
 <style>
