@@ -4,6 +4,7 @@ Manage your Git projects.
 
 ![CI Linux Mac](https://github.com/enr/gip/workflows/CI%20Linux%20Mac/badge.svg)
 ![CI Windows](https://github.com/enr/gip/workflows/CI%20Windows/badge.svg)
+[![Go Report Card](https://goreportcard.com/badge/github.com/enr/gip)](https://goreportcard.com/report/github.com/enr/gip)
 [![Documentation](https://img.shields.io/badge/Website-Documentation-orange)](https://enr.github.io/gip/)
 
 Gip run Git commands on a set of repositories.
@@ -62,20 +63,6 @@ Check (code quality and tests);
 
 ## License
 
-**Apache 2.0**
+Apache 2.0 - see LICENSE file.
 
-```
-Copyright 2020 gip contributors
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-   http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-```
+Copyright 2020 runcmd contributors
