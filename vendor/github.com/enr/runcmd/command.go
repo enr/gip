@@ -7,11 +7,14 @@ import (
 	"os/exec"
 	"path"
 	"path/filepath"
+	"runtime"
 	"strings"
+	"time"
 
 	"github.com/extemporalgenome/slug"
 )
 
+// Command is the launched command, it wraps the process.
 type Command struct {
 	Name string
 	// the executable
@@ -31,14 +34,15 @@ type Command struct {
 	UseEnv bool // dovrebbe essere EnvFile string: path
 	// used only if command is started as process
 	Logfile string
-	// the PID of the underlying process
-	Pid int
+	// the underlying process
+	Process *os.Process
 }
 
 func (c *Command) String() string {
 	return fmt.Sprintf("%s# %s", c.WorkingDir, c.FullCommand())
 }
 
+// FullCommand returns the full command line string.
 func (c *Command) FullCommand() string {
 	if c.Exe == "" && c.CommandLine == "" {
 		return ""
@@ -49,6 +53,7 @@ func (c *Command) FullCommand() string {
 	return strings.TrimSpace(c.Exe + " " + strings.Join(c.Args, " "))
 }
 
+// GetName get the name of the command.
 func (c *Command) GetName() string {
 	if c.Name != "" {
 		return c.Name
@@ -59,36 +64,33 @@ func (c *Command) GetName() string {
 	} else {
 		dirtyCommandName = fmt.Sprintf("%s%v", c.Exe, c.Args)
 	}
-	// no := []string{` `, `/`, `\`, `:`}
-	// name := c.FullCommand()
-	// for _, s := range no {
-	// 	name = strings.Replace(name, s, "-", -1)
-	// }
-	// return name
 	return slug.Slug(dirtyCommandName)
 }
 
+// GetLogfile get the full path to the file containing the process output.
 func (c *Command) GetLogfile() string {
 	if c.Logfile != "" {
 		return c.Logfile
 	}
-	logname := fmt.Sprintf("runcmd-%s.log", c.GetName())
+	ln := c.GetName()
+	if len(ln) > 80 {
+		ln = fmt.Sprintf(`%s-%d`, ln[0:60], time.Now().UnixNano())
+	}
+	logname := fmt.Sprintf("runcmd-%s.log", ln)
 	fullpath := path.Join(os.TempDir(), logname)
 	return fullpath
 }
 
 // Run starts the specified command and waits for it to complete.
 func (c *Command) Run() *ExecResult {
-
-	// shell, args := shellAndArgs()
 	var bout, berr bytes.Buffer
-	streams := &Streams{
+	outputs := &outputs{
 		out: &bout,
 		err: &berr,
 	}
 	result := &ExecResult{
 		fullCommand: c.FullCommand(),
-		streams:     streams,
+		outputs:     outputs,
 	}
 	cmd, err := c.buildCmd()
 	if err != nil {
@@ -103,14 +105,16 @@ func (c *Command) Run() *ExecResult {
 
 	if c.UseEnv {
 		flagEnv := filepath.Join(cmd.Dir, ".env")
-		env, _ := ReadEnv(flagEnv)
+		env, _ := readEnv(flagEnv)
 		cmd.Env = env.asArray()
 	} else if len(c.Env) > 0 {
 		cmd.Env = c.Env.asArray()
 	}
-	// if runtime.GOOS == "windows" {
-	// 	r.Environment = mergeEnvironment(r.Environment)
-	// }
+	// On Windows, clearing the environment,
+	// or having missing environment variables, may lead to powershell errors.
+	if runtime.GOOS == "windows" {
+		cmd.Env = mergeEnvironment(cmd.Env)
+	}
 
 	if err := cmd.Run(); err != nil {
 		result.err = err

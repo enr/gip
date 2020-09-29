@@ -3,6 +3,7 @@
 package runcmd
 
 import (
+	"os"
 	"os/exec"
 	"syscall"
 )
@@ -12,7 +13,7 @@ import (
 // You do that by setting Setpgid to true in the Cmd.SysProcAttr field.
 // From Golang docs:
 // 	Setpgid: Set process group ID to new pid (SYSV setpgrp)
-func start(cmd *exec.Cmd) (int, error) {
+func start(cmd *exec.Cmd) (*os.Process, error) {
 	keepAliveChild := true
 	if cmd.SysProcAttr == nil {
 		cmd.SysProcAttr = &syscall.SysProcAttr{
@@ -23,8 +24,8 @@ func start(cmd *exec.Cmd) (int, error) {
 	}
 	err := cmd.Start()
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 	process := cmd.Process
-	return process.Pid, nil
+	return process, nil
 }

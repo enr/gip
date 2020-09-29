@@ -1,12 +1,10 @@
 Runcmd
 ======
 
-[![Build Status](https://travis-ci.org/enr/runcmd.png?branch=master)](https://travis-ci.org/enr/runcmd)
-[![Build status](https://ci.appveyor.com/api/projects/status/cklfbhqkoi2356if?svg=true)](https://ci.appveyor.com/project/enr/runcmd)
+![CI Linux](https://github.com/enr/runcmd/workflows/CI%20Nix/badge.svg)
+![CI Windows](https://github.com/enr/runcmd/workflows/CI%20Windows/badge.svg)
 
 Should be a Go library to execute external commands.
-
-**Nothing to see here now.**
 
 Import the library:
 
@@ -15,9 +13,13 @@ import (
     "github.com/enr/runcmd"
 )
 ```
-You can use this library in two ways.
 
-Run a command, wait for it to complete and get a result:
+You can use this library in two ways:
+
+- Run
+- Start
+
+`Run` starts the specified command, waits for it to complete and returns a result complete of `stdout` and `stderr`:
 
 ```Go
 executable := "/usr/bin/ls"
@@ -36,24 +38,23 @@ if res.Success() {
 }
 ```
 
-Start a command as a process. In Unix systems this process will survive to the parent.
+`Start` starts the specified command but does not wait for it to complete.
 
 ```Go
 executable := "/usr/local/bin/start-server"
 command := &runcmd.Command{
     Exe:  executable,
 }
-logFile := cmd.GetLogfile()
+logFile := command.GetLogfile()
 // maybe you want to follow logs...
 t, _ := tail.TailFile(logFile, tail.Config{Follow: true})
-go func() {
-    cmd.Start()
-}()
+command.Start()
+runningProcess := command.Process
 ```
 
 License
 -------
 
-Mozilla Public License Version 2.0 - see LICENSE file.
+Apache 2.0 - see LICENSE file.
 
-Copyright 2015 runcmd contributors
+Copyright 2020 runcmd contributors

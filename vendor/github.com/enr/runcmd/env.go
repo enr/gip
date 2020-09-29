@@ -8,9 +8,10 @@ import (
 	"github.com/subosito/gotenv"
 )
 
+// Env is the map of environment variables for the command.
 type Env map[string]string
 
-func ReadEnv(filename string) (Env, error) {
+func readEnv(filename string) (Env, error) {
 	if _, err := os.Stat(filename); os.IsNotExist(err) {
 		return make(Env), nil
 	}

@@ -3,6 +3,7 @@
 package runcmd
 
 import (
+	"os"
 	"os/exec"
 	"syscall"
 )
@@ -10,7 +11,7 @@ import (
 // To keep alive the child process you have to put it in a different process
 // group.
 // You do that by setting CREATE_NEW_PROCESS_GROUP to true.
-func start(cmd *exec.Cmd) (int, error) {
+func start(cmd *exec.Cmd) (*os.Process, error) {
 	keepAliveChild := true
 	if keepAliveChild {
 		if cmd.SysProcAttr == nil {
@@ -23,8 +24,8 @@ func start(cmd *exec.Cmd) (int, error) {
 	}
 	err := cmd.Start()
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 	process := cmd.Process
-	return process.Pid, nil
+	return process, nil
 }

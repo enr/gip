@@ -5,6 +5,7 @@ import (
 	"crypto/sha1"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"os"
 	"path"
 	"path/filepath"
@@ -206,4 +207,36 @@ func normalizedPath(p string) (string, error) {
 		return "", err
 	}
 	return np, nil
+}
+
+// CopyDir copies a whole directory recursively overwriting contents
+func CopyDir(src string, dst string) error {
+	var err error
+	var fds []os.FileInfo
+	var info os.FileInfo
+	if info, err = os.Stat(src); err != nil {
+		return err
+	}
+	if err = os.MkdirAll(dst, info.Mode()); err != nil {
+		return err
+	}
+
+	if fds, err = ioutil.ReadDir(src); err != nil {
+		return err
+	}
+	for _, fd := range fds {
+		sourcePath := path.Join(src, fd.Name())
+		destinationPath := path.Join(dst, fd.Name())
+
+		if fd.IsDir() {
+			if err = CopyDir(sourcePath, destinationPath); err != nil {
+				break
+			}
+		} else {
+			if err = Copy(sourcePath, destinationPath); err != nil {
+				break
+			}
+		}
+	}
+	return err
 }

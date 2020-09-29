@@ -5,18 +5,23 @@ import (
 	"fmt"
 )
 
+// ExecResult is the result of the completed command execution.
 type ExecResult struct {
 	fullCommand string
-	streams     *Streams
+	outputs     *outputs
 	err         error
 }
 
+// Success true if command completed with no error.
 func (r *ExecResult) Success() bool {
 	return r.err == nil && r.ExitStatus() == 0
 }
+
+// ExitStatus is the command exit.
 func (r *ExecResult) ExitStatus() int {
 	return getExitStatus(r.err)
 }
+
 func (r *ExecResult) String() string {
 	status := "error"
 	if r.Success() {
@@ -27,12 +32,12 @@ func (r *ExecResult) String() string {
 
 // Stderr returns the underlying buffer with the contents of the error stream.
 func (r *ExecResult) Stderr() *bytes.Buffer {
-	return r.streams.Stderr()
+	return r.outputs.stderr()
 }
 
 // Stdout returns the underlying buffer with the contents of the output stream.
 func (r *ExecResult) Stdout() *bytes.Buffer {
-	return r.streams.Stdout()
+	return r.outputs.stdout()
 }
 
 func (r *ExecResult) Error() error {

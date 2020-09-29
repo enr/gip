@@ -7,7 +7,6 @@ import (
 
 // Start start a process without waiting
 func (c *Command) Start() error {
-
 	cmd, err := c.buildCmd()
 	if err != nil {
 		return err
@@ -20,17 +19,17 @@ func (c *Command) Start() error {
 
 	if c.UseEnv {
 		flagEnv := filepath.Join(cmd.Dir, ".env")
-		env, _ := ReadEnv(flagEnv)
+		env, _ := readEnv(flagEnv)
 		cmd.Env = env.asArray()
 	} else if len(c.Env) > 0 {
 		cmd.Env = c.Env.asArray()
 	}
 
-	pid, err := start(cmd)
+	process, err := start(cmd)
 	if err != nil {
 		return err
 	}
-	c.Pid = pid
+	c.Process = process
 	return nil
 }
 

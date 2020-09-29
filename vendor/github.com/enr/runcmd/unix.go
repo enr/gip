@@ -33,14 +33,3 @@ func (c *Command) useShell() {
 	c.Exe = shell
 	c.Args = []string{shellArgument, shellCommand}
 }
-
-// shellAndArgs is a helper function that returns an OS specific
-// shell and arguments for that particular shell
-func shellAndArgs() (string, []string) {
-	var com []string
-	com = []string{
-		"/bin/bash",
-		"-s",
-	}
-	return com[0], com[1:]
-}
