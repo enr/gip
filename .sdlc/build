@@ -32,6 +32,11 @@ echo "git message ${git_message}"
   exit 0
 }
 
+[[ -n "$SDLC_GO_VENDOR" ]] && {
+  echo 'Detected Go vendor mode: set GOPROXY=off'
+  export GOPROXY='off'
+}
+
 for dir in $(find "$CMDS_DIR" -mindepth 1 -maxdepth 1 -type d); do
   app_name=$(basename "$dir")
   echo "===  Process ${app_name} ${dir}"

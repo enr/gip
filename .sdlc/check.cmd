@@ -18,26 +18,38 @@ echo script_path   %script_path%
 echo script_dir    %script_dir%
 echo project_dir   %project_dir%
 echo module_name   %module_name%
+echo bin_dir       %bin_dir%
 
-cd %project_dir%
-
-for /f %%x in ('dir /AD /B /S lib') do (
-    echo --- go test lib %%x
-    cd %%x
-    go test -mod vendor -cover ./...
+IF DEFINED SDLC_GO_VENDOR (
+    echo Using Go vendor
+    set GOPROXY=off
 )
 
 cd %project_dir%
 
-REM IF EXIST %exe_path% DEL /F %exe_path%
+SETLOCAL ENABLEDELAYEDEXPANSION
+for /f %%x in ('dir /AD /B /S lib') do (
+    echo --- go test lib %%x
+    cd %%x
+    call go test -mod vendor -race ./...
+    call go test -mod vendor -cover ./...
+)
 
-@echo ON
+cd %project_dir%
+
 SETLOCAL ENABLEDELAYEDEXPANSION
 for /f %%x in ('dir /AD /B /S cmd') do (
     echo --- go test cmd %%x
     cd %%x
     set bin_name=%%~nx
-    call go build -mod vendor -ldflags "-s -X %module_name%/lib/core.Version=%APP_VERSION% -X %module_name%/lib/core.BuildTime=%TIMESTAMP% -X %module_name%/lib/core.GitCommit=win-dev-commit" ^
-    -o %bin_dir%\!bin_name!.exe ./...
-    go test -mod vendor -cover ./...
+    set exe_path=%bin_dir%\!bin_name!.exe
+    echo Build %module_name% cmd !bin_name! into !exe_path!
+    IF EXIST !exe_path! (
+        echo Deleting old bin !exe_path!
+        DEL /F !exe_path!
+    )
+    call go build -mod vendor  ^
+         -ldflags "-s -X %module_name%/lib/core.Version=%APP_VERSION% -X %module_name%/lib/core.BuildTime=%TIMESTAMP% -X %module_name%/lib/core.GitCommit=win-dev-commit" ^
+         -o !exe_path! "%module_name%/cmd/!bin_name!"
+    call go test -mod vendor -cover ./...
 )
