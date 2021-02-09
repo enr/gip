@@ -65,4 +65,4 @@ Check (code quality and tests);
 
 Apache 2.0 - see LICENSE file.
 
-Copyright 2020 runcmd contributors
+Copyright 2020-TODAY gip contributors

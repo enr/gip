@@ -41,6 +41,9 @@ echo "Environment PATH=${PATH}"
   export PATH="${GOPATH}/bin:${PATH}"
 }
 
+# cd to a temporary directory to avoid changes to go.mod
+cd $(mktemp -d)
+
 hash golint 2>/dev/null || {
   go get -u golang.org/x/lint/golint
 }
@@ -50,7 +53,7 @@ hash goimports 2>/dev/null || {
 }
 
 hash gocyclo 2>/dev/null || {
-  go get -u github.com/fzipp/gocyclo
+  go get -u github.com/fzipp/gocyclo/cmd/gocyclo
 }
 
 [[ -n "$SDLC_GO_VENDOR" ]] && {
