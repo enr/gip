@@ -1,18 +1,14 @@
+name: Create Website
 
 on:
   push:
     tags:
       - 'v*'
 
-name: Create Website
-
 jobs:
   build:
-    # strategy:
-    #   matrix:
-    #     platform: [ubuntu-latest]
     runs-on: ubuntu-latest
-    container: 'asciidoctor/docker-asciidoctor'
+    container: 'asciidoctor/docker-asciidoctor:1.11.0'
     steps:
     - name: Prepare container
       run: |

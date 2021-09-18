@@ -25,13 +25,6 @@ echo "version : ${APP_VERSION}"
 echo "git : ${git_commit}"
 echo "build time : ${buildtime}"
 
-git_message=$(git log --format=%B -n 1 "${git_hash}")
-echo "git message ${git_message}"
-[[ "$git_message" == '[skip ci]'* ]] && {
-  echo "skip ci"
-  exit 0
-}
-
 [[ -n "$SDLC_GO_VENDOR" ]] && {
   echo 'Detected Go vendor mode: set GOPROXY=off'
   export GOPROXY='off'

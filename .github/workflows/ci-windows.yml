@@ -6,12 +6,16 @@ on:
       - master
     tags-ignore:
       - '*'
+    paths-ignore: 
+      - README.md
+      - LICENSE
+      - docs/*
 
 jobs:
   build:
     strategy:
       matrix:
-        go-version: [1.15.x]
+        go-version: [1.17.x]
         platform: [windows-latest]
     runs-on: ${{ matrix.platform }}
     steps:

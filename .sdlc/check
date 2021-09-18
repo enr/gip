@@ -10,10 +10,6 @@ PRJ_HOME="$( cd -P "$( dirname "$SDLC_DIR" )" && pwd )"
 git_hash="$(git rev-parse HEAD)"
 git_message=$(git log --format=%B -n 1 "${git_hash}")
 echo "git message ${git_message}"
-[[ "$git_message" == '[skip ci]'* ]] && {
-  echo "skip ci"
-  exit 0
-}
 
 source "${SDLC_DIR}/config"
 app_name="${REPO_NAME}"
@@ -45,15 +41,15 @@ echo "Environment PATH=${PATH}"
 cd $(mktemp -d)
 
 hash golint 2>/dev/null || {
-  go get -u golang.org/x/lint/golint
+  go install golang.org/x/lint/golint@latest
 }
 
 hash goimports 2>/dev/null || {
-  go get -u golang.org/x/tools/cmd/goimports
+  go install golang.org/x/tools/cmd/goimports@latest
 }
 
 hash gocyclo 2>/dev/null || {
-  go get -u github.com/fzipp/gocyclo/cmd/gocyclo
+  go install github.com/fzipp/gocyclo/cmd/gocyclo@latest
 }
 
 [[ -n "$SDLC_GO_VENDOR" ]] && {
