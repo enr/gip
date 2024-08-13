@@ -6,7 +6,7 @@ require (
 	github.com/enr/clui v0.0.0-20211121125910-b2c5cd7b6dc9
 	github.com/enr/go-commons v0.0.0-20150504121636-bcd3f40eeea8
 	github.com/enr/go-files v0.3.0
-	github.com/enr/runcmd v0.5.0
+	github.com/enr/runcmd v0.6.0
 	github.com/mitchellh/go-homedir v1.1.0
 	github.com/urfave/cli/v2 v2.27.4
 	gopkg.in/yaml.v2 v2.4.0

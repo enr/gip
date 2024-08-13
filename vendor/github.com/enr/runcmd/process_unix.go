@@ -1,3 +1,4 @@
+//go:build darwin || freebsd || linux || netbsd || openbsd
 // +build darwin freebsd linux netbsd openbsd
 
 package runcmd
@@ -12,7 +13,8 @@ import (
 // To keep alive the child process you have to put it in a different process group.
 // You do that by setting Setpgid to true in the Cmd.SysProcAttr field.
 // From Golang docs:
-// 	Setpgid: Set process group ID to new pid (SYSV setpgrp)
+//
+//	Setpgid: Set process group ID to new pid (SYSV setpgrp)
 func start(cmd *exec.Cmd) (*os.Process, error) {
 	keepAliveChild := true
 	if cmd.SysProcAttr == nil {
