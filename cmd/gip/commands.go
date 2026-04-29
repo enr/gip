@@ -207,5 +207,5 @@ func configurationFilePath(c *cli.Context) (string, error) {
 		}
 		return filepath.FromSlash(filepath.Clean(abs)), nil
 	}
-	return defaultConfigurationFilePath(), nil
+	return defaultConfigurationFilePath()
 }

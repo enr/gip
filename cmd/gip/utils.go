@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"io/ioutil"
 	"net/url"
 	"os"
@@ -51,19 +52,17 @@ func (p *gipProject) repoProvider() string {
 	return u.Host
 }
 
-func defaultConfigurationFilePath() string {
+func defaultConfigurationFilePath() (string, error) {
 	home, err := homedir.Dir()
 	if err != nil {
-		ui.Errorf("Error retrieving user home: %v\n", err)
-		os.Exit(1)
+		return "", fmt.Errorf("Error retrieving user home: %v", err)
 	}
 	configurationFile := filepath.Join(home, configFileBaseName)
 	ui.Confidentialf("Using configuration file %s", configurationFile)
 	if !files.Exists(configurationFile) {
-		ui.Errorf("Configuration file %s not found. Exit", configurationFile)
-		os.Exit(1)
+		return "", fmt.Errorf("Configuration file %s not found", configurationFile)
 	}
-	return configurationFile
+	return configurationFile, nil
 }
 
 func normalizePath(dirpath string) string {
