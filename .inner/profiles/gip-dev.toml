@@ -1,0 +1,40 @@
+schema_version = "1"
+name          = "gip-dev"
+description   = "Interactive Claude Code session for developing gip (writable GOPATH/GOCACHE)"
+capabilities  = ["claude"]
+
+[sandbox]
+network   = true
+clipboard = false
+
+[mounts]
+"/run/user/$UID"     = { dest = "/run/user/$UID",      mode = "tmpfs" }
+
+[env]
+clearenv = true
+inherit  = ["HOME", "USER", "TERM", "LANG", "PATH", "SHELL"]
+
+[env.set]
+GOPATH  = "/tmp/gopath"
+GOCACHE = "/tmp/gocache"
+
+[entrypoint]
+cmd         = "/bin/bash"
+args        = []
+interactive = true
+tui         = false
+cursor_fix  = "shell"
+history     = [
+  "claude",
+  "claude --dangerously-skip-permissions",
+  "podman ps",
+  "podman images",
+]
+
+[output]
+summary         = false
+log             = "~/.inner/logs/"
+timeout_seconds = 0
+
+[noop]
+block = ["apt-get", "apt", "yum", "dnf", "brew", "pacman", "yay"]
