@@ -3,6 +3,7 @@ package core
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/enr/clui"
 	"github.com/enr/go-commons/environment"
@@ -29,6 +30,12 @@ type GitCommands struct {
 // Clone executes `git clone`
 func (g *GitCommands) Clone(repourl string, dirpath string) error {
 	var err error
+	if strings.HasPrefix(repourl, "-") {
+		return fmt.Errorf("invalid repourl: cannot start with '-'")
+	}
+	if strings.HasPrefix(dirpath, "-") {
+		return fmt.Errorf("invalid dirpath: cannot start with '-'")
+	}
 	g.ui.Confidentialf("Cloning %s to %s", repourl, dirpath)
 	err = os.MkdirAll(dirpath, 0755)
 	if err != nil {
@@ -38,6 +45,7 @@ func (g *GitCommands) Clone(repourl string, dirpath string) error {
 	}
 	args := []string{
 		"clone",
+		"--",
 		repourl,
 		dirpath,
 	}
@@ -68,9 +76,11 @@ func (g *GitCommands) Clone(repourl string, dirpath string) error {
 // Pull executes `git pull`
 func (g *GitCommands) Pull(dirpath string) error {
 	var err error
+	if strings.HasPrefix(dirpath, "-") {
+		return fmt.Errorf("invalid dirpath: cannot start with '-'")
+	}
 	g.ui.Confidentialf("Pulling %s", dirpath)
 	args := []string{
-		fmt.Sprintf("--git-dir=%s/.git", dirpath),
 		"pull",
 	}
 	// git, err := gitExecutablePath()
@@ -103,6 +113,9 @@ func (g *GitCommands) Pull(dirpath string) error {
 // Status executes `git status`
 func (g *GitCommands) Status(dirpath string, untracked bool) error {
 	var err error
+	if strings.HasPrefix(dirpath, "-") {
+		return fmt.Errorf("invalid dirpath: cannot start with '-'")
+	}
 	g.ui.Confidentialf("Status on %s", dirpath)
 	// git, err := gitExecutablePath()
 	// if err != nil {
@@ -115,7 +128,8 @@ func (g *GitCommands) Status(dirpath string, untracked bool) error {
 	// g.ui.Confidentialf("Execute command %s", command)
 	// result := command.Run()
 	r := runcmdWrapperRequest{
-		args: statusArguments(dirpath, untracked),
+		args:       statusArguments(untracked),
+		workingDir: dirpath,
 	}
 	result := g.executor.exec(r)
 	if !result.Success() {
@@ -133,14 +147,12 @@ func (g *GitCommands) Status(dirpath string, untracked bool) error {
 	return err
 }
 
-func statusArguments(dirpath string, untracked bool) []string {
+func statusArguments(untracked bool) []string {
 	untrackedFlag := "=no"
 	if untracked {
 		untrackedFlag = ""
 	}
 	args := []string{
-		fmt.Sprintf("--git-dir=%s/.git", dirpath),
-		fmt.Sprintf("--work-tree=%s", dirpath),
 		"status",
 		"--porcelain",
 		fmt.Sprintf("--untracked-files%s", untrackedFlag),
