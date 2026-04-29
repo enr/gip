@@ -2,11 +2,52 @@ package main
 
 import (
 	"flag"
+	"os/user"
+	"path/filepath"
 	"testing"
 
 	"github.com/enr/clui"
 	"github.com/urfave/cli/v2"
 )
+
+func TestProjectPath(t *testing.T) {
+	usr, err := user.Current()
+	if err != nil {
+		t.Fatalf("cannot get current user: %v", err)
+	}
+	home := usr.HomeDir
+
+	cases := []struct {
+		input   string
+		want    string
+		wantErr bool
+	}{
+		// bare ~ expands to home
+		{"~", home, false},
+		// ~/foo expands to home/foo
+		{"~/foo", filepath.Join(home, "foo"), false},
+		// ~bob/foo must NOT expand using current user's home
+		{"~bob/foo", "~bob/foo", false},
+		// ~stuff (no slash) must NOT expand
+		{"~stuff", "~stuff", false},
+		// absolute path passes through
+		{"/tmp/bar", "/tmp/bar", false},
+	}
+	for _, tc := range cases {
+		got, err := projectPath(tc.input)
+		if tc.wantErr && err == nil {
+			t.Errorf("projectPath(%q): expected error, got nil", tc.input)
+			continue
+		}
+		if !tc.wantErr && err != nil {
+			t.Errorf("projectPath(%q): unexpected error: %v", tc.input, err)
+			continue
+		}
+		if got != tc.want {
+			t.Errorf("projectPath(%q) = %q, want %q", tc.input, got, tc.want)
+		}
+	}
+}
 
 func TestRepoProviderSSHURL(t *testing.T) {
 	if ui == nil {

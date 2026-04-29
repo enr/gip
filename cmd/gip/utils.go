@@ -98,7 +98,7 @@ func projectsList(configurationPath string) ([]gipProject, error) {
 
 func projectPath(ppath string) (string, error) {
 	retpath := ppath
-	if strings.HasPrefix(ppath, "~") {
+	if ppath == "~" || strings.HasPrefix(ppath, "~/") {
 		usr, err := user.Current()
 		if err != nil {
 			return "", err
