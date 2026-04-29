@@ -57,5 +57,7 @@ func main() {
 
 	app.Commands = commands
 
-	app.Run(os.Args)
+	if err := app.Run(os.Args); err != nil {
+		os.Exit(1)
+	}
 }
