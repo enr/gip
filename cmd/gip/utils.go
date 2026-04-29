@@ -41,6 +41,17 @@ func (p *gipProject) repoProvider() string {
 		ui.Warnf(`No repository URL for project %s`, p.Name)
 		return ""
 	}
+	// SCP-style SSH URLs: [user@]host:path — not handled by url.Parse
+	if !strings.Contains(p.Repository, "://") {
+		if at := strings.Index(p.Repository, "@"); at >= 0 {
+			hostPath := p.Repository[at+1:]
+			if colon := strings.Index(hostPath, ":"); colon >= 0 {
+				return hostPath[:colon]
+			}
+		}
+		ui.Warnf(`Unable to detect provider for project %s using repository URL %s`, p.Name, p.Repository)
+		return ""
+	}
 	u, err := url.Parse(p.Repository)
 	if err != nil {
 		ui.Warnf(`Error parsing %s repository URL %s : %v`, p.Name, p.Repository, err)

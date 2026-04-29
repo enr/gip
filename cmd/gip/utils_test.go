@@ -8,6 +8,29 @@ import (
 	"github.com/urfave/cli/v2"
 )
 
+func TestRepoProviderSSHURL(t *testing.T) {
+	if ui == nil {
+		ui, _ = clui.NewClui(func(u *clui.Clui) {
+			u.VerbosityLevel = clui.VerbosityLevelLow
+		})
+	}
+	cases := []struct {
+		repo     string
+		expected string
+	}{
+		{"git@github.com:enr/gip.git", "github.com"},
+		{"git@gitlab.com:user/repo.git", "gitlab.com"},
+		{"https://github.com/enr/gip.git", "github.com"},
+	}
+	for _, tc := range cases {
+		p := &gipProject{Name: "test", Repository: tc.repo}
+		got := p.repoProvider()
+		if got != tc.expected {
+			t.Errorf("repoProvider(%q) = %q, want %q", tc.repo, got, tc.expected)
+		}
+	}
+}
+
 func TestConfigParsingYaml(t *testing.T) {
 	fp := "../../testdata/linux.yaml"
 	projects, err := projectsList(fp)
