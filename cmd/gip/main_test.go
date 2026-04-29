@@ -10,7 +10,7 @@ func TestMainExitCode_Failure(t *testing.T) {
 	// Build the binary
 	tmpDir := t.TempDir()
 	binPath := filepath.Join(tmpDir, "gip")
-	
+
 	buildCmd := exec.Command("go", "build", "-o", binPath)
 	buildCmd.Dir = filepath.Dir(binPath) // actually we need to run it in the package dir
 	buildCmd.Dir = "."
@@ -25,7 +25,7 @@ func TestMainExitCode_Failure(t *testing.T) {
 	if err == nil {
 		t.Fatalf("Expected command to fail and exit with non-zero status, but it succeeded (exit code 0)")
 	}
-	
+
 	// Check if the error is an ExitError (meaning non-zero exit code)
 	if exitErr, ok := err.(*exec.ExitError); ok {
 		if exitErr.ExitCode() == 0 {
