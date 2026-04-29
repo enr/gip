@@ -1,9 +1,11 @@
 package core
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"strings"
+	"sync"
 
 	"github.com/enr/clui"
 	"github.com/enr/go-commons/environment"
@@ -25,10 +27,11 @@ func NewGit(ui *clui.Clui) (*GitCommands, error) {
 type GitCommands struct {
 	ui       *clui.Clui
 	executor runcmdWrapper
+	outputMu sync.Mutex
 }
 
 // Clone executes `git clone`
-func (g *GitCommands) Clone(repourl string, dirpath string) error {
+func (g *GitCommands) Clone(ctx context.Context, repourl string, dirpath string) error {
 	var err error
 	if strings.HasPrefix(repourl, "-") {
 		return fmt.Errorf("invalid repourl: cannot start with '-'")
@@ -49,16 +52,8 @@ func (g *GitCommands) Clone(repourl string, dirpath string) error {
 		repourl,
 		dirpath,
 	}
-	// git, err := gitExecutablePath()
-	// if err != nil {
-	// 	return err
-	// }
-	// command := &runcmd.Command{
-	// 	Exe:  git,
-	// 	Args: args,
-	// }
-	// g.ui.Confidentialf("Execute command %s", command)
 	r := runcmdWrapperRequest{
+		ctx:  ctx,
 		args: args,
 	}
 	result := g.executor.exec(r)
@@ -68,13 +63,15 @@ func (g *GitCommands) Clone(repourl string, dirpath string) error {
 		err = result.Error()
 	}
 	gitOutput := result.Stdout().String()
+	g.outputMu.Lock()
 	g.ui.Title(dirpath)
 	fmt.Println(string(gitOutput))
+	g.outputMu.Unlock()
 	return err
 }
 
 // Pull executes `git pull`
-func (g *GitCommands) Pull(dirpath string) error {
+func (g *GitCommands) Pull(ctx context.Context, dirpath string) error {
 	var err error
 	if strings.HasPrefix(dirpath, "-") {
 		return fmt.Errorf("invalid dirpath: cannot start with '-'")
@@ -83,18 +80,8 @@ func (g *GitCommands) Pull(dirpath string) error {
 	args := []string{
 		"pull",
 	}
-	// git, err := gitExecutablePath()
-	// if err != nil {
-	// 	return err
-	// }
-	// command := &runcmd.Command{
-	// 	Exe:        git,
-	// 	Args:       args,
-	// 	WorkingDir: dirpath,
-	// }
-	// g.ui.Confidentialf("Execute command %s", command)
-	// result := command.Run()
 	r := runcmdWrapperRequest{
+		ctx:        ctx,
 		args:       args,
 		workingDir: dirpath,
 	}
@@ -105,29 +92,22 @@ func (g *GitCommands) Pull(dirpath string) error {
 		err = result.Error()
 	}
 	gitOutput := result.Stdout().String()
+	g.outputMu.Lock()
 	g.ui.Title(dirpath)
 	fmt.Println(string(gitOutput))
+	g.outputMu.Unlock()
 	return err
 }
 
 // Status executes `git status`
-func (g *GitCommands) Status(dirpath string, untracked bool) error {
+func (g *GitCommands) Status(ctx context.Context, dirpath string, untracked bool) error {
 	var err error
 	if strings.HasPrefix(dirpath, "-") {
 		return fmt.Errorf("invalid dirpath: cannot start with '-'")
 	}
 	g.ui.Confidentialf("Status on %s", dirpath)
-	// git, err := gitExecutablePath()
-	// if err != nil {
-	// 	return err
-	// }
-	// command := &runcmd.Command{
-	// 	Exe:  git,
-	// 	Args: statusArguments(dirpath, untracked),
-	// }
-	// g.ui.Confidentialf("Execute command %s", command)
-	// result := command.Run()
 	r := runcmdWrapperRequest{
+		ctx:        ctx,
 		args:       statusArguments(untracked),
 		workingDir: dirpath,
 	}
@@ -141,8 +121,10 @@ func (g *GitCommands) Status(dirpath string, untracked bool) error {
 	if len(gitOutput) == 0 {
 		g.ui.Confidentialf("%s unmodified", dirpath)
 	} else {
+		g.outputMu.Lock()
 		g.ui.Title(dirpath)
 		fmt.Println(string(gitOutput))
+		g.outputMu.Unlock()
 	}
 	return err
 }
@@ -163,7 +145,6 @@ func statusArguments(untracked bool) []string {
 func gitExecutablePath() (string, error) {
 	gitExecutable := environment.Which("git")
 	if gitExecutable == "" {
-		//ui.Errorf("git not found in path. exit\n")
 		return "", fmt.Errorf(`git executable not found`)
 	}
 	return gitExecutable, nil

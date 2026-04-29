@@ -2,8 +2,11 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"path/filepath"
+	"sync"
+	"time"
 
 	"github.com/enr/gip/lib/core"
 
@@ -17,12 +20,18 @@ var commands = []*cli.Command{
 	&commandPull,
 }
 
+var parallelFlags = []cli.Flag{
+	&cli.IntFlag{Name: "jobs", Aliases: []string{"j"}, Value: 4, Usage: "maximum number of repos to operate on concurrently"},
+	&cli.IntFlag{Name: "timeout", Aliases: []string{"t"}, Value: 0, Usage: "per-operation timeout in seconds (0 = no timeout)"},
+}
+
 var commandStatus = cli.Command{
 	Name:        "status",
 	Aliases:     []string{"s"},
 	Usage:       "",
 	Description: `Prints modified files.`,
 	Action:      doStatus,
+	Flags:       parallelFlags,
 }
 
 var commandStatusFull = cli.Command{
@@ -31,6 +40,7 @@ var commandStatusFull = cli.Command{
 	Usage:       "",
 	Description: `Prints modified files and new ones.`,
 	Action:      doStatusFull,
+	Flags:       parallelFlags,
 }
 
 var commandList = cli.Command{
@@ -46,9 +56,9 @@ var commandPull = cli.Command{
 	Usage:       "",
 	Description: `Pull projects`,
 	Action:      doPull,
-	Flags: []cli.Flag{
+	Flags: append(parallelFlags,
 		&cli.BoolFlag{Name: "all", Aliases: []string{"a"}, Usage: `Pull all registered projects doing a checkout if needed. Otherwise only the projects already present are updated.`},
-	},
+	),
 }
 
 func doStatus(c *cli.Context) error {
@@ -57,6 +67,15 @@ func doStatus(c *cli.Context) error {
 
 func doStatusFull(c *cli.Context) error {
 	return gitStatus(c, true)
+}
+
+// opContext builds a context for a single git operation, respecting --timeout.
+func opContext(c *cli.Context) (context.Context, context.CancelFunc) {
+	secs := c.Int("timeout")
+	if secs > 0 {
+		return context.WithTimeout(context.Background(), time.Duration(secs)*time.Second)
+	}
+	return context.Background(), func() {}
 }
 
 func gitStatus(c *cli.Context, untracked bool) error {
@@ -72,26 +91,48 @@ func gitStatus(c *cli.Context, untracked bool) error {
 	if err != nil {
 		return exitErrorf(1, "Error loading git: %v", err)
 	}
-	var line string
-	errors := map[string]error{}
-	for _, project := range projects {
-		line, err = projectPath(project.LocalPath)
-		if err != nil {
-			// return exitErrorf(1, "Error loading project %s: %v", project.Name, err)
-			errors[project.Name] = err
-			continue
-		}
-		if isProjectDir(line) {
-			err = git.Status(line, untracked)
-			if err != nil {
-				errors[project.Name] = err
-				continue
-			}
-		} else {
-			warnMissingDir(line)
-		}
+
+	jobs := c.Int("jobs")
+	if jobs < 1 {
+		jobs = 1
 	}
-	return buildError(errors)
+
+	var mu sync.Mutex
+	errs := map[string]error{}
+	sem := make(chan struct{}, jobs)
+	var wg sync.WaitGroup
+
+	for _, project := range projects {
+		project := project
+		wg.Add(1)
+		sem <- struct{}{}
+		go func() {
+			defer wg.Done()
+			defer func() { <-sem }()
+
+			line, err := projectPath(project.LocalPath)
+			if err != nil {
+				mu.Lock()
+				errs[project.Name] = err
+				mu.Unlock()
+				return
+			}
+			if isProjectDir(line) {
+				ctx, cancel := opContext(c)
+				defer cancel()
+				err = git.Status(ctx, line, untracked)
+				if err != nil {
+					mu.Lock()
+					errs[project.Name] = err
+					mu.Unlock()
+				}
+			} else {
+				warnMissingDir(line)
+			}
+		}()
+	}
+	wg.Wait()
+	return buildError(errs)
 }
 
 func buildError(errors map[string]error) error {
@@ -119,7 +160,6 @@ func doList(c *cli.Context) error {
 	for _, project := range projects {
 		localPath, err = projectPath(project.LocalPath)
 		if err != nil {
-			//return exitErrorf(1, "Error loading project %s: %v", project.Name, err)
 			errors[project.Name] = err
 			continue
 		}
@@ -151,36 +191,63 @@ func doPull(c *cli.Context) error {
 	if err != nil {
 		return exitErrorf(1, "Error loading git: %v", err)
 	}
-	errors := map[string]error{}
-	var line string
+
+	jobs := c.Int("jobs")
+	if jobs < 1 {
+		jobs = 1
+	}
+
+	var mu sync.Mutex
+	errs := map[string]error{}
+	sem := make(chan struct{}, jobs)
+	var wg sync.WaitGroup
+
 	for _, project := range projects {
+		project := project
 		if project.pullNever() {
 			ui.Confidentialf("Skip %s : pull policy never", project.Name)
 			continue
 		}
-		line, err = projectPath(project.LocalPath)
-		if err != nil {
-			// return exitErrorf(1, "Error loading project %s: %v", project.Name, err)
-			errors[project.Name] = err
-			continue
-		}
-		if !isProjectDir(line) {
-			warnMissingDir(line)
-			if all || project.pullAlways() {
-				err = git.Clone(project.Repository, line)
-				if err != nil {
-					errors[project.Name] = err
-				}
+
+		wg.Add(1)
+		sem <- struct{}{}
+		go func() {
+			defer wg.Done()
+			defer func() { <-sem }()
+
+			line, err := projectPath(project.LocalPath)
+			if err != nil {
+				mu.Lock()
+				errs[project.Name] = err
+				mu.Unlock()
+				return
 			}
-			continue
-		}
-		err = git.Pull(line)
-		if err != nil {
-			errors[project.Name] = err
-			continue
-		}
+			if !isProjectDir(line) {
+				warnMissingDir(line)
+				if all || project.pullAlways() {
+					ctx, cancel := opContext(c)
+					defer cancel()
+					err = git.Clone(ctx, project.Repository, line)
+					if err != nil {
+						mu.Lock()
+						errs[project.Name] = err
+						mu.Unlock()
+					}
+				}
+				return
+			}
+			ctx, cancel := opContext(c)
+			defer cancel()
+			err = git.Pull(ctx, line)
+			if err != nil {
+				mu.Lock()
+				errs[project.Name] = err
+				mu.Unlock()
+			}
+		}()
 	}
-	return buildError(errors)
+	wg.Wait()
+	return buildError(errs)
 }
 
 func warnMissingDir(dir string) {

@@ -1,6 +1,7 @@
 package core
 
 import (
+	"context"
 	"os"
 	"reflect"
 	"testing"
@@ -59,7 +60,7 @@ func TestGitCommands_Clone(t *testing.T) {
 				os.RemoveAll(tc.dirpath) // clean up before
 			}
 
-			err := gitCmd.Clone(tc.repourl, tc.dirpath)
+			err := gitCmd.Clone(context.Background(), tc.repourl, tc.dirpath)
 			if tc.expectedError {
 				if err == nil {
 					t.Fatalf("Expected error, got nil")
@@ -87,7 +88,7 @@ func TestGitCommands_Pull(t *testing.T) {
 		executor: mock,
 	}
 
-	err := gitCmd.Pull("/tmp/myrepo")
+	err := gitCmd.Pull(context.Background(), "/tmp/myrepo")
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)
 	}
@@ -104,7 +105,7 @@ func TestGitCommands_Pull(t *testing.T) {
 	}
 
 	// test option injection dirpath
-	err = gitCmd.Pull("--myrepo")
+	err = gitCmd.Pull(context.Background(), "--myrepo")
 	if err == nil {
 		t.Fatalf("Expected error for dirpath starting with -")
 	}
@@ -118,7 +119,7 @@ func TestGitCommands_Status(t *testing.T) {
 		executor: mock,
 	}
 
-	err := gitCmd.Status("/tmp/myrepo", false)
+	err := gitCmd.Status(context.Background(), "/tmp/myrepo", false)
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)
 	}
@@ -135,7 +136,7 @@ func TestGitCommands_Status(t *testing.T) {
 	}
 
 	// test option injection dirpath
-	err = gitCmd.Status("--myrepo", false)
+	err = gitCmd.Status(context.Background(), "--myrepo", false)
 	if err == nil {
 		t.Fatalf("Expected error for dirpath starting with -")
 	}

@@ -1,6 +1,7 @@
 package core
 
 import (
+	"context"
 	"fmt"
 	"testing"
 
@@ -27,7 +28,7 @@ func TestPullError(t *testing.T) {
 		ui:       clui.DefaultClui(),
 		executor: testGitWrapper{},
 	}
-	err := sut.Pull("dirpath")
+	err := sut.Pull(context.Background(), "dirpath")
 	if err == nil {
 		t.Errorf("Expected error in pull but got NIL")
 	}
@@ -41,7 +42,7 @@ func TestStatusError(t *testing.T) {
 		ui:       clui.DefaultClui(),
 		executor: testGitWrapper{},
 	}
-	err := sut.Status("dirpath", true)
+	err := sut.Status(context.Background(), "dirpath", true)
 	if err == nil {
 		t.Errorf("Expected error in pull but got NIL")
 	}
@@ -55,7 +56,7 @@ func TestCloneError(t *testing.T) {
 		ui:       clui.DefaultClui(),
 		executor: testGitWrapper{},
 	}
-	err := sut.Clone("repourl", "dirpath")
+	err := sut.Clone(context.Background(), "repourl", "dirpath")
 	if err == nil {
 		t.Errorf("Expected error in pull but got NIL")
 	}
