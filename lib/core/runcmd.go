@@ -50,7 +50,7 @@ type execResult struct {
 	err        error
 }
 
-func (r *execResult) Success() bool        { return r.err == nil }
+func (r *execResult) Success() bool         { return r.err == nil }
 func (r *execResult) Stdout() *bytes.Buffer { return &r.stdout }
 func (r *execResult) Stderr() *bytes.Buffer { return &r.stderr }
 func (r *execResult) ExitStatus() int       { return r.exitStatus }

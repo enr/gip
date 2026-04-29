@@ -155,4 +155,3 @@ func TestPullRespectsTimeout(t *testing.T) {
 		t.Fatalf("pull --timeout=1 took %v; expected < %v (timeout not respected)", elapsed, threshold)
 	}
 }
-
