@@ -262,8 +262,7 @@ func exitErrorf(exitCode int, template string, args ...interface{}) error {
 }
 
 func exitError(exitCode int, message string) error {
-	ui.Errorf(`Something gone wrong:`)
-	return cli.NewExitError(message, exitCode)
+	return cli.Exit(message, exitCode)
 }
 
 func configurationFilePath(c *cli.Context) (string, error) {

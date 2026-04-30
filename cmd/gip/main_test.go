@@ -125,6 +125,21 @@ func TestPullRunsInParallel(t *testing.T) {
 	}
 }
 
+// TestErrorOutputNoBanner verifies that when a command fails the output does not
+// contain the "Something gone wrong:" banner — only the actual error message.
+// This test fails before the fix that removes ui.Errorf from exitError.
+func TestErrorOutputNoBanner(t *testing.T) {
+	tmpDir := t.TempDir()
+	binPath := buildBinary(t, tmpDir)
+
+	cmd := exec.Command(binPath, "-f", "non_existent_config.yml", "status")
+	out, _ := cmd.CombinedOutput()
+
+	if bytes.Contains(out, []byte("Something gone wrong:")) {
+		t.Fatalf("error output contains noisy banner \"Something gone wrong:\"; output:\n%s", out)
+	}
+}
+
 // TestPullRespectsTimeout verifies that --timeout=N causes each git operation to be
 // killed after N seconds, so a hung remote does not stall the whole command.
 //
