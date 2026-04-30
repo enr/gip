@@ -6,14 +6,22 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 )
 
+func binaryName(name string) string {
+	if runtime.GOOS == "windows" {
+		return name + ".exe"
+	}
+	return name
+}
+
 func TestMainExitCode_Failure(t *testing.T) {
 	// Build the binary
 	tmpDir := t.TempDir()
-	binPath := filepath.Join(tmpDir, "gip")
+	binPath := filepath.Join(tmpDir, binaryName("gip"))
 
 	buildCmd := exec.Command("go", "build", "-o", binPath)
 	buildCmd.Dir = filepath.Dir(binPath) // actually we need to run it in the package dir
@@ -43,7 +51,7 @@ func TestMainExitCode_Failure(t *testing.T) {
 // buildBinary compiles the gip binary into tmpDir and returns its path.
 func buildBinary(t *testing.T, tmpDir string) string {
 	t.Helper()
-	binPath := filepath.Join(tmpDir, "gip")
+	binPath := filepath.Join(tmpDir, binaryName("gip"))
 	out, err := exec.Command("go", "build", "-o", binPath, ".").CombinedOutput()
 	if err != nil {
 		t.Fatalf("Failed to build gip: %v\n%s", err, out)
