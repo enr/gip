@@ -28,7 +28,7 @@ var parallelFlags = []cli.Flag{
 var commandStatus = cli.Command{
 	Name:        "status",
 	Aliases:     []string{"s"},
-	Usage:       "",
+	Usage:       "show modified files in projects",
 	Description: `Prints modified files.`,
 	Action:      doStatus,
 	Flags:       parallelFlags,
@@ -37,7 +37,7 @@ var commandStatus = cli.Command{
 var commandStatusFull = cli.Command{
 	Name:        "statusfull",
 	Aliases:     []string{"sf"},
-	Usage:       "",
+	Usage:       "show modified and new files in projects",
 	Description: `Prints modified files and new ones.`,
 	Action:      doStatusFull,
 	Flags:       parallelFlags,
@@ -46,14 +46,14 @@ var commandStatusFull = cli.Command{
 var commandList = cli.Command{
 	Name:        "list",
 	Aliases:     []string{"ls"},
-	Usage:       "",
+	Usage:       "list registered projects",
 	Description: `List projects`,
 	Action:      doList,
 }
 
 var commandPull = cli.Command{
 	Name:        "pull",
-	Usage:       "",
+	Usage:       "update projects from remote repositories",
 	Description: `Pull projects`,
 	Action:      doPull,
 	Flags: append(parallelFlags,

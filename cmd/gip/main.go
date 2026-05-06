@@ -1,7 +1,8 @@
 package main
 
 /*
->go run main.go commands.go version.go utils.go statusfull
+>go run main.go commands.go utils.go statusfull
+Version info is imported from github.com/enr/gip/lib/core
 */
 
 import (

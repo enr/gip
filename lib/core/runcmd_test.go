@@ -14,7 +14,7 @@ type testGitWrapper struct {
 }
 
 func (g testGitWrapper) exec(r runcmdWrapperRequest) runcmdResult {
-	return runcmdStubResult{
+	return &runcmdStubResult{
 		stdout:     `stdout`,
 		stderr:     `stderr`,
 		success:    false,
