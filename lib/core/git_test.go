@@ -15,7 +15,7 @@ type mockGitWrapper struct {
 
 func (m *mockGitWrapper) exec(r runcmdWrapperRequest) runcmdResult {
 	m.requests = append(m.requests, r)
-	return runcmdStubResult{success: true}
+	return &runcmdStubResult{success: true}
 }
 
 func TestGitCommands_Clone(t *testing.T) {
