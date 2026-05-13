@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"os"
 	"os/user"
 	"path/filepath"
 	"testing"
@@ -69,6 +70,34 @@ func TestRepoProviderSSHURL(t *testing.T) {
 		if got != tc.expected {
 			t.Errorf("repoProvider(%q) = %q, want %q", tc.repo, got, tc.expected)
 		}
+	}
+}
+
+func TestIsProjectDir(t *testing.T) {
+	// normal repo: .git is a directory
+	dirRepo := t.TempDir()
+	if err := os.Mkdir(filepath.Join(dirRepo, ".git"), 0755); err != nil {
+		t.Fatalf("mkdir .git: %v", err)
+	}
+	if !isProjectDir(dirRepo) {
+		t.Errorf("isProjectDir(%q): expected true for dir-based .git, got false", dirRepo)
+	}
+
+	// worktree/submodule: .git is a file
+	fileRepo := t.TempDir()
+	f, err := os.Create(filepath.Join(fileRepo, ".git"))
+	if err != nil {
+		t.Fatalf("create .git file: %v", err)
+	}
+	f.Close()
+	if !isProjectDir(fileRepo) {
+		t.Errorf("isProjectDir(%q): expected true for file-based .git (worktree/submodule), got false", fileRepo)
+	}
+
+	// not a repo: no .git at all
+	noRepo := t.TempDir()
+	if isProjectDir(noRepo) {
+		t.Errorf("isProjectDir(%q): expected false for dir without .git, got true", noRepo)
 	}
 }
 

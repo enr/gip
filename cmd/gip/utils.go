@@ -108,5 +108,5 @@ func projectPath(ppath string) (string, error) {
 }
 
 func isProjectDir(dirpath string) bool {
-	return files.IsDir(filepath.Join(dirpath, ".git"))
+	return files.Exists(filepath.Join(dirpath, ".git"))
 }
