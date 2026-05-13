@@ -26,11 +26,16 @@ type gipProject struct {
 }
 
 func (p *gipProject) pullNever() bool {
-	return "never" == strings.ToLower(strings.TrimSpace(p.PullPolicy))
+	return strings.EqualFold(strings.TrimSpace(p.PullPolicy), "never")
 }
 
 func (p *gipProject) pullAlways() bool {
-	return "always" == strings.ToLower(strings.TrimSpace(p.PullPolicy))
+	return strings.EqualFold(strings.TrimSpace(p.PullPolicy), "always")
+}
+
+func (p *gipProject) isValidPullPolicy() bool {
+	v := strings.TrimSpace(p.PullPolicy)
+	return v == "" || strings.EqualFold(v, "never") || strings.EqualFold(v, "always")
 }
 
 func (p *gipProject) repoProvider() string {
@@ -89,6 +94,11 @@ func projectsList(configurationPath string) ([]gipProject, error) {
 		ui.Errorf("Error reading configuration: %v", err)
 		ui.Lifecyclef("Check the format of %s: it should be Yaml or Json", configurationPath)
 		return projects, err
+	}
+	for _, p := range projects {
+		if !p.isValidPullPolicy() {
+			ui.Warnf("Project %q has unknown pull_policy %q (valid values: never, always)", p.Name, p.PullPolicy)
+		}
 	}
 	return projects, nil
 }

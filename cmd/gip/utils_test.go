@@ -123,6 +123,38 @@ func TestConfigParsingJson(t *testing.T) {
 	}
 }
 
+func TestPullPolicy(t *testing.T) {
+	cases := []struct {
+		policy    string
+		never     bool
+		always    bool
+		valid     bool
+	}{
+		{"never", true, false, true},
+		{"NEVER", true, false, true},
+		{" Never ", true, false, true},
+		{"always", false, true, true},
+		{"ALWAYS", false, true, true},
+		{" Always ", false, true, true},
+		{"", false, false, true},
+		{"nver", false, false, false},
+		{"allways", false, false, false},
+		{"unknown", false, false, false},
+	}
+	for _, tc := range cases {
+		p := &gipProject{PullPolicy: tc.policy}
+		if got := p.pullNever(); got != tc.never {
+			t.Errorf("pullNever(%q) = %v, want %v", tc.policy, got, tc.never)
+		}
+		if got := p.pullAlways(); got != tc.always {
+			t.Errorf("pullAlways(%q) = %v, want %v", tc.policy, got, tc.always)
+		}
+		if got := p.isValidPullPolicy(); got != tc.valid {
+			t.Errorf("isValidPullPolicy(%q) = %v, want %v", tc.policy, got, tc.valid)
+		}
+	}
+}
+
 func TestConfigurationFilePathMissing(t *testing.T) {
 	// Temporarily override HOME to an empty temp dir
 	// so that .gip is not found.
