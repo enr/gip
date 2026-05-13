@@ -10,12 +10,6 @@ github.com/enr/go-commons/environment
 # github.com/enr/go-files v0.3.0
 ## explicit; go 1.15
 github.com/enr/go-files/files
-# github.com/enr/runcmd v0.6.1
-## explicit; go 1.22
-github.com/enr/runcmd
-# github.com/extemporalgenome/slug v0.0.0-20150414033109-0320c85e32e0
-## explicit
-github.com/extemporalgenome/slug
 # github.com/mattn/go-colorable v0.1.14
 ## explicit; go 1.18
 github.com/mattn/go-colorable
@@ -28,29 +22,16 @@ github.com/mitchellh/go-homedir
 # github.com/russross/blackfriday/v2 v2.1.0
 ## explicit
 github.com/russross/blackfriday/v2
-# github.com/subosito/gotenv v1.6.0
-## explicit; go 1.18
-github.com/subosito/gotenv
 # github.com/urfave/cli/v2 v2.27.7
 ## explicit; go 1.18
 github.com/urfave/cli/v2
 # github.com/xrash/smetrics v0.0.0-20250705151800-55b8f293f342
 ## explicit; go 1.15
 github.com/xrash/smetrics
-# golang.org/x/sys v0.43.0
+# golang.org/x/sys v0.44.0
 ## explicit; go 1.25.0
 golang.org/x/sys/unix
 golang.org/x/sys/windows
-# golang.org/x/text v0.36.0
-## explicit; go 1.25.0
-golang.org/x/text/encoding
-golang.org/x/text/encoding/internal
-golang.org/x/text/encoding/internal/identifier
-golang.org/x/text/encoding/unicode
-golang.org/x/text/internal/utf8internal
-golang.org/x/text/runes
-golang.org/x/text/transform
-golang.org/x/text/unicode/norm
-# gopkg.in/yaml.v2 v2.4.0
-## explicit; go 1.15
-gopkg.in/yaml.v2
+# gopkg.in/yaml.v3 v3.0.1
+## explicit
+gopkg.in/yaml.v3

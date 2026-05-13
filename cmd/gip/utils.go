@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"io/ioutil"
 	"net/url"
 	"os"
 	"os/user"
@@ -10,11 +9,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	yaml "gopkg.in/yaml.v2"
+	yaml "gopkg.in/yaml.v3"
 
 	"github.com/enr/go-files/files"
-
-	"github.com/mitchellh/go-homedir"
 )
 
 const (
@@ -64,7 +61,7 @@ func (p *gipProject) repoProvider() string {
 }
 
 func defaultConfigurationFilePath() (string, error) {
-	home, err := homedir.Dir()
+	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", fmt.Errorf("Error retrieving user home: %v", err)
 	}
@@ -82,7 +79,7 @@ func normalizePath(dirpath string) string {
 
 func projectsList(configurationPath string) ([]gipProject, error) {
 	var projects []gipProject
-	bytes, err := ioutil.ReadFile(configurationPath)
+	bytes, err := os.ReadFile(configurationPath)
 	if err != nil {
 		ui.Errorf("Error reading %s: %v", configurationPath, err)
 		return projects, err
