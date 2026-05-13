@@ -3,7 +3,6 @@ package core
 import (
 	"context"
 	"fmt"
-	"os"
 	"strings"
 	"sync"
 
@@ -40,12 +39,6 @@ func (g *GitCommands) Clone(ctx context.Context, repourl string, dirpath string)
 		return fmt.Errorf("invalid dirpath: cannot start with '-'")
 	}
 	g.ui.Confidentialf("Cloning %s to %s", repourl, dirpath)
-	err = os.MkdirAll(dirpath, 0o755)
-	if err != nil {
-		g.ui.Errorf("Error preparing for clone path %s:", dirpath)
-		g.ui.Errorf("%v", err)
-		return err
-	}
 	args := []string{
 		"clone",
 		"--",
