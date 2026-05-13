@@ -65,7 +65,7 @@ func (g *GitCommands) Clone(ctx context.Context, repourl string, dirpath string)
 	gitOutput := result.Stdout().String()
 	g.outputMu.Lock()
 	g.ui.Title(dirpath)
-	fmt.Println(string(gitOutput))
+	g.ui.Lifecycle(gitOutput)
 	g.outputMu.Unlock()
 	return err
 }
@@ -94,7 +94,7 @@ func (g *GitCommands) Pull(ctx context.Context, dirpath string) error {
 	gitOutput := result.Stdout().String()
 	g.outputMu.Lock()
 	g.ui.Title(dirpath)
-	fmt.Println(string(gitOutput))
+	g.ui.Lifecycle(gitOutput)
 	g.outputMu.Unlock()
 	return err
 }
@@ -123,7 +123,7 @@ func (g *GitCommands) Status(ctx context.Context, dirpath string, untracked bool
 	} else {
 		g.outputMu.Lock()
 		g.ui.Title(dirpath)
-		fmt.Println(string(gitOutput))
+		g.ui.Lifecycle(gitOutput)
 		g.outputMu.Unlock()
 	}
 	return err
