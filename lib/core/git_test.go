@@ -18,6 +18,18 @@ func (m *mockGitWrapper) exec(r runcmdWrapperRequest) runcmdResult {
 	return &runcmdStubResult{success: true}
 }
 
+func TestNewGit_ReturnsNilOnError(t *testing.T) {
+	t.Setenv("PATH", "")
+	ui := clui.DefaultClui()
+	git, err := NewGit(ui)
+	if err == nil {
+		t.Fatal("expected error when git is not found, got nil")
+	}
+	if git != nil {
+		t.Fatalf("expected nil *GitCommands on error, got %v", git)
+	}
+}
+
 func TestGitCommands_Clone(t *testing.T) {
 	tests := []struct {
 		name          string

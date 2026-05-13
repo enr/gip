@@ -15,7 +15,7 @@ import (
 func NewGit(ui *clui.Clui) (*GitCommands, error) {
 	executor, err := newGitExecutor(ui)
 	if err != nil {
-		return &GitCommands{}, err
+		return nil, err
 	}
 	return &GitCommands{
 		ui:       ui,
