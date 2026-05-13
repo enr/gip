@@ -152,10 +152,10 @@ func TestConfigParsingJson(t *testing.T) {
 
 func TestPullPolicy(t *testing.T) {
 	cases := []struct {
-		policy    string
-		never     bool
-		always    bool
-		valid     bool
+		policy string
+		never  bool
+		always bool
+		valid  bool
 	}{
 		{"never", true, false, true},
 		{"NEVER", true, false, true},
