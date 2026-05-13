@@ -79,12 +79,12 @@ func normalizePath(dirpath string) string {
 
 func projectsList(configurationPath string) ([]gipProject, error) {
 	var projects []gipProject
-	bytes, err := os.ReadFile(configurationPath)
+	data, err := os.ReadFile(configurationPath)
 	if err != nil {
 		ui.Errorf("Error reading %s: %v", configurationPath, err)
 		return projects, err
 	}
-	err = yaml.Unmarshal(bytes, &projects)
+	err = yaml.Unmarshal(data, &projects)
 	if err != nil {
 		ui.Errorf("Error reading configuration: %v", err)
 		ui.Lifecyclef("Check the format of %s: it should be Yaml or Json", configurationPath)
