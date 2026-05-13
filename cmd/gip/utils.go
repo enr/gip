@@ -40,7 +40,6 @@ func (p *gipProject) isValidPullPolicy() bool {
 
 func (p *gipProject) repoProvider() string {
 	if p.Repository == "" {
-		ui.Warnf(`No repository URL for project %s`, p.Name)
 		return ""
 	}
 	// SCP-style SSH URLs: [user@]host:path — not handled by url.Parse
@@ -51,16 +50,11 @@ func (p *gipProject) repoProvider() string {
 				return hostPath[:colon]
 			}
 		}
-		ui.Warnf(`Unable to detect provider for project %s using repository URL %s`, p.Name, p.Repository)
 		return ""
 	}
 	u, err := url.Parse(p.Repository)
 	if err != nil {
-		ui.Warnf(`Error parsing %s repository URL %s : %v`, p.Name, p.Repository, err)
 		return ""
-	}
-	if u.Host == "" {
-		ui.Warnf(`Unable to detect provider for project %s using repository URL %s`, p.Name, p.Repository)
 	}
 	return u.Host
 }
@@ -98,6 +92,11 @@ func projectsList(configurationPath string) ([]gipProject, error) {
 	for _, p := range projects {
 		if !p.isValidPullPolicy() {
 			ui.Warnf("Project %q has unknown pull_policy %q (valid values: never, always)", p.Name, p.PullPolicy)
+		}
+		if p.Repository == "" {
+			ui.Warnf(`No repository URL for project %s`, p.Name)
+		} else if p.repoProvider() == "" {
+			ui.Warnf(`Unable to detect provider for project %s using repository URL %s`, p.Name, p.Repository)
 		}
 	}
 	return projects, nil

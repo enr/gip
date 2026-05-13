@@ -50,12 +50,7 @@ func TestProjectPath(t *testing.T) {
 	}
 }
 
-func TestRepoProviderSSHURL(t *testing.T) {
-	if ui == nil {
-		ui, _ = clui.NewClui(func(u *clui.Clui) {
-			u.VerbosityLevel = clui.VerbosityLevelLow
-		})
-	}
+func TestRepoProvider(t *testing.T) {
 	cases := []struct {
 		repo     string
 		expected string
@@ -63,6 +58,10 @@ func TestRepoProviderSSHURL(t *testing.T) {
 		{"git@github.com:enr/gip.git", "github.com"},
 		{"git@gitlab.com:user/repo.git", "gitlab.com"},
 		{"https://github.com/enr/gip.git", "github.com"},
+		// empty repo → empty provider, no panic
+		{"", ""},
+		// SCP URL without @ → undetectable, empty
+		{"github.com:enr/gip.git", ""},
 	}
 	for _, tc := range cases {
 		p := &gipProject{Name: "test", Repository: tc.repo}
@@ -70,6 +69,34 @@ func TestRepoProviderSSHURL(t *testing.T) {
 		if got != tc.expected {
 			t.Errorf("repoProvider(%q) = %q, want %q", tc.repo, got, tc.expected)
 		}
+	}
+}
+
+func TestProjectsListRepoValidation(t *testing.T) {
+	if ui == nil {
+		ui, _ = clui.NewClui(func(u *clui.Clui) {
+			u.VerbosityLevel = clui.VerbosityLevelLow
+		})
+	}
+	f, err := os.CreateTemp("", "gip-test-*.yaml")
+	if err != nil {
+		t.Fatalf("create temp file: %v", err)
+	}
+	defer os.Remove(f.Name())
+	_, _ = f.WriteString("- name: norepo\n  local_path: /tmp/norepo\n")
+	f.Close()
+
+	projects, err := projectsList(f.Name())
+	if err != nil {
+		t.Fatalf("projectsList: %v", err)
+	}
+	if len(projects) != 1 {
+		t.Fatalf("expected 1 project, got %d", len(projects))
+	}
+	// The test just verifies projectsList succeeds; the warning fires
+	// at load time rather than at list/display time (the core fix).
+	if projects[0].repoProvider() != "" {
+		t.Errorf("expected empty provider for project with no repository, got %q", projects[0].repoProvider())
 	}
 }
 
