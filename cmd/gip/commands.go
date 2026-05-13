@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
+	"sort"
 	"sync"
 	"time"
 
@@ -139,9 +140,14 @@ func buildError(errors map[string]error) error {
 	if len(errors) == 0 {
 		return nil
 	}
+	keys := make([]string, 0, len(errors))
+	for k := range errors {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
 	var buffer bytes.Buffer
-	for key, value := range errors {
-		buffer.WriteString(fmt.Sprintf("- %s: %v\n", key, value))
+	for _, key := range keys {
+		buffer.WriteString(fmt.Sprintf("- %s: %v\n", key, errors[key]))
 	}
 	return exitError(1, buffer.String())
 }
