@@ -161,6 +161,130 @@ func makeConfigWithTags(t *testing.T, path string, entries []struct {
 	}
 }
 
+// TestListTabular verifies that `gip list` outputs a table with headers.
+func TestListTabular(t *testing.T) {
+	tmpDir := t.TempDir()
+	binPath := buildBinary(t, tmpDir)
+
+	repo1 := filepath.Join(tmpDir, "alpha")
+	makeGitRepo(t, repo1)
+
+	configPath := filepath.Join(tmpDir, ".gip")
+	makeConfig(t, configPath, []string{repo1})
+
+	cmd := exec.Command(binPath, "-f", configPath, "list")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("list failed: %v\nOutput: %s", err, out)
+	}
+	for _, col := range []string{"NAME", "PATH", "POLICY", "PROVIDER"} {
+		if !bytes.Contains(out, []byte(col)) {
+			t.Errorf("expected column header %q in list output:\n%s", col, out)
+		}
+	}
+	if !bytes.Contains(out, []byte("alpha")) {
+		t.Errorf("expected repo name 'alpha' in list output:\n%s", out)
+	}
+	if !bytes.Contains(out, []byte("default")) {
+		t.Errorf("expected 'default' policy in list output:\n%s", out)
+	}
+}
+
+// TestNoopFlag verifies that --noop prints dry-run lines and exits 0 without executing.
+func TestNoopFlag(t *testing.T) {
+	tmpDir := t.TempDir()
+	binPath := buildBinary(t, tmpDir)
+
+	// Use a slow fake git: if noop works correctly it will NOT be called.
+	makeSlowGit(t, tmpDir, 10)
+	repo1 := filepath.Join(tmpDir, "repo1")
+	makeGitRepo(t, repo1)
+
+	configPath := filepath.Join(tmpDir, ".gip")
+	makeConfig(t, configPath, []string{repo1})
+
+	t.Setenv("PATH", tmpDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	start := time.Now()
+	cmd := exec.Command(binPath, "--noop", "-f", configPath, "pull")
+	out, err := cmd.CombinedOutput()
+	elapsed := time.Since(start)
+
+	if err != nil {
+		t.Fatalf("--noop pull failed: %v\nOutput: %s", err, out)
+	}
+	// Should complete fast (no git call)
+	if elapsed > 2*time.Second {
+		t.Fatalf("--noop took %v; expected near-instant (no git executed)", elapsed)
+	}
+	if !bytes.Contains(out, []byte("[DRY-RUN]")) {
+		t.Fatalf("expected [DRY-RUN] in output:\n%s", out)
+	}
+	if !bytes.Contains(out, []byte("DRY-RUN —")) {
+		t.Fatalf("expected noop note in summary:\n%s", out)
+	}
+}
+
+// TestAutoConfigDetection verifies UX-06: .gip in current dir is used automatically.
+func TestAutoConfigDetection(t *testing.T) {
+	tmpDir := t.TempDir()
+	binPath := buildBinary(t, tmpDir)
+	makeSlowGit(t, tmpDir, 0)
+
+	repo1 := filepath.Join(tmpDir, "repo1")
+	makeGitRepo(t, repo1)
+
+	// Write config as .gip in a subdirectory (simulates working directory)
+	workDir := filepath.Join(tmpDir, "workspace")
+	if err := os.MkdirAll(workDir, 0755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	configPath := filepath.Join(workDir, ".gip")
+	makeConfig(t, configPath, []string{repo1})
+
+	t.Setenv("PATH", tmpDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	// Clear GIP_FILE so it doesn't interfere
+	t.Setenv("GIP_FILE", "")
+	// Point HOME to a temp dir without .gip so only local .gip is found
+	t.Setenv("HOME", tmpDir)
+
+	// Run from workDir (where .gip lives) without -f flag
+	cmd := exec.Command(binPath, "list")
+	cmd.Dir = workDir
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("list without -f failed: %v\nOutput: %s", err, out)
+	}
+	if !bytes.Contains(out, []byte("repo1")) {
+		t.Fatalf("expected 'repo1' from auto-detected config:\n%s", out)
+	}
+}
+
+// TestGIPFILEEnv verifies UX-06: GIP_FILE env var is respected.
+func TestGIPFILEEnv(t *testing.T) {
+	tmpDir := t.TempDir()
+	binPath := buildBinary(t, tmpDir)
+	makeSlowGit(t, tmpDir, 0)
+
+	repo1 := filepath.Join(tmpDir, "repo1")
+	makeGitRepo(t, repo1)
+
+	configPath := filepath.Join(tmpDir, "custom.yaml")
+	makeConfig(t, configPath, []string{repo1})
+
+	t.Setenv("GIP_FILE", configPath)
+	t.Setenv("PATH", tmpDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	cmd := exec.Command(binPath, "list") // no -f flag
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("list with GIP_FILE failed: %v\nOutput: %s", err, out)
+	}
+	if !bytes.Contains(out, []byte("repo1")) {
+		t.Fatalf("expected 'repo1' from GIP_FILE config:\n%s", out)
+	}
+}
+
 // TestSummaryPrinted verifies that UX-01 summary line appears at end of command output.
 func TestSummaryPrinted(t *testing.T) {
 	tmpDir := t.TempDir()

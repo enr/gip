@@ -61,16 +61,39 @@ func (p *gipProject) repoProvider() string {
 }
 
 func defaultConfigurationFilePath() (string, error) {
+	// 1. GIP_FILE environment variable
+	if envPath := os.Getenv("GIP_FILE"); envPath != "" {
+		abs, err := filepath.Abs(envPath)
+		if err != nil {
+			return "", fmt.Errorf("invalid GIP_FILE value: %v", err)
+		}
+		if !files.Exists(abs) {
+			return "", fmt.Errorf("GIP_FILE path %s not found", abs)
+		}
+		ui.Confidentialf("Using configuration file from GIP_FILE: %s", abs)
+		return abs, nil
+	}
+
+	// 2. .gip in current working directory
+	if cwd, err := os.Getwd(); err == nil {
+		local := filepath.Join(cwd, configFileBaseName)
+		if files.Exists(local) {
+			ui.Confidentialf("Using local configuration file: %s", local)
+			return local, nil
+		}
+	}
+
+	// 3. ~/.gip
 	home, err := os.UserHomeDir()
 	if err != nil {
-		return "", fmt.Errorf("Error retrieving user home: %v", err)
+		return "", fmt.Errorf("error retrieving user home: %v", err)
 	}
-	configurationFile := filepath.Join(home, configFileBaseName)
-	ui.Confidentialf("Using configuration file %s", configurationFile)
-	if !files.Exists(configurationFile) {
-		return "", fmt.Errorf("Configuration file %s not found", configurationFile)
+	configFile := filepath.Join(home, configFileBaseName)
+	ui.Confidentialf("Using configuration file %s", configFile)
+	if !files.Exists(configFile) {
+		return "", fmt.Errorf("configuration file not found (searched: ./.gip, %s)", configFile)
 	}
-	return configurationFile, nil
+	return configFile, nil
 }
 
 func normalizePath(dirpath string) string {

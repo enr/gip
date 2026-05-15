@@ -70,7 +70,7 @@ var commandList = cli.Command{
 	Name:        "list",
 	Aliases:     []string{"ls"},
 	Usage:       "list registered projects",
-	Description: `List projects`,
+	Description: `List projects in a table with name, path, policy, provider and tags.`,
 	Action:      doList,
 	Flags:       []cli.Flag{tagFlag},
 }
@@ -167,6 +167,11 @@ func gitStatus(c *cli.Context, untracked bool) error {
 	sem := make(chan struct{}, jobs)
 	var wg sync.WaitGroup
 
+	untrackedFlag := "--untracked-files=no"
+	if untracked {
+		untrackedFlag = "--untracked-files"
+	}
+
 	for _, project := range projects {
 		project := project
 		wg.Add(1)
@@ -180,17 +185,22 @@ func gitStatus(c *cli.Context, untracked bool) error {
 				t.record(opResult{project: project.Name, status: opError, err: err})
 				return
 			}
-			if isProjectDir(line) {
-				ctx, cancel := opContext(c)
-				defer cancel()
-				if err = git.Status(ctx, line, untracked); err != nil {
-					t.record(opResult{project: project.Name, status: opError, err: err})
-				} else {
-					t.record(opResult{project: project.Name, status: opOK})
-				}
-			} else {
+			if !isProjectDir(line) {
 				warnMissingDir(line)
 				t.record(opResult{project: project.Name, status: opSkipped, reason: "not a project dir"})
+				return
+			}
+			if noopMode {
+				t.printNoop("%s → git status --porcelain %s  (in %s)", project.Name, untrackedFlag, line)
+				t.record(opResult{project: project.Name, status: opOK})
+				return
+			}
+			ctx, cancel := opContext(c)
+			defer cancel()
+			if err = git.Status(ctx, line, untracked); err != nil {
+				t.record(opResult{project: project.Name, status: opError, err: err})
+			} else {
+				t.record(opResult{project: project.Name, status: opOK})
 			}
 		}()
 	}
@@ -215,6 +225,12 @@ func buildError(errors map[string]error) error {
 	return exitError(1, buffer.String())
 }
 
+// listRow holds the display data for one project in the list table.
+type listRow struct {
+	name, path, policy, provider, tags string
+	pathErr                            error
+}
+
 func doList(c *cli.Context) error {
 	configurationFile, err := configurationFilePath(c)
 	if err != nil {
@@ -225,20 +241,58 @@ func doList(c *cli.Context) error {
 		return exitErrorf(1, "Error loading projects list: %v", err)
 	}
 	projects = filterByTag(projects, c.String("tag"))
-	errors := map[string]error{}
+
+	hasTags := false
+	rows := make([]listRow, 0, len(projects))
+	errs := map[string]error{}
+
 	for _, project := range projects {
+		policy := project.PullPolicy
+		if policy == "" {
+			policy = "default"
+		}
+		provider := project.repoProvider()
+		if provider == "" {
+			provider = "—"
+		}
+		tags := "—"
+		if len(project.Tags) > 0 {
+			hasTags = true
+			tags = strings.Join(project.Tags, ", ")
+		}
+
 		localPath, err := projectPath(project.LocalPath)
 		if err != nil {
-			errors[project.Name] = err
+			errs[project.Name] = err
+			rows = append(rows, listRow{
+				name: project.Name, path: project.LocalPath + " (ERROR)",
+				policy: policy, provider: provider, tags: tags, pathErr: err,
+			})
 			continue
 		}
-		if isProjectDir(localPath) {
-			ui.Lifecyclef("- %s - %s (%s)", project.Name, localPath, project.repoProvider())
-		} else {
-			warnMissingDir(localPath)
+		if !isProjectDir(localPath) {
+			localPath += " (missing)"
+		}
+		rows = append(rows, listRow{
+			name: project.Name, path: localPath,
+			policy: policy, provider: provider, tags: tags,
+		})
+	}
+
+	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+	if hasTags {
+		fmt.Fprintln(w, "NAME\tPATH\tPOLICY\tPROVIDER\tTAGS")
+		for _, r := range rows {
+			fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n", r.name, r.path, r.policy, r.provider, r.tags)
+		}
+	} else {
+		fmt.Fprintln(w, "NAME\tPATH\tPOLICY\tPROVIDER")
+		for _, r := range rows {
+			fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", r.name, r.path, r.policy, r.provider)
 		}
 	}
-	return buildError(errors)
+	w.Flush()
+	return buildError(errs)
 }
 
 func doPull(c *cli.Context) error {
@@ -281,6 +335,9 @@ func doPull(c *cli.Context) error {
 
 			if project.pullNever() {
 				ui.Confidentialf("Skip %s : pull policy never", project.Name)
+				if noopMode {
+					t.printNoop("%s → SALTATO  (pull_policy: never)", project.Name)
+				}
 				t.record(opResult{project: project.Name, status: opSkipped, reason: "pull_policy: never"})
 				return
 			}
@@ -293,6 +350,11 @@ func doPull(c *cli.Context) error {
 			if !isProjectDir(line) {
 				warnMissingDir(line)
 				if all || project.pullAlways() {
+					if noopMode {
+						t.printNoop("%s → git clone %s %s", project.Name, project.Repository, line)
+						t.record(opResult{project: project.Name, status: opOK})
+						return
+					}
 					ctx, cancel := opContext(c)
 					defer cancel()
 					if err = git.Clone(ctx, project.Repository, line); err != nil {
@@ -301,8 +363,16 @@ func doPull(c *cli.Context) error {
 						t.record(opResult{project: project.Name, status: opOK})
 					}
 				} else {
+					if noopMode {
+						t.printNoop("%s → SALTATO  (directory mancante)", project.Name)
+					}
 					t.record(opResult{project: project.Name, status: opSkipped, reason: "local dir missing"})
 				}
+				return
+			}
+			if noopMode {
+				t.printNoop("%s → git pull  (in %s)", project.Name, line)
+				t.record(opResult{project: project.Name, status: opOK})
 				return
 			}
 			ctx, cancel := opContext(c)
@@ -353,6 +423,9 @@ func doFetch(c *cli.Context) error {
 
 			if project.pullNever() {
 				ui.Confidentialf("Skip %s : pull policy never", project.Name)
+				if noopMode {
+					t.printNoop("%s → SALTATO  (pull_policy: never)", project.Name)
+				}
 				t.record(opResult{project: project.Name, status: opSkipped, reason: "pull_policy: never"})
 				return
 			}
@@ -362,17 +435,25 @@ func doFetch(c *cli.Context) error {
 				t.record(opResult{project: project.Name, status: opError, err: err})
 				return
 			}
-			if isProjectDir(line) {
-				ctx, cancel := opContext(c)
-				defer cancel()
-				if err = git.Fetch(ctx, line); err != nil {
-					t.record(opResult{project: project.Name, status: opError, err: err})
-				} else {
-					t.record(opResult{project: project.Name, status: opOK})
-				}
-			} else {
+			if !isProjectDir(line) {
 				warnMissingDir(line)
+				if noopMode {
+					t.printNoop("%s → SALTATO  (directory mancante)", project.Name)
+				}
 				t.record(opResult{project: project.Name, status: opSkipped, reason: "local dir missing"})
+				return
+			}
+			if noopMode {
+				t.printNoop("%s → git fetch --all --prune  (in %s)", project.Name, line)
+				t.record(opResult{project: project.Name, status: opOK})
+				return
+			}
+			ctx, cancel := opContext(c)
+			defer cancel()
+			if err = git.Fetch(ctx, line); err != nil {
+				t.record(opResult{project: project.Name, status: opError, err: err})
+			} else {
+				t.record(opResult{project: project.Name, status: opOK})
 			}
 		}()
 	}
@@ -433,7 +514,17 @@ func doBranch(c *cli.Context) error {
 				return
 			}
 			entry.path = line
-			if isProjectDir(line) {
+			if !isProjectDir(line) {
+				entry.branch = "(missing)"
+				if noopMode {
+					t.printNoop("%s → SALTATO  (directory mancante)", project.Name)
+				}
+				t.record(opResult{project: project.Name, status: opSkipped, reason: "local dir missing"})
+			} else if noopMode {
+				t.printNoop("%s → git rev-parse --abbrev-ref HEAD  (in %s)", project.Name, line)
+				entry.branch = "(noop)"
+				t.record(opResult{project: project.Name, status: opOK})
+			} else {
 				ctx, cancel := opContext(c)
 				defer cancel()
 				entry.branch, entry.err = git.CurrentBranch(ctx, line)
@@ -442,9 +533,6 @@ func doBranch(c *cli.Context) error {
 				} else {
 					t.record(opResult{project: project.Name, status: opOK})
 				}
-			} else {
-				entry.branch = "(missing)"
-				t.record(opResult{project: project.Name, status: opSkipped, reason: "local dir missing"})
 			}
 			entriesMu.Lock()
 			entries = append(entries, entry)
@@ -511,17 +599,25 @@ func doExec(c *cli.Context) error {
 				t.record(opResult{project: project.Name, status: opError, err: err})
 				return
 			}
-			if isProjectDir(line) {
-				ctx, cancel := opContext(c)
-				defer cancel()
-				if err = runner.Run(ctx, line, cmdName, cmdArgs); err != nil {
-					t.record(opResult{project: project.Name, status: opError, err: err})
-				} else {
-					t.record(opResult{project: project.Name, status: opOK})
-				}
-			} else {
+			if !isProjectDir(line) {
 				warnMissingDir(line)
+				if noopMode {
+					t.printNoop("%s → SALTATO  (directory mancante)", project.Name)
+				}
 				t.record(opResult{project: project.Name, status: opSkipped, reason: "not a project dir"})
+				return
+			}
+			if noopMode {
+				t.printNoop("%s → %s %s  (in %s)", project.Name, cmdName, strings.Join(cmdArgs, " "), line)
+				t.record(opResult{project: project.Name, status: opOK})
+				return
+			}
+			ctx, cancel := opContext(c)
+			defer cancel()
+			if err = runner.Run(ctx, line, cmdName, cmdArgs); err != nil {
+				t.record(opResult{project: project.Name, status: opError, err: err})
+			} else {
+				t.record(opResult{project: project.Name, status: opOK})
 			}
 		}()
 	}

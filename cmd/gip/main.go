@@ -24,6 +24,7 @@ Build date: %s
 	appVersion        = fmt.Sprintf(versionTemplate, core.Version, core.GitCommit, core.BuildTime)
 	ignoreMissingDirs bool
 	quietMode         bool
+	noopMode          bool
 )
 
 func main() {
@@ -36,6 +37,7 @@ func main() {
 		&cli.BoolFlag{Name: "debug", Aliases: []string{"d"}, Usage: "operates in debug mode: lot of output"},
 		&cli.BoolFlag{Name: "quiet", Aliases: []string{"q"}, Usage: "operates in quiet mode"},
 		&cli.BoolFlag{Name: "ignore-missing", Aliases: []string{"m"}, Usage: "ignores missing local directories, otherwise prints a warn"},
+		&cli.BoolFlag{Name: "noop", Usage: "dry-run: print what would be done without executing any git command"},
 	}
 	app.EnableBashCompletion = true
 
@@ -55,6 +57,7 @@ func main() {
 		})
 		ignoreMissingDirs = c.Bool("m")
 		quietMode = c.Bool("quiet")
+		noopMode = c.Bool("noop")
 		return nil
 	}
 

@@ -218,6 +218,74 @@ func TestFilterByTag(t *testing.T) {
 	}
 }
 
+func TestDefaultConfigFileCascade(t *testing.T) {
+	// Initialize ui to avoid panics
+	if ui == nil {
+		ui, _ = clui.NewClui(func(u *clui.Clui) { u.VerbosityLevel = clui.VerbosityLevelLow })
+	}
+
+	t.Run("GIP_FILE takes precedence over local .gip", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		envFile := filepath.Join(tmpDir, "env.yaml")
+		if err := os.WriteFile(envFile, []byte("[]"), 0644); err != nil {
+			t.Fatal(err)
+		}
+		localFile := filepath.Join(tmpDir, ".gip")
+		if err := os.WriteFile(localFile, []byte("[]"), 0644); err != nil {
+			t.Fatal(err)
+		}
+		t.Setenv("GIP_FILE", envFile)
+		t.Chdir(tmpDir)
+
+		got, err := defaultConfigurationFilePath()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got != envFile {
+			t.Errorf("got %q, want %q", got, envFile)
+		}
+	})
+
+	t.Run("local .gip found before ~/.gip", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		localFile := filepath.Join(tmpDir, ".gip")
+		if err := os.WriteFile(localFile, []byte("[]"), 0644); err != nil {
+			t.Fatal(err)
+		}
+		t.Setenv("GIP_FILE", "")
+		t.Setenv("HOME", t.TempDir()) // home has no .gip
+		t.Chdir(tmpDir)
+
+		got, err := defaultConfigurationFilePath()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got != localFile {
+			t.Errorf("got %q, want %q", got, localFile)
+		}
+	})
+
+	t.Run("falls back to ~/.gip when no local file", func(t *testing.T) {
+		emptyDir := t.TempDir()
+		homeDir := t.TempDir()
+		homeFile := filepath.Join(homeDir, ".gip")
+		if err := os.WriteFile(homeFile, []byte("[]"), 0644); err != nil {
+			t.Fatal(err)
+		}
+		t.Setenv("GIP_FILE", "")
+		t.Setenv("HOME", homeDir)
+		t.Chdir(emptyDir)
+
+		got, err := defaultConfigurationFilePath()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got != homeFile {
+			t.Errorf("got %q, want %q", got, homeFile)
+		}
+	})
+}
+
 func TestConfigurationFilePathMissing(t *testing.T) {
 	// Temporarily override HOME to an empty temp dir
 	// so that .gip is not found.

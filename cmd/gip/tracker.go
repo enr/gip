@@ -48,6 +48,13 @@ func newTracker(total int) *tracker {
 	}
 }
 
+// printNoop prints a dry-run description line in a thread-safe way.
+func (t *tracker) printNoop(format string, args ...interface{}) {
+	t.mu.Lock()
+	fmt.Fprintf(os.Stdout, "[DRY-RUN] "+format+"\n", args...)
+	t.mu.Unlock()
+}
+
 // record stores the result of one project operation and redraws the progress bar.
 func (t *tracker) record(r opResult) {
 	t.mu.Lock()
@@ -102,6 +109,9 @@ func (t *tracker) printSummary(errorsLast bool) {
 	skipStr := t.color(ansiYellow, fmt.Sprintf("Saltati: %d", skipCount))
 	fmt.Fprintf(os.Stdout, "─────────────────────────────────────────\n")
 	fmt.Fprintf(os.Stdout, "%s   %s   %s   Durata: %.1fs\n", okStr, errStr, skipStr, elapsed.Seconds())
+	if noopMode {
+		fmt.Fprintf(os.Stdout, "DRY-RUN — nessuna operazione eseguita. Rimuovi --noop per procedere.\n")
+	}
 
 	if errorsLast && len(errEntries) > 0 {
 		fmt.Fprintf(os.Stdout, "\n── Errori ────────────────────────────────\n")
