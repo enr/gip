@@ -25,10 +25,16 @@ var tagFlag = &cli.StringFlag{
 	Usage: "filter projects by tag (comma-separated, OR logic): --tag work,js",
 }
 
+var errorsLastFlag = &cli.BoolFlag{
+	Name:  "errors-last",
+	Usage: "print a grouped error section after the summary",
+}
+
 var parallelFlags = []cli.Flag{
 	&cli.IntFlag{Name: "jobs", Aliases: []string{"j"}, Value: 4, Usage: "maximum number of repos to operate on concurrently"},
 	&cli.IntFlag{Name: "timeout", Aliases: []string{"t"}, Value: 0, Usage: "per-operation timeout in seconds (0 = no timeout)"},
 	tagFlag,
+	errorsLastFlag,
 }
 
 var commands = []*cli.Command{
@@ -157,8 +163,7 @@ func gitStatus(c *cli.Context, untracked bool) error {
 		jobs = 1
 	}
 
-	var mu sync.Mutex
-	errs := map[string]error{}
+	t := newTracker(len(projects))
 	sem := make(chan struct{}, jobs)
 	var wg sync.WaitGroup
 
@@ -172,27 +177,26 @@ func gitStatus(c *cli.Context, untracked bool) error {
 
 			line, err := projectPath(project.LocalPath)
 			if err != nil {
-				mu.Lock()
-				errs[project.Name] = err
-				mu.Unlock()
+				t.record(opResult{project: project.Name, status: opError, err: err})
 				return
 			}
 			if isProjectDir(line) {
 				ctx, cancel := opContext(c)
 				defer cancel()
-				err = git.Status(ctx, line, untracked)
-				if err != nil {
-					mu.Lock()
-					errs[project.Name] = err
-					mu.Unlock()
+				if err = git.Status(ctx, line, untracked); err != nil {
+					t.record(opResult{project: project.Name, status: opError, err: err})
+				} else {
+					t.record(opResult{project: project.Name, status: opOK})
 				}
 			} else {
 				warnMissingDir(line)
+				t.record(opResult{project: project.Name, status: opSkipped, reason: "not a project dir"})
 			}
 		}()
 	}
 	wg.Wait()
-	return buildError(errs)
+	t.printSummary(c.Bool("errors-last"))
+	return buildError(t.errors())
 }
 
 func buildError(errors map[string]error) error {
@@ -263,29 +267,27 @@ func doPull(c *cli.Context) error {
 		jobs = 1
 	}
 
-	var mu sync.Mutex
-	errs := map[string]error{}
+	t := newTracker(len(projects))
 	sem := make(chan struct{}, jobs)
 	var wg sync.WaitGroup
 
 	for _, project := range projects {
 		project := project
-		if project.pullNever() {
-			ui.Confidentialf("Skip %s : pull policy never", project.Name)
-			continue
-		}
-
 		wg.Add(1)
 		sem <- struct{}{}
 		go func() {
 			defer wg.Done()
 			defer func() { <-sem }()
 
+			if project.pullNever() {
+				ui.Confidentialf("Skip %s : pull policy never", project.Name)
+				t.record(opResult{project: project.Name, status: opSkipped, reason: "pull_policy: never"})
+				return
+			}
+
 			line, err := projectPath(project.LocalPath)
 			if err != nil {
-				mu.Lock()
-				errs[project.Name] = err
-				mu.Unlock()
+				t.record(opResult{project: project.Name, status: opError, err: err})
 				return
 			}
 			if !isProjectDir(line) {
@@ -293,27 +295,28 @@ func doPull(c *cli.Context) error {
 				if all || project.pullAlways() {
 					ctx, cancel := opContext(c)
 					defer cancel()
-					err = git.Clone(ctx, project.Repository, line)
-					if err != nil {
-						mu.Lock()
-						errs[project.Name] = err
-						mu.Unlock()
+					if err = git.Clone(ctx, project.Repository, line); err != nil {
+						t.record(opResult{project: project.Name, status: opError, err: err})
+					} else {
+						t.record(opResult{project: project.Name, status: opOK})
 					}
+				} else {
+					t.record(opResult{project: project.Name, status: opSkipped, reason: "local dir missing"})
 				}
 				return
 			}
 			ctx, cancel := opContext(c)
 			defer cancel()
-			err = git.Pull(ctx, line)
-			if err != nil {
-				mu.Lock()
-				errs[project.Name] = err
-				mu.Unlock()
+			if err = git.Pull(ctx, line); err != nil {
+				t.record(opResult{project: project.Name, status: opError, err: err})
+			} else {
+				t.record(opResult{project: project.Name, status: opOK})
 			}
 		}()
 	}
 	wg.Wait()
-	return buildError(errs)
+	t.printSummary(c.Bool("errors-last"))
+	return buildError(t.errors())
 }
 
 func doFetch(c *cli.Context) error {
@@ -336,46 +339,46 @@ func doFetch(c *cli.Context) error {
 		jobs = 1
 	}
 
-	var mu sync.Mutex
-	errs := map[string]error{}
+	t := newTracker(len(projects))
 	sem := make(chan struct{}, jobs)
 	var wg sync.WaitGroup
 
 	for _, project := range projects {
 		project := project
-		if project.pullNever() {
-			ui.Confidentialf("Skip %s : pull policy never", project.Name)
-			continue
-		}
-
 		wg.Add(1)
 		sem <- struct{}{}
 		go func() {
 			defer wg.Done()
 			defer func() { <-sem }()
 
+			if project.pullNever() {
+				ui.Confidentialf("Skip %s : pull policy never", project.Name)
+				t.record(opResult{project: project.Name, status: opSkipped, reason: "pull_policy: never"})
+				return
+			}
+
 			line, err := projectPath(project.LocalPath)
 			if err != nil {
-				mu.Lock()
-				errs[project.Name] = err
-				mu.Unlock()
+				t.record(opResult{project: project.Name, status: opError, err: err})
 				return
 			}
 			if isProjectDir(line) {
 				ctx, cancel := opContext(c)
 				defer cancel()
 				if err = git.Fetch(ctx, line); err != nil {
-					mu.Lock()
-					errs[project.Name] = err
-					mu.Unlock()
+					t.record(opResult{project: project.Name, status: opError, err: err})
+				} else {
+					t.record(opResult{project: project.Name, status: opOK})
 				}
 			} else {
 				warnMissingDir(line)
+				t.record(opResult{project: project.Name, status: opSkipped, reason: "local dir missing"})
 			}
 		}()
 	}
 	wg.Wait()
-	return buildError(errs)
+	t.printSummary(c.Bool("errors-last"))
+	return buildError(t.errors())
 }
 
 type branchEntry struct {
@@ -405,7 +408,8 @@ func doBranch(c *cli.Context) error {
 		jobs = 1
 	}
 
-	var mu sync.Mutex
+	t := newTracker(len(projects))
+	var entriesMu sync.Mutex
 	entries := make([]branchEntry, 0, len(projects))
 	sem := make(chan struct{}, jobs)
 	var wg sync.WaitGroup
@@ -422,9 +426,10 @@ func doBranch(c *cli.Context) error {
 			line, err := projectPath(project.LocalPath)
 			if err != nil {
 				entry.err = err
-				mu.Lock()
+				t.record(opResult{project: project.Name, status: opError, err: err})
+				entriesMu.Lock()
 				entries = append(entries, entry)
-				mu.Unlock()
+				entriesMu.Unlock()
 				return
 			}
 			entry.path = line
@@ -432,12 +437,18 @@ func doBranch(c *cli.Context) error {
 				ctx, cancel := opContext(c)
 				defer cancel()
 				entry.branch, entry.err = git.CurrentBranch(ctx, line)
+				if entry.err != nil {
+					t.record(opResult{project: project.Name, status: opError, err: entry.err})
+				} else {
+					t.record(opResult{project: project.Name, status: opOK})
+				}
 			} else {
 				entry.branch = "(missing)"
+				t.record(opResult{project: project.Name, status: opSkipped, reason: "local dir missing"})
 			}
-			mu.Lock()
+			entriesMu.Lock()
 			entries = append(entries, entry)
-			mu.Unlock()
+			entriesMu.Unlock()
 		}()
 	}
 	wg.Wait()
@@ -446,18 +457,17 @@ func doBranch(c *cli.Context) error {
 
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 	fmt.Fprintln(w, "NAME\tBRANCH\tPATH")
-	errs := map[string]error{}
 	for _, e := range entries {
 		branch := e.branch
 		if e.err != nil {
 			branch = fmt.Sprintf("ERROR: %v", e.err)
-			errs[e.name] = e.err
 		}
 		fmt.Fprintf(w, "%s\t%s\t%s\n", e.name, branch, e.path)
 	}
 	w.Flush()
 
-	return buildError(errs)
+	t.printSummary(c.Bool("errors-last"))
+	return buildError(t.errors())
 }
 
 func doExec(c *cli.Context) error {
@@ -484,8 +494,7 @@ func doExec(c *cli.Context) error {
 		jobs = 1
 	}
 
-	var mu sync.Mutex
-	errs := map[string]error{}
+	t := newTracker(len(projects))
 	sem := make(chan struct{}, jobs)
 	var wg sync.WaitGroup
 
@@ -499,26 +508,26 @@ func doExec(c *cli.Context) error {
 
 			line, err := projectPath(project.LocalPath)
 			if err != nil {
-				mu.Lock()
-				errs[project.Name] = err
-				mu.Unlock()
+				t.record(opResult{project: project.Name, status: opError, err: err})
 				return
 			}
 			if isProjectDir(line) {
 				ctx, cancel := opContext(c)
 				defer cancel()
 				if err = runner.Run(ctx, line, cmdName, cmdArgs); err != nil {
-					mu.Lock()
-					errs[project.Name] = err
-					mu.Unlock()
+					t.record(opResult{project: project.Name, status: opError, err: err})
+				} else {
+					t.record(opResult{project: project.Name, status: opOK})
 				}
 			} else {
 				warnMissingDir(line)
+				t.record(opResult{project: project.Name, status: opSkipped, reason: "not a project dir"})
 			}
 		}()
 	}
 	wg.Wait()
-	return buildError(errs)
+	t.printSummary(c.Bool("errors-last"))
+	return buildError(t.errors())
 }
 
 // initEntry is the shape written to the generated config file.
@@ -608,7 +617,7 @@ func scanForRepos(root string, maxDepth int) ([]string, error) {
 	var repos []string
 	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
-			return nil // skip unreadable entries
+			return nil
 		}
 		if !d.IsDir() {
 			return nil
@@ -619,7 +628,7 @@ func scanForRepos(root string, maxDepth int) ([]string, error) {
 		}
 		if _, err := os.Stat(filepath.Join(path, ".git")); err == nil {
 			repos = append(repos, path)
-			return filepath.SkipDir // don't descend into repos
+			return filepath.SkipDir
 		}
 		return nil
 	})

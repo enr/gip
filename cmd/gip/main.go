@@ -23,6 +23,7 @@ Build date: %s
 `
 	appVersion        = fmt.Sprintf(versionTemplate, core.Version, core.GitCommit, core.BuildTime)
 	ignoreMissingDirs bool
+	quietMode         bool
 )
 
 func main() {
@@ -53,6 +54,7 @@ func main() {
 			ui.VerbosityLevel = verbosityLevel
 		})
 		ignoreMissingDirs = c.Bool("m")
+		quietMode = c.Bool("quiet")
 		return nil
 	}
 
