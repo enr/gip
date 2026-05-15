@@ -191,7 +191,7 @@ func TestFilterByTag(t *testing.T) {
 	}
 
 	cases := []struct {
-		tag      string
+		tag       string
 		wantNames []string
 	}{
 		{"", []string{"frontend", "backend", "dotfiles", "noTags"}}, // no filter → all
@@ -200,7 +200,7 @@ func TestFilterByTag(t *testing.T) {
 		{"personal", []string{"dotfiles"}},
 		{"work,personal", []string{"frontend", "backend", "dotfiles"}}, // OR logic
 		{"go", []string{"backend"}},
-		{"unknown", nil}, // no match
+		{"unknown", nil},                              // no match
 		{"  work  ", []string{"frontend", "backend"}}, // trim spaces
 	}
 

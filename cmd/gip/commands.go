@@ -377,56 +377,7 @@ func doPull(c *cli.Context) error {
 		go func() {
 			defer wg.Done()
 			defer func() { <-sem }()
-
-			if project.pullNever() {
-				ui.Confidentialf("Skip %s : pull policy never", project.Name)
-				if noopMode {
-					t.printNoop("%s → SALTATO  (pull_policy: never)", project.Name)
-				}
-				t.record(opResult{project: project.Name, status: opSkipped, reason: "pull_policy: never"})
-				return
-			}
-
-			line, err := projectPath(project.LocalPath)
-			if err != nil {
-				t.record(opResult{project: project.Name, status: opError, err: err})
-				return
-			}
-			if !isProjectDir(line) {
-				t.withOutput(func() { warnMissingDir(line) })
-				if all || project.pullAlways() {
-					if noopMode {
-						t.printNoop("%s → git clone %s %s", project.Name, project.Repository, line)
-						t.record(opResult{project: project.Name, localPath: line, status: opOK})
-						return
-					}
-					ctx, cancel := opContext(c)
-					defer cancel()
-					if err = git.Clone(ctx, project.Repository, line); err != nil {
-						t.record(opResult{project: project.Name, localPath: line, status: opError, err: err})
-					} else {
-						t.record(opResult{project: project.Name, localPath: line, status: opOK})
-					}
-				} else {
-					if noopMode {
-						t.printNoop("%s → SALTATO  (directory mancante)", project.Name)
-					}
-					t.record(opResult{project: project.Name, localPath: line, status: opSkipped, reason: "local dir missing"})
-				}
-				return
-			}
-			if noopMode {
-				t.printNoop("%s → git pull  (in %s)", project.Name, line)
-				t.record(opResult{project: project.Name, localPath: line, status: opOK})
-				return
-			}
-			ctx, cancel := opContext(c)
-			defer cancel()
-			if err = git.Pull(ctx, line); err != nil {
-				t.record(opResult{project: project.Name, localPath: line, status: opError, err: err})
-			} else {
-				t.record(opResult{project: project.Name, localPath: line, status: opOK})
-			}
+			pullOne(c, git, project, all, t)
 		}()
 	}
 	wg.Wait()
@@ -436,6 +387,62 @@ func doPull(c *cli.Context) error {
 		t.printSummary(c.Bool("errors-last"))
 	}
 	return buildError(t.errors())
+}
+
+func pullOne(c *cli.Context, git *core.GitCommands, project gipProject, all bool, t *tracker) {
+	if project.pullNever() {
+		ui.Confidentialf("Skip %s : pull policy never", project.Name)
+		if noopMode {
+			t.printNoop("%s → SALTATO  (pull_policy: never)", project.Name)
+		}
+		t.record(opResult{project: project.Name, status: opSkipped, reason: "pull_policy: never"})
+		return
+	}
+
+	line, err := projectPath(project.LocalPath)
+	if err != nil {
+		t.record(opResult{project: project.Name, status: opError, err: err})
+		return
+	}
+	if !isProjectDir(line) {
+		pullMissingDir(c, git, project, line, all, t)
+		return
+	}
+	if noopMode {
+		t.printNoop("%s → git pull  (in %s)", project.Name, line)
+		t.record(opResult{project: project.Name, localPath: line, status: opOK})
+		return
+	}
+	ctx, cancel := opContext(c)
+	defer cancel()
+	if err = git.Pull(ctx, line); err != nil {
+		t.record(opResult{project: project.Name, localPath: line, status: opError, err: err})
+	} else {
+		t.record(opResult{project: project.Name, localPath: line, status: opOK})
+	}
+}
+
+func pullMissingDir(c *cli.Context, git *core.GitCommands, project gipProject, line string, all bool, t *tracker) {
+	t.withOutput(func() { warnMissingDir(line) })
+	if !(all || project.pullAlways()) {
+		if noopMode {
+			t.printNoop("%s → SALTATO  (directory mancante)", project.Name)
+		}
+		t.record(opResult{project: project.Name, localPath: line, status: opSkipped, reason: "local dir missing"})
+		return
+	}
+	if noopMode {
+		t.printNoop("%s → git clone %s %s", project.Name, project.Repository, line)
+		t.record(opResult{project: project.Name, localPath: line, status: opOK})
+		return
+	}
+	ctx, cancel := opContext(c)
+	defer cancel()
+	if err := git.Clone(ctx, project.Repository, line); err != nil {
+		t.record(opResult{project: project.Name, localPath: line, status: opError, err: err})
+	} else {
+		t.record(opResult{project: project.Name, localPath: line, status: opOK})
+	}
 }
 
 func doFetch(c *cli.Context) error {

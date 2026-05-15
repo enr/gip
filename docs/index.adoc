@@ -288,7 +288,7 @@ Scan a directory recursively for Git repositories and generate a gip configurati
 
 [source,bash]
 ----
-# scan ~/projects and write to ~/.gip (asks for confirmation if it exists)
+# scan ~/projects and write to .gip in current folder (asks for confirmation if it exists)
 gip init ~/projects
 
 # write to a specific output file
