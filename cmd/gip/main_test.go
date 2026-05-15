@@ -140,6 +140,84 @@ func TestErrorOutputNoBanner(t *testing.T) {
 	}
 }
 
+// TestExecCommand verifies that exec runs an arbitrary command in each project directory.
+func TestExecCommand(t *testing.T) {
+	tmpDir := t.TempDir()
+	binPath := buildBinary(t, tmpDir)
+
+	repo1 := filepath.Join(tmpDir, "repo1")
+	makeGitRepo(t, repo1)
+
+	configPath := filepath.Join(tmpDir, ".gip")
+	makeConfig(t, configPath, []string{repo1})
+
+	cmd := exec.Command(binPath, "-f", configPath, "exec", "--", "echo", "hello-gip")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("exec command failed: %v\nOutput: %s", err, out)
+	}
+	if !bytes.Contains(out, []byte("hello-gip")) {
+		t.Fatalf("expected output to contain 'hello-gip', got: %s", out)
+	}
+}
+
+// TestExecCommand_NoArgs verifies that exec exits non-zero when called without a command.
+func TestExecCommand_NoArgs(t *testing.T) {
+	tmpDir := t.TempDir()
+	binPath := buildBinary(t, tmpDir)
+
+	configPath := filepath.Join(tmpDir, ".gip")
+	makeConfig(t, configPath, []string{})
+
+	cmd := exec.Command(binPath, "-f", configPath, "exec")
+	if err := cmd.Run(); err == nil {
+		t.Fatal("expected non-zero exit code when exec is called with no command")
+	}
+}
+
+// TestExecCommand_FailingCommand verifies that exec propagates a non-zero exit from the child.
+func TestExecCommand_FailingCommand(t *testing.T) {
+	tmpDir := t.TempDir()
+	binPath := buildBinary(t, tmpDir)
+
+	repo1 := filepath.Join(tmpDir, "repo1")
+	makeGitRepo(t, repo1)
+
+	configPath := filepath.Join(tmpDir, ".gip")
+	makeConfig(t, configPath, []string{repo1})
+
+	cmd := exec.Command(binPath, "-f", configPath, "exec", "--", "false")
+	if err := cmd.Run(); err == nil {
+		t.Fatal("expected non-zero exit code when the executed command fails")
+	}
+}
+
+// TestExecCommand_RespectsTimeout verifies that --timeout kills a hung command.
+func TestExecCommand_RespectsTimeout(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping timing test in short mode")
+	}
+
+	tmpDir := t.TempDir()
+	binPath := buildBinary(t, tmpDir)
+
+	repo1 := filepath.Join(tmpDir, "repo1")
+	makeGitRepo(t, repo1)
+
+	configPath := filepath.Join(tmpDir, ".gip")
+	makeConfig(t, configPath, []string{repo1})
+
+	start := time.Now()
+	cmd := exec.Command(binPath, "-f", configPath, "exec", "--timeout=1", "--", "sleep", "10")
+	cmd.Run()
+	elapsed := time.Since(start)
+
+	const threshold = 2500 * time.Millisecond
+	if elapsed > threshold {
+		t.Fatalf("exec --timeout=1 took %v; expected < %v (timeout not respected)", elapsed, threshold)
+	}
+}
+
 // TestPullRespectsTimeout verifies that --timeout=N causes each git operation to be
 // killed after N seconds, so a hung remote does not stall the whole command.
 //

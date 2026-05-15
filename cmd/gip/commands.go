@@ -19,6 +19,7 @@ var commands = []*cli.Command{
 	&commandStatusFull,
 	&commandList,
 	&commandPull,
+	&commandExec,
 }
 
 var parallelFlags = []cli.Flag{
@@ -249,6 +250,78 @@ func doPull(c *cli.Context) error {
 				mu.Lock()
 				errs[project.Name] = err
 				mu.Unlock()
+			}
+		}()
+	}
+	wg.Wait()
+	return buildError(errs)
+}
+
+var commandExec = cli.Command{
+	Name:  "exec",
+	Usage: "execute an arbitrary command in each project directory",
+	Description: `Execute an arbitrary command in each project directory.
+Use -- to separate gip flags from the command and its arguments:
+
+   gip exec -- git fetch --prune
+   gip exec -j 8 -- make test`,
+	Action: doExec,
+	Flags:  parallelFlags,
+}
+
+func doExec(c *cli.Context) error {
+	args := c.Args().Slice()
+	if len(args) == 0 {
+		return exitErrorf(1, "exec requires a command: gip exec -- <cmd> [args...]")
+	}
+	cmdName := args[0]
+	cmdArgs := args[1:]
+
+	configurationFile, err := configurationFilePath(c)
+	if err != nil {
+		return exitErrorf(1, "Error loading configuration file %s: %v", c.String("f"), err)
+	}
+	projects, err := projectsList(configurationFile)
+	if err != nil {
+		return exitErrorf(1, "Error loading projects list: %v", err)
+	}
+	runner := core.NewCommandRunner(ui)
+
+	jobs := c.Int("jobs")
+	if jobs < 1 {
+		jobs = 1
+	}
+
+	var mu sync.Mutex
+	errs := map[string]error{}
+	sem := make(chan struct{}, jobs)
+	var wg sync.WaitGroup
+
+	for _, project := range projects {
+		project := project
+		wg.Add(1)
+		sem <- struct{}{}
+		go func() {
+			defer wg.Done()
+			defer func() { <-sem }()
+
+			line, err := projectPath(project.LocalPath)
+			if err != nil {
+				mu.Lock()
+				errs[project.Name] = err
+				mu.Unlock()
+				return
+			}
+			if isProjectDir(line) {
+				ctx, cancel := opContext(c)
+				defer cancel()
+				if err = runner.Run(ctx, line, cmdName, cmdArgs); err != nil {
+					mu.Lock()
+					errs[project.Name] = err
+					mu.Unlock()
+				}
+			} else {
+				warnMissingDir(line)
 			}
 		}()
 	}
