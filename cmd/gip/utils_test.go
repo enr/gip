@@ -86,7 +86,7 @@ func TestProjectsListRepoValidation(t *testing.T) {
 	_, _ = f.WriteString("- name: norepo\n  local_path: /tmp/norepo\n")
 	f.Close()
 
-	projects, err := projectsList(f.Name())
+	projects, _, err := projectsList(f.Name())
 	if err != nil {
 		t.Fatalf("projectsList: %v", err)
 	}
@@ -130,7 +130,7 @@ func TestIsProjectDir(t *testing.T) {
 
 func TestConfigParsingYaml(t *testing.T) {
 	fp := "../../testdata/linux.yaml"
-	projects, err := projectsList(fp)
+	projects, _, err := projectsList(fp)
 	if err != nil {
 		t.Errorf("Unexpected error reading %s: %v", fp, err)
 	}
@@ -141,7 +141,7 @@ func TestConfigParsingYaml(t *testing.T) {
 
 func TestConfigParsingJson(t *testing.T) {
 	fp := "../../testdata/linux.json"
-	projects, err := projectsList(fp)
+	projects, _, err := projectsList(fp)
 	if err != nil {
 		t.Errorf("Unexpected error reading %s: %v", fp, err)
 	}

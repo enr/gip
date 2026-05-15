@@ -25,6 +25,7 @@ Build date: %s
 	ignoreMissingDirs bool
 	quietMode         bool
 	noopMode          bool
+	jsonMode          bool
 )
 
 func main() {
@@ -38,6 +39,7 @@ func main() {
 		&cli.BoolFlag{Name: "quiet", Aliases: []string{"q"}, Usage: "operates in quiet mode"},
 		&cli.BoolFlag{Name: "ignore-missing", Aliases: []string{"m"}, Usage: "ignores missing local directories, otherwise prints a warn"},
 		&cli.BoolFlag{Name: "noop", Usage: "dry-run: print what would be done without executing any git command"},
+		&cli.BoolFlag{Name: "json", Usage: "output results as JSON (takes precedence over --quiet)"},
 	}
 	app.EnableBashCompletion = true
 
@@ -49,7 +51,7 @@ func main() {
 		if c.Bool("debug") {
 			verbosityLevel = clui.VerbosityLevelHigh
 		}
-		if c.Bool("quiet") {
+		if c.Bool("quiet") || c.Bool("json") {
 			verbosityLevel = clui.VerbosityLevelLow
 		}
 		ui, _ = clui.NewClui(func(ui *clui.Clui) {
@@ -58,6 +60,7 @@ func main() {
 		ignoreMissingDirs = c.Bool("m")
 		quietMode = c.Bool("quiet")
 		noopMode = c.Bool("noop")
+		jsonMode = c.Bool("json")
 		return nil
 	}
 

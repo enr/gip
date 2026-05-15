@@ -100,30 +100,53 @@ func normalizePath(dirpath string) string {
 	return strings.TrimSuffix(filepath.ToSlash(dirpath), "/")
 }
 
-func projectsList(configurationPath string) ([]gipProject, error) {
+func projectsList(configurationPath string) ([]gipProject, []string, error) {
 	var projects []gipProject
+	var warnings []string
+
+	warn := func(format string, args ...interface{}) {
+		msg := fmt.Sprintf(format, args...)
+		ui.Warnf("%s", msg)
+		warnings = append(warnings, msg)
+	}
+
 	data, err := os.ReadFile(configurationPath)
 	if err != nil {
 		ui.Errorf("Error reading %s: %v", configurationPath, err)
-		return projects, err
+		return projects, warnings, err
 	}
 	err = yaml.Unmarshal(data, &projects)
 	if err != nil {
 		ui.Errorf("Error reading configuration: %v", err)
 		ui.Lifecyclef("Check the format of %s: it should be Yaml or Json", configurationPath)
-		return projects, err
+		return projects, warnings, err
 	}
-	for _, p := range projects {
+
+	nameIndex := make(map[string]int) // tracks first occurrence index of each name
+	for i, p := range projects {
+		if strings.TrimSpace(p.Name) == "" {
+			warn("project #%d has empty name", i+1)
+		}
+		if strings.TrimSpace(p.LocalPath) == "" {
+			warn("project %q (#%d) has empty local_path", p.Name, i+1)
+		}
 		if !p.isValidPullPolicy() {
-			ui.Warnf("Project %q has unknown pull_policy %q (valid values: never, always)", p.Name, p.PullPolicy)
+			warn("project %q has unknown pull_policy %q (valid values: never, always)", p.Name, p.PullPolicy)
 		}
 		if p.Repository == "" {
-			ui.Warnf(`No repository URL for project %s`, p.Name)
+			warn("no repository URL for project %s", p.Name)
 		} else if p.repoProvider() == "" {
-			ui.Warnf(`Unable to detect provider for project %s using repository URL %s`, p.Name, p.Repository)
+			warn("unable to detect provider for project %s using repository URL %s", p.Name, p.Repository)
+		}
+		if name := strings.TrimSpace(p.Name); name != "" {
+			if prevIdx, already := nameIndex[name]; already {
+				warn("duplicate name %q (projects #%d and #%d)", name, prevIdx+1, i+1)
+			} else {
+				nameIndex[name] = i
+			}
 		}
 	}
-	return projects, nil
+	return projects, warnings, nil
 }
 
 func projectPath(ppath string) (string, error) {

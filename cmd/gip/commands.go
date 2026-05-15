@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io/fs"
 	"os"
@@ -148,7 +149,7 @@ func gitStatus(c *cli.Context, untracked bool) error {
 	if err != nil {
 		return exitErrorf(1, "Error loading configuration file %s: %v", c.String("f"), err)
 	}
-	projects, err := projectsList(configurationFile)
+	projects, warnings, err := projectsList(configurationFile)
 	if err != nil {
 		return exitErrorf(1, "Error loading projects list: %v", err)
 	}
@@ -163,14 +164,14 @@ func gitStatus(c *cli.Context, untracked bool) error {
 		jobs = 1
 	}
 
-	t := newTracker(len(projects))
-	sem := make(chan struct{}, jobs)
-	var wg sync.WaitGroup
-
 	untrackedFlag := "--untracked-files=no"
 	if untracked {
 		untrackedFlag = "--untracked-files"
 	}
+
+	t := newTracker(len(projects))
+	sem := make(chan struct{}, jobs)
+	var wg sync.WaitGroup
 
 	for _, project := range projects {
 		project := project
@@ -187,25 +188,29 @@ func gitStatus(c *cli.Context, untracked bool) error {
 			}
 			if !isProjectDir(line) {
 				warnMissingDir(line)
-				t.record(opResult{project: project.Name, status: opSkipped, reason: "not a project dir"})
+				t.record(opResult{project: project.Name, localPath: line, status: opSkipped, reason: "not a project dir"})
 				return
 			}
 			if noopMode {
 				t.printNoop("%s → git status --porcelain %s  (in %s)", project.Name, untrackedFlag, line)
-				t.record(opResult{project: project.Name, status: opOK})
+				t.record(opResult{project: project.Name, localPath: line, status: opOK})
 				return
 			}
 			ctx, cancel := opContext(c)
 			defer cancel()
 			if err = git.Status(ctx, line, untracked); err != nil {
-				t.record(opResult{project: project.Name, status: opError, err: err})
+				t.record(opResult{project: project.Name, localPath: line, status: opError, err: err})
 			} else {
-				t.record(opResult{project: project.Name, status: opOK})
+				t.record(opResult{project: project.Name, localPath: line, status: opOK})
 			}
 		}()
 	}
 	wg.Wait()
-	t.printSummary(c.Bool("errors-last"))
+	if jsonMode {
+		t.printJSON("status", warnings)
+	} else {
+		t.printSummary(c.Bool("errors-last"))
+	}
 	return buildError(t.errors())
 }
 
@@ -228,6 +233,8 @@ func buildError(errors map[string]error) error {
 // listRow holds the display data for one project in the list table.
 type listRow struct {
 	name, path, policy, provider, tags string
+	repository                         string
+	missingDir                         bool
 	pathErr                            error
 }
 
@@ -236,7 +243,7 @@ func doList(c *cli.Context) error {
 	if err != nil {
 		return exitErrorf(1, "Error loading configuration file %s: %v", c.String("f"), err)
 	}
-	projects, err := projectsList(configurationFile)
+	projects, warnings, err := projectsList(configurationFile)
 	if err != nil {
 		return exitErrorf(1, "Error loading projects list: %v", err)
 	}
@@ -266,17 +273,25 @@ func doList(c *cli.Context) error {
 			errs[project.Name] = err
 			rows = append(rows, listRow{
 				name: project.Name, path: project.LocalPath + " (ERROR)",
-				policy: policy, provider: provider, tags: tags, pathErr: err,
+				policy: policy, provider: provider, tags: tags,
+				repository: project.Repository, pathErr: err,
 			})
 			continue
 		}
-		if !isProjectDir(localPath) {
-			localPath += " (missing)"
+		missing := !isProjectDir(localPath)
+		displayPath := localPath
+		if missing {
+			displayPath += " (missing)"
 		}
 		rows = append(rows, listRow{
-			name: project.Name, path: localPath,
+			name: project.Name, path: displayPath,
 			policy: policy, provider: provider, tags: tags,
+			repository: project.Repository, missingDir: missing,
 		})
+	}
+
+	if jsonMode {
+		return printListJSON(rows, projects, warnings)
 	}
 
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
@@ -295,6 +310,37 @@ func doList(c *cli.Context) error {
 	return buildError(errs)
 }
 
+func printListJSON(rows []listRow, projects []gipProject, warnings []string) error {
+	pjs := make([]listProjectJSON, 0, len(rows))
+	for i, r := range rows {
+		tags := projects[i].Tags
+		if tags == nil {
+			tags = []string{}
+		}
+		pjs = append(pjs, listProjectJSON{
+			Name:       r.name,
+			LocalPath:  projects[i].LocalPath,
+			Repository: r.repository,
+			Policy:     r.policy,
+			Provider:   r.provider,
+			Tags:       tags,
+			Missing:    r.missingDir,
+		})
+	}
+	if warnings == nil {
+		warnings = []string{}
+	}
+	out := listOutputJSON{
+		Command:   "list",
+		Timestamp: time.Now().UTC().Format(time.RFC3339),
+		Projects:  pjs,
+		Warnings:  warnings,
+	}
+	data, _ := json.MarshalIndent(out, "", "  ")
+	fmt.Fprintf(os.Stdout, "%s\n", data)
+	return nil
+}
+
 func doPull(c *cli.Context) error {
 	configurationFile, err := configurationFilePath(c)
 	if err != nil {
@@ -306,7 +352,7 @@ func doPull(c *cli.Context) error {
 	}
 	all := c.Bool("all")
 	ui.Confidentialf("%s PULL all? %t", configurationFile, all)
-	projects, err := projectsList(configurationFile)
+	projects, warnings, err := projectsList(configurationFile)
 	if err != nil {
 		return exitErrorf(1, "Error loading projects list: %v", err)
 	}
@@ -352,40 +398,44 @@ func doPull(c *cli.Context) error {
 				if all || project.pullAlways() {
 					if noopMode {
 						t.printNoop("%s → git clone %s %s", project.Name, project.Repository, line)
-						t.record(opResult{project: project.Name, status: opOK})
+						t.record(opResult{project: project.Name, localPath: line, status: opOK})
 						return
 					}
 					ctx, cancel := opContext(c)
 					defer cancel()
 					if err = git.Clone(ctx, project.Repository, line); err != nil {
-						t.record(opResult{project: project.Name, status: opError, err: err})
+						t.record(opResult{project: project.Name, localPath: line, status: opError, err: err})
 					} else {
-						t.record(opResult{project: project.Name, status: opOK})
+						t.record(opResult{project: project.Name, localPath: line, status: opOK})
 					}
 				} else {
 					if noopMode {
 						t.printNoop("%s → SALTATO  (directory mancante)", project.Name)
 					}
-					t.record(opResult{project: project.Name, status: opSkipped, reason: "local dir missing"})
+					t.record(opResult{project: project.Name, localPath: line, status: opSkipped, reason: "local dir missing"})
 				}
 				return
 			}
 			if noopMode {
 				t.printNoop("%s → git pull  (in %s)", project.Name, line)
-				t.record(opResult{project: project.Name, status: opOK})
+				t.record(opResult{project: project.Name, localPath: line, status: opOK})
 				return
 			}
 			ctx, cancel := opContext(c)
 			defer cancel()
 			if err = git.Pull(ctx, line); err != nil {
-				t.record(opResult{project: project.Name, status: opError, err: err})
+				t.record(opResult{project: project.Name, localPath: line, status: opError, err: err})
 			} else {
-				t.record(opResult{project: project.Name, status: opOK})
+				t.record(opResult{project: project.Name, localPath: line, status: opOK})
 			}
 		}()
 	}
 	wg.Wait()
-	t.printSummary(c.Bool("errors-last"))
+	if jsonMode {
+		t.printJSON("pull", warnings)
+	} else {
+		t.printSummary(c.Bool("errors-last"))
+	}
 	return buildError(t.errors())
 }
 
@@ -394,7 +444,7 @@ func doFetch(c *cli.Context) error {
 	if err != nil {
 		return exitErrorf(1, "Error loading configuration file %s: %v", c.String("f"), err)
 	}
-	projects, err := projectsList(configurationFile)
+	projects, warnings, err := projectsList(configurationFile)
 	if err != nil {
 		return exitErrorf(1, "Error loading projects list: %v", err)
 	}
@@ -440,25 +490,29 @@ func doFetch(c *cli.Context) error {
 				if noopMode {
 					t.printNoop("%s → SALTATO  (directory mancante)", project.Name)
 				}
-				t.record(opResult{project: project.Name, status: opSkipped, reason: "local dir missing"})
+				t.record(opResult{project: project.Name, localPath: line, status: opSkipped, reason: "local dir missing"})
 				return
 			}
 			if noopMode {
 				t.printNoop("%s → git fetch --all --prune  (in %s)", project.Name, line)
-				t.record(opResult{project: project.Name, status: opOK})
+				t.record(opResult{project: project.Name, localPath: line, status: opOK})
 				return
 			}
 			ctx, cancel := opContext(c)
 			defer cancel()
 			if err = git.Fetch(ctx, line); err != nil {
-				t.record(opResult{project: project.Name, status: opError, err: err})
+				t.record(opResult{project: project.Name, localPath: line, status: opError, err: err})
 			} else {
-				t.record(opResult{project: project.Name, status: opOK})
+				t.record(opResult{project: project.Name, localPath: line, status: opOK})
 			}
 		}()
 	}
 	wg.Wait()
-	t.printSummary(c.Bool("errors-last"))
+	if jsonMode {
+		t.printJSON("fetch", warnings)
+	} else {
+		t.printSummary(c.Bool("errors-last"))
+	}
 	return buildError(t.errors())
 }
 
@@ -474,7 +528,7 @@ func doBranch(c *cli.Context) error {
 	if err != nil {
 		return exitErrorf(1, "Error loading configuration file %s: %v", c.String("f"), err)
 	}
-	projects, err := projectsList(configurationFile)
+	projects, warnings, err := projectsList(configurationFile)
 	if err != nil {
 		return exitErrorf(1, "Error loading projects list: %v", err)
 	}
@@ -519,19 +573,19 @@ func doBranch(c *cli.Context) error {
 				if noopMode {
 					t.printNoop("%s → SALTATO  (directory mancante)", project.Name)
 				}
-				t.record(opResult{project: project.Name, status: opSkipped, reason: "local dir missing"})
+				t.record(opResult{project: project.Name, localPath: line, status: opSkipped, reason: "local dir missing"})
 			} else if noopMode {
 				t.printNoop("%s → git rev-parse --abbrev-ref HEAD  (in %s)", project.Name, line)
 				entry.branch = "(noop)"
-				t.record(opResult{project: project.Name, status: opOK})
+				t.record(opResult{project: project.Name, localPath: line, status: opOK, branch: "(noop)"})
 			} else {
 				ctx, cancel := opContext(c)
 				defer cancel()
 				entry.branch, entry.err = git.CurrentBranch(ctx, line)
 				if entry.err != nil {
-					t.record(opResult{project: project.Name, status: opError, err: entry.err})
+					t.record(opResult{project: project.Name, localPath: line, status: opError, err: entry.err})
 				} else {
-					t.record(opResult{project: project.Name, status: opOK})
+					t.record(opResult{project: project.Name, localPath: line, status: opOK, branch: entry.branch})
 				}
 			}
 			entriesMu.Lock()
@@ -541,20 +595,22 @@ func doBranch(c *cli.Context) error {
 	}
 	wg.Wait()
 
-	sort.Slice(entries, func(i, j int) bool { return entries[i].name < entries[j].name })
-
-	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(w, "NAME\tBRANCH\tPATH")
-	for _, e := range entries {
-		branch := e.branch
-		if e.err != nil {
-			branch = fmt.Sprintf("ERROR: %v", e.err)
+	if jsonMode {
+		t.printJSON("branch", warnings)
+	} else {
+		sort.Slice(entries, func(i, j int) bool { return entries[i].name < entries[j].name })
+		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+		fmt.Fprintln(w, "NAME\tBRANCH\tPATH")
+		for _, e := range entries {
+			branch := e.branch
+			if e.err != nil {
+				branch = fmt.Sprintf("ERROR: %v", e.err)
+			}
+			fmt.Fprintf(w, "%s\t%s\t%s\n", e.name, branch, e.path)
 		}
-		fmt.Fprintf(w, "%s\t%s\t%s\n", e.name, branch, e.path)
+		w.Flush()
+		t.printSummary(c.Bool("errors-last"))
 	}
-	w.Flush()
-
-	t.printSummary(c.Bool("errors-last"))
 	return buildError(t.errors())
 }
 
@@ -570,7 +626,7 @@ func doExec(c *cli.Context) error {
 	if err != nil {
 		return exitErrorf(1, "Error loading configuration file %s: %v", c.String("f"), err)
 	}
-	projects, err := projectsList(configurationFile)
+	projects, warnings, err := projectsList(configurationFile)
 	if err != nil {
 		return exitErrorf(1, "Error loading projects list: %v", err)
 	}
@@ -604,25 +660,29 @@ func doExec(c *cli.Context) error {
 				if noopMode {
 					t.printNoop("%s → SALTATO  (directory mancante)", project.Name)
 				}
-				t.record(opResult{project: project.Name, status: opSkipped, reason: "not a project dir"})
+				t.record(opResult{project: project.Name, localPath: line, status: opSkipped, reason: "not a project dir"})
 				return
 			}
 			if noopMode {
 				t.printNoop("%s → %s %s  (in %s)", project.Name, cmdName, strings.Join(cmdArgs, " "), line)
-				t.record(opResult{project: project.Name, status: opOK})
+				t.record(opResult{project: project.Name, localPath: line, status: opOK})
 				return
 			}
 			ctx, cancel := opContext(c)
 			defer cancel()
 			if err = runner.Run(ctx, line, cmdName, cmdArgs); err != nil {
-				t.record(opResult{project: project.Name, status: opError, err: err})
+				t.record(opResult{project: project.Name, localPath: line, status: opError, err: err})
 			} else {
-				t.record(opResult{project: project.Name, status: opOK})
+				t.record(opResult{project: project.Name, localPath: line, status: opOK})
 			}
 		}()
 	}
 	wg.Wait()
-	t.printSummary(c.Bool("errors-last"))
+	if jsonMode {
+		t.printJSON("exec", warnings)
+	} else {
+		t.printSummary(c.Bool("errors-last"))
+	}
 	return buildError(t.errors())
 }
 

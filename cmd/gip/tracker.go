@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
@@ -24,20 +25,81 @@ const (
 )
 
 type opResult struct {
-	project string
-	status  opStatus
-	err     error
-	reason  string // human-readable reason for opSkipped
+	project   string
+	localPath string // resolved path; empty if resolution failed
+	status    opStatus
+	err       error
+	reason    string // human-readable reason for opSkipped
+	branch    string // set by doBranch
 }
 
-// tracker records per-project outcomes, draws a progress bar on stderr (TTY
-// only), and prints a summary after all operations complete.
+func (r opResult) statusString() string {
+	switch r.status {
+	case opOK:
+		return "ok"
+	case opError:
+		return "error"
+	case opSkipped:
+		return "skipped"
+	default:
+		return "unknown"
+	}
+}
+
+// --- JSON output types ---
+
+type projectJSON struct {
+	Name      string `json:"name"`
+	LocalPath string `json:"local_path"`
+	Status    string `json:"status"`
+	Error     string `json:"error,omitempty"`
+	Reason    string `json:"reason,omitempty"`
+	Branch    string `json:"branch,omitempty"`
+}
+
+type summaryJSON struct {
+	Total      int   `json:"total"`
+	OK         int   `json:"ok"`
+	Errors     int   `json:"errors"`
+	Skipped    int   `json:"skipped"`
+	DurationMs int64 `json:"duration_ms"`
+}
+
+type commandOutputJSON struct {
+	Command   string        `json:"command"`
+	Timestamp string        `json:"timestamp"`
+	Projects  []projectJSON `json:"projects"`
+	Summary   summaryJSON   `json:"summary"`
+	Warnings  []string      `json:"warnings"`
+}
+
+type listProjectJSON struct {
+	Name       string   `json:"name"`
+	LocalPath  string   `json:"local_path"`
+	Repository string   `json:"repository"`
+	Policy     string   `json:"policy"`
+	Provider   string   `json:"provider"`
+	Tags       []string `json:"tags"`
+	Missing    bool     `json:"missing,omitempty"`
+}
+
+type listOutputJSON struct {
+	Command   string            `json:"command"`
+	Timestamp string            `json:"timestamp"`
+	Projects  []listProjectJSON `json:"projects"`
+	Warnings  []string          `json:"warnings"`
+}
+
+// --- tracker ---
+
+// tracker records per-project outcomes, drives the progress bar on stderr
+// (TTY only), and renders either a text summary or JSON output at the end.
 type tracker struct {
 	mu      sync.Mutex
 	results []opResult
 	total   int
 	started time.Time
-	tty     bool // stderr is a character device
+	tty     bool
 }
 
 func newTracker(total int) *tracker {
@@ -48,20 +110,20 @@ func newTracker(total int) *tracker {
 	}
 }
 
-// printNoop prints a dry-run description line in a thread-safe way.
+// printNoop writes a dry-run line to stdout in a thread-safe way.
 func (t *tracker) printNoop(format string, args ...interface{}) {
 	t.mu.Lock()
 	fmt.Fprintf(os.Stdout, "[DRY-RUN] "+format+"\n", args...)
 	t.mu.Unlock()
 }
 
-// record stores the result of one project operation and redraws the progress bar.
+// record stores one project result and redraws the progress bar.
 func (t *tracker) record(r opResult) {
 	t.mu.Lock()
 	t.results = append(t.results, r)
 	done := len(t.results)
 	t.mu.Unlock()
-	if !quietMode {
+	if !quietMode && !jsonMode {
 		t.drawProgress(done, r.project)
 	}
 }
@@ -83,8 +145,7 @@ func (t *tracker) clearProgress() {
 	fmt.Fprintf(os.Stderr, "\r%s\r", strings.Repeat(" ", 80))
 }
 
-// printSummary prints the run summary. When errorsLast is true it also prints
-// a grouped error section. Always outputs to stdout regardless of quiet mode.
+// printSummary prints the text summary. Always writes to stdout regardless of quiet mode.
 func (t *tracker) printSummary(errorsLast bool) {
 	t.clearProgress()
 
@@ -103,7 +164,6 @@ func (t *tracker) printSummary(errorsLast bool) {
 	}
 
 	elapsed := time.Since(t.started)
-
 	okStr := t.color(ansiGreen, fmt.Sprintf("OK: %d", okCount))
 	errStr := t.color(ansiRed, fmt.Sprintf("Errori: %d", errCount))
 	skipStr := t.color(ansiYellow, fmt.Sprintf("Saltati: %d", skipCount))
@@ -112,7 +172,6 @@ func (t *tracker) printSummary(errorsLast bool) {
 	if noopMode {
 		fmt.Fprintf(os.Stdout, "DRY-RUN — nessuna operazione eseguita. Rimuovi --noop per procedere.\n")
 	}
-
 	if errorsLast && len(errEntries) > 0 {
 		fmt.Fprintf(os.Stdout, "\n── Errori ────────────────────────────────\n")
 		for _, r := range errEntries {
@@ -121,7 +180,54 @@ func (t *tracker) printSummary(errorsLast bool) {
 	}
 }
 
-// errors returns the collected errors as a map suitable for buildError.
+// printJSON serialises all results as a JSON envelope and writes to stdout.
+func (t *tracker) printJSON(command string, warnings []string) {
+	t.clearProgress()
+
+	projects := make([]projectJSON, 0, len(t.results))
+	var okCount, errCount, skipCount int
+	for _, r := range t.results {
+		p := projectJSON{
+			Name:      r.project,
+			LocalPath: r.localPath,
+			Status:    r.statusString(),
+			Reason:    r.reason,
+			Branch:    r.branch,
+		}
+		if r.err != nil {
+			p.Error = r.err.Error()
+		}
+		projects = append(projects, p)
+		switch r.status {
+		case opOK:
+			okCount++
+		case opError:
+			errCount++
+		case opSkipped:
+			skipCount++
+		}
+	}
+	if warnings == nil {
+		warnings = []string{}
+	}
+	out := commandOutputJSON{
+		Command:   command,
+		Timestamp: time.Now().UTC().Format(time.RFC3339),
+		Projects:  projects,
+		Summary: summaryJSON{
+			Total:      t.total,
+			OK:         okCount,
+			Errors:     errCount,
+			Skipped:    skipCount,
+			DurationMs: time.Since(t.started).Milliseconds(),
+		},
+		Warnings: warnings,
+	}
+	data, _ := json.MarshalIndent(out, "", "  ")
+	fmt.Fprintf(os.Stdout, "%s\n", data)
+}
+
+// errors returns collected errors as a map suitable for buildError.
 func (t *tracker) errors() map[string]error {
 	m := make(map[string]error)
 	for _, r := range t.results {
@@ -133,13 +239,16 @@ func (t *tracker) errors() map[string]error {
 }
 
 func (t *tracker) color(code, text string) string {
-	if !t.tty {
+	if !t.tty || jsonMode {
 		return text
 	}
 	return code + text + ansiReset
 }
 
 func isTTY(f *os.File) bool {
+	if f == nil {
+		return false
+	}
 	stat, err := f.Stat()
 	if err != nil {
 		return false
