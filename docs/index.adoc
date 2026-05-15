@@ -32,7 +32,38 @@ Repositories are registered in a YAML or JSON configuration file.
 - `repository` — remote repository URL (HTTPS or SSH)
 - `local_path` — local directory to operate in; `~` and environment variables are expanded
 - `pull_policy` — controls `pull` and `fetch` behaviour: `never` skips the project, `always` clones it if missing; omit for the default behaviour (operate only on already-present directories)
-- `tags` — optional list of labels used to filter projects with `--tag`
+- `tags` — optional list of labels used to filter projects with `--tag` (see <<_tag_filtering>>)
+
+[[_tags]]
+### Tags
+
+Tags are free-form strings assigned to projects in the configuration file. They allow you to run any gip command against a named subset of projects without maintaining separate configuration files.
+
+Both YAML list syntaxes are accepted:
+
+[source,yaml]
+----
+# inline (flow) syntax
+- name: frontend
+  repository: "https://github.com/org/frontend.git"
+  local_path: ~/projects/frontend
+  tags: [work, js, client-acme]
+
+# block (expanded) syntax
+- name: infra
+  repository: "git@github.com:org/infra.git"
+  local_path: ~/work/infra
+  tags:
+    - work
+    - ops
+
+# no tags — project is never selected by --tag
+- name: dotfiles
+  repository: "git@github.com:user/dotfiles.git"
+  local_path: ~/dotfiles
+----
+
+A project with no `tags` key is **never matched** when `--tag` is active. See <<_tag_filtering>> for usage examples.
 
 YAML example:
 
@@ -389,29 +420,17 @@ $ gip --noop pull
 ----
 
 
+[[_tag_filtering]]
 ## Tag filtering
 
-Add a `tags` list to any project in the configuration file and use `--tag` to restrict any command to a subset of projects.
-
-[source,yaml]
-----
-- name: frontend
-  repository: "https://github.com/org/frontend.git"
-  local_path: ~/projects/frontend
-  tags: [work, js, client-acme]
-
-- name: dotfiles
-  repository: "git@github.com:user/dotfiles.git"
-  local_path: ~/dotfiles
-  tags: [personal]
-----
+Use `--tag` to restrict any command to a subset of projects. Matching is case-sensitive OR logic: a project is selected if it carries *at least one* of the requested tags. See <<_tags>> for how to define tags in the configuration file.
 
 [source,bash]
 ----
-# only work repos
+# only repos tagged "work"
 gip status --tag work
 
-# OR logic: repos with "js" or "personal"
+# OR logic: repos tagged "js" or "personal"
 gip pull --tag js,personal
 
 # combine with other flags
