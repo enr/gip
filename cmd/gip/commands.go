@@ -154,7 +154,8 @@ func gitStatus(c *cli.Context, untracked bool) error {
 		return exitErrorf(1, "Error loading projects list: %v", err)
 	}
 	projects = filterByTag(projects, c.String("tag"))
-	git, err := core.NewGit(ui)
+	t := newTracker(len(projects))
+	git, err := core.NewGit(ui, core.WithSharedOutput(t.sharedOutput()))
 	if err != nil {
 		return exitErrorf(1, "Error loading git: %v", err)
 	}
@@ -168,8 +169,6 @@ func gitStatus(c *cli.Context, untracked bool) error {
 	if untracked {
 		untrackedFlag = "--untracked-files"
 	}
-
-	t := newTracker(len(projects))
 	sem := make(chan struct{}, jobs)
 	var wg sync.WaitGroup
 
@@ -187,7 +186,7 @@ func gitStatus(c *cli.Context, untracked bool) error {
 				return
 			}
 			if !isProjectDir(line) {
-				warnMissingDir(line)
+				t.withOutput(func() { warnMissingDir(line) })
 				t.record(opResult{project: project.Name, localPath: line, status: opSkipped, reason: "not a project dir"})
 				return
 			}
@@ -357,7 +356,8 @@ func doPull(c *cli.Context) error {
 		return exitErrorf(1, "Error loading projects list: %v", err)
 	}
 	projects = filterByTag(projects, c.String("tag"))
-	git, err := core.NewGit(ui)
+	t := newTracker(len(projects))
+	git, err := core.NewGit(ui, core.WithSharedOutput(t.sharedOutput()))
 	if err != nil {
 		return exitErrorf(1, "Error loading git: %v", err)
 	}
@@ -367,7 +367,6 @@ func doPull(c *cli.Context) error {
 		jobs = 1
 	}
 
-	t := newTracker(len(projects))
 	sem := make(chan struct{}, jobs)
 	var wg sync.WaitGroup
 
@@ -394,7 +393,7 @@ func doPull(c *cli.Context) error {
 				return
 			}
 			if !isProjectDir(line) {
-				warnMissingDir(line)
+				t.withOutput(func() { warnMissingDir(line) })
 				if all || project.pullAlways() {
 					if noopMode {
 						t.printNoop("%s → git clone %s %s", project.Name, project.Repository, line)
@@ -449,7 +448,8 @@ func doFetch(c *cli.Context) error {
 		return exitErrorf(1, "Error loading projects list: %v", err)
 	}
 	projects = filterByTag(projects, c.String("tag"))
-	git, err := core.NewGit(ui)
+	t := newTracker(len(projects))
+	git, err := core.NewGit(ui, core.WithSharedOutput(t.sharedOutput()))
 	if err != nil {
 		return exitErrorf(1, "Error loading git: %v", err)
 	}
@@ -458,8 +458,6 @@ func doFetch(c *cli.Context) error {
 	if jobs < 1 {
 		jobs = 1
 	}
-
-	t := newTracker(len(projects))
 	sem := make(chan struct{}, jobs)
 	var wg sync.WaitGroup
 
@@ -486,7 +484,7 @@ func doFetch(c *cli.Context) error {
 				return
 			}
 			if !isProjectDir(line) {
-				warnMissingDir(line)
+				t.withOutput(func() { warnMissingDir(line) })
 				if noopMode {
 					t.printNoop("%s → SALTATO  (directory mancante)", project.Name)
 				}
@@ -533,7 +531,8 @@ func doBranch(c *cli.Context) error {
 		return exitErrorf(1, "Error loading projects list: %v", err)
 	}
 	projects = filterByTag(projects, c.String("tag"))
-	git, err := core.NewGit(ui)
+	t := newTracker(len(projects))
+	git, err := core.NewGit(ui, core.WithSharedOutput(t.sharedOutput()))
 	if err != nil {
 		return exitErrorf(1, "Error loading git: %v", err)
 	}
@@ -543,7 +542,6 @@ func doBranch(c *cli.Context) error {
 		jobs = 1
 	}
 
-	t := newTracker(len(projects))
 	var entriesMu sync.Mutex
 	entries := make([]branchEntry, 0, len(projects))
 	sem := make(chan struct{}, jobs)
@@ -631,14 +629,13 @@ func doExec(c *cli.Context) error {
 		return exitErrorf(1, "Error loading projects list: %v", err)
 	}
 	projects = filterByTag(projects, c.String("tag"))
-	runner := core.NewCommandRunner(ui)
+	t := newTracker(len(projects))
+	runner := core.NewCommandRunner(ui, core.WithSharedOutputRunner(t.sharedOutput()))
 
 	jobs := c.Int("jobs")
 	if jobs < 1 {
 		jobs = 1
 	}
-
-	t := newTracker(len(projects))
 	sem := make(chan struct{}, jobs)
 	var wg sync.WaitGroup
 
@@ -656,7 +653,7 @@ func doExec(c *cli.Context) error {
 				return
 			}
 			if !isProjectDir(line) {
-				warnMissingDir(line)
+				t.withOutput(func() { warnMissingDir(line) })
 				if noopMode {
 					t.printNoop("%s → SALTATO  (directory mancante)", project.Name)
 				}

@@ -12,15 +12,36 @@ import (
 	"github.com/enr/clui"
 )
 
+// CommandRunnerOption configures a CommandRunner.
+type CommandRunnerOption func(*CommandRunner)
+
+// WithSharedOutputRunner makes all display sections share mu and call beforeDisplay
+// (while holding mu) before writing to the UI.
+func WithSharedOutputRunner(mu *sync.Mutex, beforeDisplay func()) CommandRunnerOption {
+	return func(r *CommandRunner) {
+		r.outMu = mu
+		r.beforeDisplay = beforeDisplay
+	}
+}
+
 // CommandRunner executes arbitrary commands inside project directories.
 type CommandRunner struct {
-	ui       *clui.Clui
-	outputMu sync.Mutex
+	ui            *clui.Clui
+	outMu         *sync.Mutex
+	beforeDisplay func()
 }
 
 // NewCommandRunner creates a CommandRunner.
-func NewCommandRunner(ui *clui.Clui) *CommandRunner {
-	return &CommandRunner{ui: ui}
+func NewCommandRunner(ui *clui.Clui, opts ...CommandRunnerOption) *CommandRunner {
+	r := &CommandRunner{
+		ui:            ui,
+		outMu:         &sync.Mutex{},
+		beforeDisplay: func() {},
+	}
+	for _, opt := range opts {
+		opt(r)
+	}
+	return r
 }
 
 // Run executes name with args inside workingDir, synchronising output via an internal mutex.
@@ -41,7 +62,8 @@ func (r *CommandRunner) Run(ctx context.Context, workingDir, name string, args [
 
 	runErr := cmd.Run()
 
-	r.outputMu.Lock()
+	r.outMu.Lock()
+	r.beforeDisplay()
 	r.ui.Title(workingDir)
 	if stdout.Len() > 0 {
 		r.ui.Lifecycle(stdout.String())
@@ -52,7 +74,7 @@ func (r *CommandRunner) Run(ctx context.Context, workingDir, name string, args [
 	if runErr != nil {
 		r.ui.Errorf("(%v)", runErr)
 	}
-	r.outputMu.Unlock()
+	r.outMu.Unlock()
 
 	return runErr
 }

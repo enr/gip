@@ -95,7 +95,8 @@ type listOutputJSON struct {
 // tracker records per-project outcomes, drives the progress bar on stderr
 // (TTY only), and renders either a text summary or JSON output at the end.
 type tracker struct {
-	mu      sync.Mutex
+	mu      sync.Mutex  // guards results slice
+	outMu   *sync.Mutex // serialises all terminal writes; shared with core output funcs
 	results []opResult
 	total   int
 	started time.Time
@@ -104,6 +105,7 @@ type tracker struct {
 
 func newTracker(total int) *tracker {
 	return &tracker{
+		outMu:   &sync.Mutex{},
 		total:   total,
 		started: time.Now(),
 		tty:     isTTY(os.Stderr),
@@ -112,9 +114,25 @@ func newTracker(total int) *tracker {
 
 // printNoop writes a dry-run line to stdout in a thread-safe way.
 func (t *tracker) printNoop(format string, args ...interface{}) {
-	t.mu.Lock()
+	t.outMu.Lock()
 	fmt.Fprintf(os.Stdout, "[DRY-RUN] "+format+"\n", args...)
-	t.mu.Unlock()
+	t.outMu.Unlock()
+}
+
+// withOutput clears the progress bar, runs fn (which writes project output to
+// stdout), then releases the output lock. Concurrent calls are serialised so
+// that progress-bar redraws never interleave with project output.
+func (t *tracker) withOutput(fn func()) {
+	t.outMu.Lock()
+	t.clearProgressLocked()
+	fn()
+	t.outMu.Unlock()
+}
+
+// sharedOutput returns the output mutex and a clear-bar callback for use by
+// core.WithSharedOutput so that git/exec display sections share the same lock.
+func (t *tracker) sharedOutput() (*sync.Mutex, func()) {
+	return t.outMu, t.clearProgressLocked
 }
 
 // record stores one project result and redraws the progress bar.
@@ -135,14 +153,23 @@ func (t *tracker) drawProgress(done int, name string) {
 	filled := done * 20 / t.total
 	pct := done * 100 / t.total
 	bar := strings.Repeat("█", filled) + strings.Repeat("░", 20-filled)
+	t.outMu.Lock()
 	fmt.Fprintf(os.Stderr, "\r[%s] %d/%d (%d%%) — %s   ", bar, done, t.total, pct, name)
+	t.outMu.Unlock()
 }
 
-func (t *tracker) clearProgress() {
+// clearProgressLocked erases the progress bar. outMu must already be held.
+func (t *tracker) clearProgressLocked() {
 	if !t.tty {
 		return
 	}
 	fmt.Fprintf(os.Stderr, "\r%s\r", strings.Repeat(" ", 80))
+}
+
+func (t *tracker) clearProgress() {
+	t.outMu.Lock()
+	t.clearProgressLocked()
+	t.outMu.Unlock()
 }
 
 // printSummary prints the text summary. Always writes to stdout regardless of quiet mode.
