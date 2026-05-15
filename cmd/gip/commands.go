@@ -73,7 +73,10 @@ var commandList = cli.Command{
 	Usage:       "list registered projects",
 	Description: `List projects in a table with name, path, policy, provider and tags.`,
 	Action:      doList,
-	Flags:       []cli.Flag{tagFlag},
+	Flags: []cli.Flag{
+		tagFlag,
+		&cli.BoolFlag{Name: "all", Aliases: []string{"a"}, Usage: "include disabled projects in the list"},
+	},
 }
 
 var commandPull = cli.Command{
@@ -154,6 +157,7 @@ func gitStatus(c *cli.Context, untracked bool) error {
 		return exitErrorf(1, "Error loading projects list: %v", err)
 	}
 	projects = filterByTag(projects, c.String("tag"))
+	projects = filterDisabled(projects)
 	t := newTracker(len(projects))
 	git, err := core.NewGit(ui, core.WithSharedOutput(t.sharedOutput()))
 	if err != nil {
@@ -247,6 +251,10 @@ func doList(c *cli.Context) error {
 		return exitErrorf(1, "Error loading projects list: %v", err)
 	}
 	projects = filterByTag(projects, c.String("tag"))
+	showAll := c.Bool("all")
+	if !showAll {
+		projects = filterDisabled(projects)
+	}
 
 	hasTags := false
 	rows := make([]listRow, 0, len(projects))
@@ -267,11 +275,16 @@ func doList(c *cli.Context) error {
 			tags = strings.Join(project.Tags, ", ")
 		}
 
+		displayName := project.Name
+		if project.Disabled {
+			displayName += " (disabled)"
+		}
+
 		localPath, err := projectPath(project.LocalPath)
 		if err != nil {
 			errs[project.Name] = err
 			rows = append(rows, listRow{
-				name: project.Name, path: project.LocalPath + " (ERROR)",
+				name: displayName, path: project.LocalPath + " (ERROR)",
 				policy: policy, provider: provider, tags: tags,
 				repository: project.Repository, pathErr: err,
 			})
@@ -283,7 +296,7 @@ func doList(c *cli.Context) error {
 			displayPath += " (missing)"
 		}
 		rows = append(rows, listRow{
-			name: project.Name, path: displayPath,
+			name: displayName, path: displayPath,
 			policy: policy, provider: provider, tags: tags,
 			repository: project.Repository, missingDir: missing,
 		})
@@ -317,13 +330,14 @@ func printListJSON(rows []listRow, projects []gipProject, warnings []string) err
 			tags = []string{}
 		}
 		pjs = append(pjs, listProjectJSON{
-			Name:       r.name,
+			Name:       projects[i].Name,
 			LocalPath:  projects[i].LocalPath,
 			Repository: r.repository,
 			Policy:     r.policy,
 			Provider:   r.provider,
 			Tags:       tags,
 			Missing:    r.missingDir,
+			Disabled:   projects[i].Disabled,
 		})
 	}
 	if warnings == nil {
@@ -356,6 +370,7 @@ func doPull(c *cli.Context) error {
 		return exitErrorf(1, "Error loading projects list: %v", err)
 	}
 	projects = filterByTag(projects, c.String("tag"))
+	projects = filterDisabled(projects)
 	t := newTracker(len(projects))
 	git, err := core.NewGit(ui, core.WithSharedOutput(t.sharedOutput()))
 	if err != nil {
@@ -455,6 +470,7 @@ func doFetch(c *cli.Context) error {
 		return exitErrorf(1, "Error loading projects list: %v", err)
 	}
 	projects = filterByTag(projects, c.String("tag"))
+	projects = filterDisabled(projects)
 	t := newTracker(len(projects))
 	git, err := core.NewGit(ui, core.WithSharedOutput(t.sharedOutput()))
 	if err != nil {
@@ -538,6 +554,7 @@ func doBranch(c *cli.Context) error {
 		return exitErrorf(1, "Error loading projects list: %v", err)
 	}
 	projects = filterByTag(projects, c.String("tag"))
+	projects = filterDisabled(projects)
 	t := newTracker(len(projects))
 	git, err := core.NewGit(ui, core.WithSharedOutput(t.sharedOutput()))
 	if err != nil {
@@ -636,6 +653,7 @@ func doExec(c *cli.Context) error {
 		return exitErrorf(1, "Error loading projects list: %v", err)
 	}
 	projects = filterByTag(projects, c.String("tag"))
+	projects = filterDisabled(projects)
 	t := newTracker(len(projects))
 	runner := core.NewCommandRunner(ui, core.WithSharedOutputRunner(t.sharedOutput()))
 

@@ -24,6 +24,7 @@ type gipProject struct {
 	LocalPath  string   `json:"local_path" yaml:"local_path"`
 	PullPolicy string   `json:"pull_policy" yaml:"pull_policy"`
 	Tags       []string `json:"tags,omitempty" yaml:"tags,omitempty"`
+	Disabled   bool     `json:"disabled,omitempty" yaml:"disabled,omitempty"`
 }
 
 func (p *gipProject) pullNever() bool {
@@ -161,6 +162,17 @@ func projectPath(ppath string) (string, error) {
 		retpath = filepath.FromSlash(path.Join(dir, relpath))
 	}
 	return os.ExpandEnv(retpath), nil
+}
+
+// filterDisabled removes projects that have Disabled set to true.
+func filterDisabled(projects []gipProject) []gipProject {
+	out := projects[:0:0]
+	for _, p := range projects {
+		if !p.Disabled {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 // filterByTag returns the subset of projects that carry at least one of the

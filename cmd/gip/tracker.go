@@ -81,6 +81,7 @@ type listProjectJSON struct {
 	Provider   string   `json:"provider"`
 	Tags       []string `json:"tags"`
 	Missing    bool     `json:"missing,omitempty"`
+	Disabled   bool     `json:"disabled,omitempty"`
 }
 
 type listOutputJSON struct {
