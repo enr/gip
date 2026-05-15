@@ -140,6 +140,85 @@ func TestErrorOutputNoBanner(t *testing.T) {
 	}
 }
 
+// TestFetchRunsInParallel verifies that fetch operates on multiple repos concurrently.
+func TestFetchRunsInParallel(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping timing test in short mode")
+	}
+
+	tmpDir := t.TempDir()
+	binPath := buildBinary(t, tmpDir)
+	makeSlowGit(t, tmpDir, 2)
+
+	repo1 := filepath.Join(tmpDir, "repo1")
+	repo2 := filepath.Join(tmpDir, "repo2")
+	makeGitRepo(t, repo1)
+	makeGitRepo(t, repo2)
+
+	configPath := filepath.Join(tmpDir, ".gip")
+	makeConfig(t, configPath, []string{repo1, repo2})
+
+	t.Setenv("PATH", tmpDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	start := time.Now()
+	exec.Command(binPath, "-f", configPath, "fetch").Run()
+	elapsed := time.Since(start)
+
+	const threshold = 3500 * time.Millisecond
+	if elapsed > threshold {
+		t.Fatalf("fetch took %v; expected < %v with parallel execution", elapsed, threshold)
+	}
+}
+
+// TestFetchSkipsPullNever verifies that projects with pull_policy "never" are skipped.
+func TestFetchSkipsPullNever(t *testing.T) {
+	tmpDir := t.TempDir()
+	binPath := buildBinary(t, tmpDir)
+
+	repo1 := filepath.Join(tmpDir, "repo1")
+	makeGitRepo(t, repo1)
+
+	configPath := filepath.Join(tmpDir, ".gip")
+	content := fmt.Sprintf("- name: repo1\n  local_path: %s\n  repository: \"https://example.com/r.git\"\n  pull_policy: never\n", repo1)
+	if err := os.WriteFile(configPath, []byte(content), 0644); err != nil {
+		t.Fatalf("Failed to write config: %v", err)
+	}
+
+	// With pull_policy: never the repo is skipped; no git binary needed, exit 0.
+	cmd := exec.Command(binPath, "-f", configPath, "fetch")
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("Expected exit 0 when all repos are skipped, got: %v", err)
+	}
+}
+
+// TestFetchRespectsTimeout verifies that --timeout kills a hung fetch operation.
+func TestFetchRespectsTimeout(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping timing test in short mode")
+	}
+
+	tmpDir := t.TempDir()
+	binPath := buildBinary(t, tmpDir)
+	makeSlowGit(t, tmpDir, 10)
+
+	repo1 := filepath.Join(tmpDir, "repo1")
+	makeGitRepo(t, repo1)
+
+	configPath := filepath.Join(tmpDir, ".gip")
+	makeConfig(t, configPath, []string{repo1})
+
+	t.Setenv("PATH", tmpDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	start := time.Now()
+	exec.Command(binPath, "-f", configPath, "fetch", "--timeout=1").Run()
+	elapsed := time.Since(start)
+
+	const threshold = 2500 * time.Millisecond
+	if elapsed > threshold {
+		t.Fatalf("fetch --timeout=1 took %v; expected < %v", elapsed, threshold)
+	}
+}
+
 // TestExecCommand verifies that exec runs an arbitrary command in each project directory.
 func TestExecCommand(t *testing.T) {
 	tmpDir := t.TempDir()

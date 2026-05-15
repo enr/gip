@@ -19,6 +19,7 @@ var commands = []*cli.Command{
 	&commandStatusFull,
 	&commandList,
 	&commandPull,
+	&commandFetch,
 	&commandExec,
 }
 
@@ -250,6 +251,75 @@ func doPull(c *cli.Context) error {
 				mu.Lock()
 				errs[project.Name] = err
 				mu.Unlock()
+			}
+		}()
+	}
+	wg.Wait()
+	return buildError(errs)
+}
+
+var commandFetch = cli.Command{
+	Name:        "fetch",
+	Usage:       "fetch remote refs for all projects without merging",
+	Description: `Executes "git fetch --all --prune" for each project. Projects with pull_policy "never" are skipped.`,
+	Action:      doFetch,
+	Flags:       parallelFlags,
+}
+
+func doFetch(c *cli.Context) error {
+	configurationFile, err := configurationFilePath(c)
+	if err != nil {
+		return exitErrorf(1, "Error loading configuration file %s: %v", c.String("f"), err)
+	}
+	projects, err := projectsList(configurationFile)
+	if err != nil {
+		return exitErrorf(1, "Error loading projects list: %v", err)
+	}
+	git, err := core.NewGit(ui)
+	if err != nil {
+		return exitErrorf(1, "Error loading git: %v", err)
+	}
+
+	jobs := c.Int("jobs")
+	if jobs < 1 {
+		jobs = 1
+	}
+
+	var mu sync.Mutex
+	errs := map[string]error{}
+	sem := make(chan struct{}, jobs)
+	var wg sync.WaitGroup
+
+	for _, project := range projects {
+		project := project
+		if project.pullNever() {
+			ui.Confidentialf("Skip %s : pull policy never", project.Name)
+			continue
+		}
+
+		wg.Add(1)
+		sem <- struct{}{}
+		go func() {
+			defer wg.Done()
+			defer func() { <-sem }()
+
+			line, err := projectPath(project.LocalPath)
+			if err != nil {
+				mu.Lock()
+				errs[project.Name] = err
+				mu.Unlock()
+				return
+			}
+			if isProjectDir(line) {
+				ctx, cancel := opContext(c)
+				defer cancel()
+				if err = git.Fetch(ctx, line); err != nil {
+					mu.Lock()
+					errs[project.Name] = err
+					mu.Unlock()
+				}
+			} else {
+				warnMissingDir(line)
 			}
 		}()
 	}

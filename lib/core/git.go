@@ -122,6 +122,32 @@ func (g *GitCommands) Status(ctx context.Context, dirpath string, untracked bool
 	return err
 }
 
+// Fetch executes `git fetch --all --prune`
+func (g *GitCommands) Fetch(ctx context.Context, dirpath string) error {
+	if strings.HasPrefix(dirpath, "-") {
+		return fmt.Errorf("invalid dirpath: cannot start with '-'")
+	}
+	g.ui.Confidentialf("Fetching %s", dirpath)
+	r := runcmdWrapperRequest{
+		ctx:        ctx,
+		args:       []string{"fetch", "--all", "--prune"},
+		workingDir: dirpath,
+	}
+	result := g.executor.exec(r)
+	var err error
+	if !result.Success() {
+		g.ui.Errorf("Error executing Git in %s", dirpath)
+		g.ui.Errorf("(%d) %v", result.ExitStatus(), result.Error())
+		err = result.Error()
+	}
+	gitOutput := result.Stdout().String()
+	g.outputMu.Lock()
+	g.ui.Title(dirpath)
+	g.ui.Lifecycle(gitOutput)
+	g.outputMu.Unlock()
+	return err
+}
+
 func statusArguments(untracked bool) []string {
 	untrackedFlag := "=no"
 	if untracked {

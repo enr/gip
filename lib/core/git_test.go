@@ -123,6 +123,37 @@ func TestGitCommands_Pull(t *testing.T) {
 	}
 }
 
+func TestGitCommands_Fetch(t *testing.T) {
+	ui := clui.DefaultClui()
+	mock := &mockGitWrapper{}
+	gitCmd := &GitCommands{
+		ui:       ui,
+		executor: mock,
+	}
+
+	err := gitCmd.Fetch(context.Background(), "/tmp/myrepo")
+	if err != nil {
+		t.Fatalf("Unexpected error: %v", err)
+	}
+
+	if len(mock.requests) != 1 {
+		t.Fatalf("Expected 1 execution, got %d", len(mock.requests))
+	}
+	expectedArgs := []string{"fetch", "--all", "--prune"}
+	if !reflect.DeepEqual(mock.requests[0].args, expectedArgs) {
+		t.Fatalf("Expected args %v, got %v", expectedArgs, mock.requests[0].args)
+	}
+	if mock.requests[0].workingDir != "/tmp/myrepo" {
+		t.Fatalf("Expected workingDir /tmp/myrepo, got %v", mock.requests[0].workingDir)
+	}
+
+	// option injection prevention
+	err = gitCmd.Fetch(context.Background(), "--myrepo")
+	if err == nil {
+		t.Fatal("Expected error for dirpath starting with -")
+	}
+}
+
 func TestGitCommands_Status(t *testing.T) {
 	ui := clui.DefaultClui()
 	mock := &mockGitWrapper{}
