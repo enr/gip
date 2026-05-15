@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/user"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/enr/clui"
@@ -125,6 +126,28 @@ func TestIsProjectDir(t *testing.T) {
 	noRepo := t.TempDir()
 	if isProjectDir(noRepo) {
 		t.Errorf("isProjectDir(%q): expected false for dir without .git, got true", noRepo)
+	}
+}
+
+func TestProjectsListDuplicateName(t *testing.T) {
+	if ui == nil {
+		ui, _ = clui.NewClui(func(u *clui.Clui) { u.VerbosityLevel = clui.VerbosityLevelLow })
+	}
+	f, err := os.CreateTemp("", "gip-dup-*.yaml")
+	if err != nil {
+		t.Fatalf("create temp file: %v", err)
+	}
+	defer os.Remove(f.Name())
+	_, _ = f.WriteString("- name: myproject\n  local_path: /tmp/a\n  repository: git@github.com:x/a.git\n" +
+		"- name: myproject\n  local_path: /tmp/b\n  repository: git@github.com:x/b.git\n")
+	f.Close()
+
+	_, _, err = projectsList(f.Name())
+	if err == nil {
+		t.Fatal("expected error for duplicate project name, got nil")
+	}
+	if !strings.Contains(err.Error(), f.Name()) {
+		t.Errorf("error message should contain the config file path, got: %v", err)
 	}
 }
 

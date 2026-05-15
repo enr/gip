@@ -141,10 +141,9 @@ func projectsList(configurationPath string) ([]gipProject, []string, error) {
 		}
 		if name := strings.TrimSpace(p.Name); name != "" {
 			if prevIdx, already := nameIndex[name]; already {
-				warn("duplicate name %q (projects #%d and #%d)", name, prevIdx+1, i+1)
-			} else {
-				nameIndex[name] = i
+				return nil, warnings, fmt.Errorf("%s: duplicate project name %q (entries #%d and #%d)", configurationPath, name, prevIdx+1, i+1)
 			}
+			nameIndex[name] = i
 		}
 	}
 	return projects, warnings, nil
