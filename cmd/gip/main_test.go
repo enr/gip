@@ -378,9 +378,18 @@ func TestBranchCommand(t *testing.T) {
 	binPath := buildBinary(t, tmpDir)
 
 	// Fake git that prints "main" to stdout regardless of args.
-	script := "#!/bin/sh\necho main\n"
-	fakeGitPath := filepath.Join(tmpDir, "git")
-	if err := os.WriteFile(fakeGitPath, []byte(script), 0755); err != nil {
+	// On Windows use a .bat file; on Unix use a shell script.
+	var fakeGitScript string
+	var fakeGitName string
+	if runtime.GOOS == "windows" {
+		fakeGitName = "git.bat"
+		fakeGitScript = "@echo off\r\necho main\r\n"
+	} else {
+		fakeGitName = "git"
+		fakeGitScript = "#!/bin/sh\necho main\n"
+	}
+	fakeGitPath := filepath.Join(tmpDir, fakeGitName)
+	if err := os.WriteFile(fakeGitPath, []byte(fakeGitScript), 0755); err != nil {
 		t.Fatalf("Failed to create fake git: %v", err)
 	}
 

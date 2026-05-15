@@ -297,6 +297,7 @@ func TestDefaultConfigFileCascade(t *testing.T) {
 		}
 		t.Setenv("GIP_FILE", "")
 		t.Setenv("HOME", homeDir)
+		t.Setenv("USERPROFILE", homeDir) // Windows: os.UserHomeDir() reads USERPROFILE, not HOME
 		t.Chdir(emptyDir)
 
 		got, err := defaultConfigurationFilePath()
