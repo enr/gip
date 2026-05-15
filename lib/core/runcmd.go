@@ -3,6 +3,7 @@ package core
 import (
 	"bytes"
 	"context"
+	"os"
 	"os/exec"
 	"time"
 
@@ -71,6 +72,12 @@ func (g defaultGitWrapper) exec(r runcmdWrapperRequest) runcmdResult {
 	result := &execResult{}
 	cmd.Stdout = &result.stdout
 	cmd.Stderr = &result.stderr
+	devNull, _ := os.Open(os.DevNull)
+	cmd.Stdin = devNull
+	cmd.Env = append(os.Environ(),
+		"GIT_TERMINAL_PROMPT=0",
+		"GIT_SSH_COMMAND=ssh -o BatchMode=yes",
+	)
 
 	g.ui.Confidentialf("Execute command %s %v in %s", g.git, r.args, r.workingDir)
 	if err := cmd.Run(); err != nil {

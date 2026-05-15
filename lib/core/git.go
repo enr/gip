@@ -10,6 +10,16 @@ import (
 	"github.com/enr/go-commons/environment"
 )
 
+// gitResultError builds an error that includes git's stderr output (which is
+// where git writes its "fatal: ..." diagnostic messages).
+func gitResultError(result runcmdResult) error {
+	msg := strings.TrimSpace(result.Stderr().String())
+	if msg == "" {
+		return result.Error()
+	}
+	return fmt.Errorf("%w: %s", result.Error(), msg)
+}
+
 // GitOption configures a GitCommands instance.
 type GitOption func(*GitCommands)
 
@@ -83,17 +93,16 @@ func (g *GitCommands) Clone(ctx context.Context, repourl string, dirpath string)
 	}
 	result := g.executor.exec(r)
 	if !result.Success() {
-		err = result.Error()
+		err = gitResultError(result)
 	}
-	gitOutput := result.Stdout().String()
 	g.outMu.Lock()
 	g.beforeDisplay()
 	g.ui.Title(dirpath)
 	if !result.Success() {
 		g.ui.Errorf("Error executing Git in %s", dirpath)
-		g.ui.Errorf("(%d) %v", result.ExitStatus(), result.Error())
+		g.ui.Errorf("(%d) %s", result.ExitStatus(), strings.TrimSpace(result.Stderr().String()))
 	}
-	g.ui.Lifecycle(gitOutput)
+	g.ui.Lifecycle(result.Stdout().String())
 	g.outMu.Unlock()
 	return err
 }
@@ -116,17 +125,16 @@ func (g *GitCommands) Pull(ctx context.Context, dirpath string) error {
 	}
 	result := g.executor.exec(r)
 	if !result.Success() {
-		err = result.Error()
+		err = gitResultError(result)
 	}
-	gitOutput := result.Stdout().String()
 	g.outMu.Lock()
 	g.beforeDisplay()
 	g.ui.Title(dirpath)
 	if !result.Success() {
 		g.ui.Errorf("Error executing Git in %s", dirpath)
-		g.ui.Errorf("(%d) %v", result.ExitStatus(), result.Error())
+		g.ui.Errorf("(%d) %s", result.ExitStatus(), strings.TrimSpace(result.Stderr().String()))
 	}
-	g.ui.Lifecycle(gitOutput)
+	g.ui.Lifecycle(result.Stdout().String())
 	g.outMu.Unlock()
 	return err
 }
@@ -146,7 +154,7 @@ func (g *GitCommands) Status(ctx context.Context, dirpath string, untracked bool
 	}
 	result := g.executor.exec(r)
 	if !result.Success() {
-		err = result.Error()
+		err = gitResultError(result)
 	}
 	gitOutput := result.Stdout().String()
 	if len(gitOutput) == 0 && result.Success() {
@@ -157,7 +165,7 @@ func (g *GitCommands) Status(ctx context.Context, dirpath string, untracked bool
 		g.ui.Title(dirpath)
 		if !result.Success() {
 			g.ui.Errorf("Error executing Git in %s", dirpath)
-			g.ui.Errorf("(%d) %v", result.ExitStatus(), result.Error())
+			g.ui.Errorf("(%d) %s", result.ExitStatus(), strings.TrimSpace(result.Stderr().String()))
 		}
 		g.ui.Lifecycle(gitOutput)
 		g.outMu.Unlock()
@@ -180,17 +188,16 @@ func (g *GitCommands) Fetch(ctx context.Context, dirpath string) error {
 	result := g.executor.exec(r)
 	var err error
 	if !result.Success() {
-		err = result.Error()
+		err = gitResultError(result)
 	}
-	gitOutput := result.Stdout().String()
 	g.outMu.Lock()
 	g.beforeDisplay()
 	g.ui.Title(dirpath)
 	if !result.Success() {
 		g.ui.Errorf("Error executing Git in %s", dirpath)
-		g.ui.Errorf("(%d) %v", result.ExitStatus(), result.Error())
+		g.ui.Errorf("(%d) %s", result.ExitStatus(), strings.TrimSpace(result.Stderr().String()))
 	}
-	g.ui.Lifecycle(gitOutput)
+	g.ui.Lifecycle(result.Stdout().String())
 	g.outMu.Unlock()
 	return err
 }
@@ -207,7 +214,7 @@ func (g *GitCommands) CurrentBranch(ctx context.Context, dirpath string) (string
 	}
 	result := g.executor.exec(r)
 	if !result.Success() {
-		return "", result.Error()
+		return "", gitResultError(result)
 	}
 	branch := strings.TrimSpace(result.Stdout().String())
 	if branch == "HEAD" {

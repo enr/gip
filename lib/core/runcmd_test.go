@@ -2,6 +2,7 @@ package core
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"testing"
 
@@ -44,7 +45,7 @@ func TestPullError(t *testing.T) {
 	if err == nil {
 		t.Errorf("Expected error in pull but got NIL")
 	}
-	if err != errGeneric {
+	if !errors.Is(err, errGeneric) {
 		t.Errorf(`Expectederror %v but got %v`, errGeneric, err)
 	}
 }
@@ -58,7 +59,7 @@ func TestStatusError(t *testing.T) {
 	if err == nil {
 		t.Errorf("Expected error in status but got NIL")
 	}
-	if err != errGeneric {
+	if !errors.Is(err, errGeneric) {
 		t.Errorf(`Expectederror %v but got %v`, errGeneric, err)
 	}
 }
@@ -72,7 +73,7 @@ func TestCloneError(t *testing.T) {
 	if err == nil {
 		t.Errorf("Expected error in clone but got NIL")
 	}
-	if err != errGeneric {
+	if !errors.Is(err, errGeneric) {
 		t.Errorf(`Expectederror %v but got %v`, errGeneric, err)
 	}
 }
