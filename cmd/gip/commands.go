@@ -121,7 +121,7 @@ var commandInit = cli.Command{
 	Description: `Scans a directory recursively for git repositories and writes a gip configuration file.`,
 	Action:      doInit,
 	Flags: []cli.Flag{
-		&cli.StringFlag{Name: "output", Aliases: []string{"o"}, Usage: "output file path (default: ~/.gip)"},
+		&cli.StringFlag{Name: "output", Aliases: []string{"o"}, Usage: "output file path (default: ./.gip)"},
 		&cli.BoolFlag{Name: "force", Usage: "overwrite existing config without prompting"},
 		&cli.IntFlag{Name: "depth", Value: 5, Usage: "maximum directory scan depth"},
 	},
@@ -734,11 +734,7 @@ func doInit(c *cli.Context) error {
 
 	outputPath := c.String("output")
 	if outputPath == "" {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return exitErrorf(1, "Error retrieving home directory: %v", err)
-		}
-		outputPath = filepath.Join(home, ".gip")
+		outputPath = filepath.Join(".", configFileBaseName)
 	}
 
 	if _, statErr := os.Stat(outputPath); statErr == nil && !c.Bool("force") {
