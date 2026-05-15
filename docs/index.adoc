@@ -19,27 +19,38 @@ endif::[]
 [[_book]]
 ## Usage
 
-Gip offers bulk management for your Git projects running Git commands on a set of repositories.
+Gip offers bulk management for your Git projects, running Git commands on a set of repositories in parallel.
 
-Repositories can be registered in a YAML or JSON file.
+Repositories are registered in a YAML or JSON configuration file.
 
-Fields are:
 
-- `name`: a descriptive name for the project
-- `repository`: the remote repository url
-- `local_path`: local directory where operate into
-- `pull_policy`: behaviour when pull command is ran
+## Configuration file
+
+### Fields
+
+- `name` — descriptive name for the project (must be unique)
+- `repository` — remote repository URL (HTTPS or SSH)
+- `local_path` — local directory to operate in; `~` and environment variables are expanded
+- `pull_policy` — controls `pull` and `fetch` behaviour: `never` skips the project, `always` clones it if missing; omit for the default behaviour (operate only on already-present directories)
+- `tags` — optional list of labels used to filter projects with `--tag`
 
 YAML example:
 
 [source,yaml]
 ----
-- name: gip
-  repository: "https://github.com/enr/gip.git"
-  local_path: /tmp/gip
-- name: nowhere
-  repository: "https://nowhere.git"
-  local_path: /nowhere/not/found
+- name: frontend
+  repository: "https://github.com/org/frontend.git"
+  local_path: ~/projects/frontend
+  tags: [work, js]
+
+- name: dotfiles
+  repository: "git@github.com:user/dotfiles.git"
+  local_path: ~/dotfiles
+  tags: [personal]
+
+- name: legacy
+  repository: "https://github.com/org/legacy.git"
+  local_path: ~/projects/legacy
   pull_policy: never
 ----
 
@@ -49,128 +60,372 @@ JSON example:
 ----
 [
   {
-    "name": "gip",
-    "repository": "https://github.com/enr/gip.git",
-    "local_path": "/tmp/gip"
+    "name": "frontend",
+    "repository": "https://github.com/org/frontend.git",
+    "local_path": "~/projects/frontend",
+    "tags": ["work", "js"]
   },
   {
-    "name": "nowhere",
-    "repository": "https://nowhere.git",
-    "local_path": "/nowhere/not/found",
-    "pull_policy": "never"
+    "name": "dotfiles",
+    "repository": "git@github.com:user/dotfiles.git",
+    "local_path": "~/dotfiles",
+    "tags": ["personal"]
   }
 ]
 ----
 
-You can set the path using the `-f` flag:
+### Configuration file lookup
 
-```
-gip -f examples/linux.json -d pull -a
-```
+Gip searches for the configuration file in the following order:
 
-Otherwise it defaults to the file `.gip` in your home directory.
+1. The path given by the `-f / --file` flag
+2. The `GIP_FILE` environment variable
+3. `.gip` in the current working directory
+4. `~/.gip` (home directory)
 
-### Available commands
+The first match wins. Run with `--debug` to see which file is being used.
 
-**list**
+[source,bash]
+----
+# explicit path
+gip -f ~/work/gip.yaml status
 
-List all managed projects
+# per-workspace config picked up automatically when inside ~/work
+cd ~/work && gip status
 
-```
-gip -f examples/linux.json -d ls
-```
+# override via environment variable
+GIP_FILE=/tmp/test.yaml gip list
+----
 
-**pull**
+### Configuration warnings
 
-Run git pull on managed projects.
+When the configuration file is loaded, gip validates every entry and prints a warning for each anomaly before executing the command:
 
-The default behaviour is to pull only projects which `local_path` exists.
+- missing or empty `name`
+- missing or empty `local_path`
+- duplicate `name` values
+- unknown `pull_policy` (accepted values: `never`, `always`)
+- missing `repository` URL
+- repository URL from which the provider cannot be detected
 
-Projects with `pull_policy` set to `never` will be skipped, projects with `pull_policy` set to `always` will be pulled even if local path does not exist.
+Warnings are printed in yellow and do not block execution. With `--quiet` they are suppressed; with `--json` they appear in the `warnings` array of the output envelope.
 
-Use `never` for repositories that you don't want to pull (for example because they are reachable only using VPN).
 
-```
-gip -f examples/linux.json -d pull
-```
+## Global flags
 
-**status**
+[cols="1,3"]
+|===
+| Flag | Description
 
-Run `git status` on all managed projects.
+| `-f, --file <path>`
+| Path to the configuration file (overrides all other lookup methods)
 
-`statusfull` shows untracked files too.
+| `-d, --debug`
+| Verbose output: logs every git command executed and the config file path
 
-```
-gip -f examples/linux.json -d status
-```
+| `-q, --quiet`
+| Suppress all output except the final summary line
 
-Get status hiding the warn about missing local directory:
+| `--json`
+| Emit a single JSON envelope to stdout instead of text output; takes precedence over `--quiet`
 
-```
-gip -m sf
-```
+| `--noop`
+| Dry-run: print what would be done without executing any git command
 
-**other options**
+| `-m, --ignore-missing`
+| Silently skip projects whose `local_path` does not exist; without this flag a warning is printed
+|===
 
-Verbose output:
 
-```
-$ gip -d sf
-```
+## Command flags
 
-Choose a path other than `~/.gip` for configuration file:
+The following flags are available on all commands that operate in parallel (`status`, `statusfull`, `pull`, `fetch`, `branch`, `exec`):
 
-```
-$ gip -f ~/.config/local/gip.json -d sf
-```
+[cols="1,3"]
+|===
+| Flag | Description
+
+| `-j, --jobs <n>`
+| Maximum number of repositories to process concurrently (default: 4)
+
+| `-t, --timeout <seconds>`
+| Per-operation timeout in seconds; 0 means no timeout (default: 0)
+
+| `--tag <tags>`
+| Filter projects by tag — comma-separated list with OR logic (e.g. `--tag work,js`)
+
+| `--errors-last`
+| Print a grouped error section after the summary instead of inline
+|===
+
+
+## Commands
+
+### status / statusfull
+
+Run `git status --porcelain` on all managed projects. `statusfull` also shows untracked files.
+
+[source,bash]
+----
+gip status
+gip statusfull
+
+# only work-tagged repos, errors grouped at the bottom
+gip status --tag work --errors-last
+
+# ignore repos whose directory does not exist
+gip -m status
+----
+
+### list
+
+List all registered projects in an aligned table showing name, local path, pull policy, detected provider and tags.
+
+[source,bash]
+----
+gip list
+gip list --tag personal
+gip --json list
+----
+
+Example output:
+
+----
+NAME        LOCAL_PATH              POLICY    PROVIDER     TAGS
+frontend    ~/projects/frontend     default   github.com   work, js
+dotfiles    ~/dotfiles              default   github.com   personal
+legacy      ~/projects/legacy       never     github.com   —
+----
+
+With `--json` the output is a JSON object:
+
+[source,json]
+----
+{
+  "command": "list",
+  "timestamp": "2025-05-15T10:30:00Z",
+  "projects": [
+    {
+      "name": "frontend",
+      "local_path": "~/projects/frontend",
+      "repository": "https://github.com/org/frontend.git",
+      "policy": "default",
+      "provider": "github.com",
+      "tags": ["work", "js"],
+      "missing": false
+    }
+  ],
+  "warnings": []
+}
+----
+
+### pull
+
+Run `git pull` on managed projects.
+
+- Projects whose `local_path` does not exist are skipped unless `pull_policy: always` is set, in which case a `git clone` is performed.
+- Projects with `pull_policy: never` are always skipped.
+
+[source,bash]
+----
+gip pull
+gip pull --tag work -j 8
+gip pull -a           # pull all; clone missing repos with pull_policy: always
+gip --noop pull       # preview what would be done
+----
+
+### fetch
+
+Run `git fetch --all --prune` on all managed projects without merging into the working tree. Projects with `pull_policy: never` are skipped.
+
+[source,bash]
+----
+gip fetch
+gip fetch -j 8 -t 60
+gip fetch --tag work
+----
+
+### branch
+
+Show the current branch for every project in an aligned table.
+
+[source,bash]
+----
+gip branch
+gip branch --tag work
+gip --json branch
+----
+
+Example output:
+
+----
+NAME        BRANCH         LOCAL_PATH
+frontend    main           ~/projects/frontend
+backend     feature/auth   ~/projects/backend
+infra       (detached)     ~/work/infra
+----
+
+Repositories in detached HEAD state show `(detached)` as the branch name.
+
+### exec
+
+Execute an arbitrary command inside every project directory. Use `--` to separate gip flags from the command and its arguments.
+
+[source,bash]
+----
+gip exec -- git fetch --prune
+gip exec -- git log --oneline -5
+gip exec -j 8 -- make test
+gip exec --tag work -- git remote -v
+gip --noop exec -- git reset --hard origin/main
+----
+
+The command is run in the `local_path` of each project. stdout and stderr of every invocation are collected and printed in a synchronised block so output from different projects does not interleave.
+
+### init
+
+Scan a directory recursively for Git repositories and generate a gip configuration file.
+
+[source,bash]
+----
+# scan ~/projects and write to ~/.gip (asks for confirmation if it exists)
+gip init ~/projects
+
+# write to a specific output file
+gip init ~/projects --output ~/work/.gip
+
+# overwrite without prompting, scan up to 3 levels deep
+gip init . --force --depth 3
+----
+
+For each `.git/` directory found, gip detects:
+
+- the directory name as `name`
+- the `origin` remote URL as `repository` (via `git remote get-url origin`)
+- the absolute path as `local_path`
+
+Repositories without a configured `origin` remote are skipped with a warning. The generated file is in YAML format.
+
+[cols="1,3"]
+|===
+| Flag | Description
+
+| `-o, --output <path>`
+| Output file path (default: `~/.gip`)
+
+| `--force`
+| Overwrite existing file without prompting
+
+| `--depth <n>`
+| Maximum directory scan depth (default: 5)
+|===
+
+
+## Output modes
+
+### Text (default)
+
+Each project prints its git output inline as it completes. A progress bar is shown on stderr while processing (TTY only, hidden in `--quiet` and `--json` modes). At the end a summary line is printed:
+
+----
+─────────────────────────────────────────
+OK: 5   Errori: 1   Saltati: 2   Durata: 3.4s
+----
+
+### Quiet (`--quiet`)
+
+All per-project output is suppressed; only the final summary line is printed.
+
+### JSON (`--json`)
+
+A single JSON envelope is written to stdout after all projects have been processed. The structure is the same for all commands:
+
+[source,json]
+----
+{
+  "command": "status",
+  "timestamp": "2025-05-15T10:30:00Z",
+  "projects": [
+    {
+      "name": "frontend",
+      "local_path": "/home/user/projects/frontend",
+      "status": "ok"
+    },
+    {
+      "name": "legacy",
+      "local_path": "/home/user/projects/legacy",
+      "status": "skipped",
+      "reason": "pull_policy: never"
+    },
+    {
+      "name": "broken",
+      "local_path": "/home/user/broken",
+      "status": "error",
+      "error": "exit status 128"
+    }
+  ],
+  "summary": {
+    "total": 3,
+    "ok": 1,
+    "errors": 1,
+    "skipped": 1,
+    "duration_ms": 1240
+  },
+  "warnings": []
+}
+----
+
+`status` values: `ok`, `error`, `skipped`. The `branch` command adds a `branch` field to each project entry. No ANSI codes appear in JSON output.
+
+### Dry-run (`--noop`)
+
+No git command is executed. Each project prints a `[DRY-RUN]` line describing what would happen. Exit code is always 0.
+
+[source,bash]
+----
+$ gip --noop pull
+[DRY-RUN] frontend → git pull  (in ~/projects/frontend)
+[DRY-RUN] legacy   → SKIPPED  (pull_policy: never)
+----
+
+
+## Tag filtering
+
+Add a `tags` list to any project in the configuration file and use `--tag` to restrict any command to a subset of projects.
+
+[source,yaml]
+----
+- name: frontend
+  repository: "https://github.com/org/frontend.git"
+  local_path: ~/projects/frontend
+  tags: [work, js, client-acme]
+
+- name: dotfiles
+  repository: "git@github.com:user/dotfiles.git"
+  local_path: ~/dotfiles
+  tags: [personal]
+----
+
+[source,bash]
+----
+# only work repos
+gip status --tag work
+
+# OR logic: repos with "js" or "personal"
+gip pull --tag js,personal
+
+# combine with other flags
+gip exec --tag work -j 8 -- make build
+----
+
+A project without `tags` is never included when `--tag` is active.
 
 
 ## Install
 
-The latest release is in: https://github.com/enr/gip/releases/latest
+The latest release is at: https://github.com/enr/gip/releases/latest
 
-Put `gip` in your `$PATH` and make it executable:
-
-```
-$ curl -sL https://github.com/enr/gip/releases/download/v0.4.8/gip-0.4.8_linux_amd64.zip -o gip-0.4.8_linux_amd64.zip
-
-$ unzip gip-0.4.8_linux_amd64.zip
-Archive:  gip-0.4.8_linux_amd64.zip
-   creating: gip-0.4.8_linux_amd64/
-  inflating: gip-0.4.8_linux_amd64/gip
-
-$ ./gip-0.4.8_linux_amd64/gip --version
-gip version 0.4.8
-Revision: 359819e2a81d7b5bc827af1adec84eb42632f706
-Build date: 2020-02-05T22:30:46Z
-
-$ ./gip-0.4.8_linux_amd64/gip --help
-NAME:
-   gip - Keep tracks of your Git projects
-
-USAGE:
-   gip [global options] command [command options] [arguments...]
-
-VERSION:
-   0.4.8
-Revision: 359819e2a81d7b5bc827af1adec84eb42632f706
-Build date: 2020-02-05T22:30:46Z
-
-COMMANDS:
-   status, s
-   statusfull, sf
-   list, ls
-   pull
-   help, h         Shows a list of commands or help for one command
-
-GLOBAL OPTIONS:
-   --file value, -f value  path to the configuration file to use (if not set will be picked ${HOME}/.gip)
-   --debug, -d             operates in debug mode: lot of output (default: false)
-   --quiet, -q             operates in quiet mode (default: false)
-   --ignore-missing, -m    ignores missing local directories, otherwise prints a warn (default: false)
-   --help, -h              show help (default: false)
-   --version, -v           print the version (default: false)
-```
+Put `gip` in your `$PATH` and make it executable.
 
 
 ## License
