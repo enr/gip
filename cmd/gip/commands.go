@@ -393,7 +393,7 @@ func pullOne(c *cli.Context, git *core.GitCommands, project gipProject, all bool
 	if project.pullNever() {
 		ui.Confidentialf("Skip %s : pull policy never", project.Name)
 		if noopMode {
-			t.printNoop("%s → SALTATO  (pull_policy: never)", project.Name)
+			t.printNoop("%s → SKIPPED  (pull_policy: never)", project.Name)
 		}
 		t.record(opResult{project: project.Name, status: opSkipped, reason: "pull_policy: never"})
 		return
@@ -426,7 +426,7 @@ func pullMissingDir(c *cli.Context, git *core.GitCommands, project gipProject, l
 	t.withOutput(func() { warnMissingDir(line) })
 	if !(all || project.pullAlways()) {
 		if noopMode {
-			t.printNoop("%s → SALTATO  (directory mancante)", project.Name)
+			t.printNoop("%s → SKIPPED  (directory missing)", project.Name)
 		}
 		t.record(opResult{project: project.Name, localPath: line, status: opSkipped, reason: "local dir missing"})
 		return
@@ -479,7 +479,7 @@ func doFetch(c *cli.Context) error {
 			if project.pullNever() {
 				ui.Confidentialf("Skip %s : pull policy never", project.Name)
 				if noopMode {
-					t.printNoop("%s → SALTATO  (pull_policy: never)", project.Name)
+					t.printNoop("%s → SKIPPED  (pull_policy: never)", project.Name)
 				}
 				t.record(opResult{project: project.Name, status: opSkipped, reason: "pull_policy: never"})
 				return
@@ -493,7 +493,7 @@ func doFetch(c *cli.Context) error {
 			if !isProjectDir(line) {
 				t.withOutput(func() { warnMissingDir(line) })
 				if noopMode {
-					t.printNoop("%s → SALTATO  (directory mancante)", project.Name)
+					t.printNoop("%s → SKIPPED  (directory missing)", project.Name)
 				}
 				t.record(opResult{project: project.Name, localPath: line, status: opSkipped, reason: "local dir missing"})
 				return
@@ -576,7 +576,7 @@ func doBranch(c *cli.Context) error {
 			if !isProjectDir(line) {
 				entry.branch = "(missing)"
 				if noopMode {
-					t.printNoop("%s → SALTATO  (directory mancante)", project.Name)
+					t.printNoop("%s → SKIPPED  (directory missing)", project.Name)
 				}
 				t.record(opResult{project: project.Name, localPath: line, status: opSkipped, reason: "local dir missing"})
 			} else if noopMode {
@@ -662,7 +662,7 @@ func doExec(c *cli.Context) error {
 			if !isProjectDir(line) {
 				t.withOutput(func() { warnMissingDir(line) })
 				if noopMode {
-					t.printNoop("%s → SALTATO  (directory mancante)", project.Name)
+					t.printNoop("%s → SKIPPED  (directory missing)", project.Name)
 				}
 				t.record(opResult{project: project.Name, localPath: line, status: opSkipped, reason: "not a project dir"})
 				return

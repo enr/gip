@@ -305,8 +305,8 @@ func TestSummaryPrinted(t *testing.T) {
 	if !bytes.Contains(out, []byte("OK:")) {
 		t.Fatalf("expected summary 'OK:' in output:\n%s", out)
 	}
-	if !bytes.Contains(out, []byte("Durata:")) {
-		t.Fatalf("expected summary 'Durata:' in output:\n%s", out)
+	if !bytes.Contains(out, []byte("Duration:")) {
+		t.Fatalf("expected summary 'Duration:' in output:\n%s", out)
 	}
 }
 

@@ -192,15 +192,15 @@ func (t *tracker) printSummary(errorsLast bool) {
 
 	elapsed := time.Since(t.started)
 	okStr := t.color(ansiGreen, fmt.Sprintf("OK: %d", okCount))
-	errStr := t.color(ansiRed, fmt.Sprintf("Errori: %d", errCount))
-	skipStr := t.color(ansiYellow, fmt.Sprintf("Saltati: %d", skipCount))
+	errStr := t.color(ansiRed, fmt.Sprintf("Errors: %d", errCount))
+	skipStr := t.color(ansiYellow, fmt.Sprintf("Skipped: %d", skipCount))
 	fmt.Fprintf(os.Stdout, "─────────────────────────────────────────\n")
-	fmt.Fprintf(os.Stdout, "%s   %s   %s   Durata: %.1fs\n", okStr, errStr, skipStr, elapsed.Seconds())
+	fmt.Fprintf(os.Stdout, "%s   %s   %s   Duration: %.1fs\n", okStr, errStr, skipStr, elapsed.Seconds())
 	if noopMode {
-		fmt.Fprintf(os.Stdout, "DRY-RUN — nessuna operazione eseguita. Rimuovi --noop per procedere.\n")
+		fmt.Fprintf(os.Stdout, "DRY-RUN — no operations performed. Remove --noop to proceed.\n")
 	}
 	if errorsLast && len(errEntries) > 0 {
-		fmt.Fprintf(os.Stdout, "\n── Errori ────────────────────────────────\n")
+		fmt.Fprintf(os.Stdout, "\n── Errors ────────────────────────────────\n")
 		for _, r := range errEntries {
 			fmt.Fprintf(os.Stdout, "%s %s — %v\n", t.color(ansiRed, "[ERR]"), r.project, r.err)
 		}
