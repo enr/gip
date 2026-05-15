@@ -62,8 +62,20 @@ func buildBinary(t *testing.T, tmpDir string) string {
 // makeSlowGit creates a fake git executable in tmpDir that sleeps for sleepSecs seconds.
 func makeSlowGit(t *testing.T, tmpDir string, sleepSecs int) {
 	t.Helper()
-	script := fmt.Sprintf("#!/bin/sh\nexec sleep %d\n", sleepSecs)
-	fakeGitPath := filepath.Join(tmpDir, "git")
+	var script string
+	var name string
+	if runtime.GOOS == "windows" {
+		name = "git.bat"
+		if sleepSecs > 0 {
+			script = fmt.Sprintf("@echo off\r\ntimeout /t %d /nobreak >nul\r\n", sleepSecs)
+		} else {
+			script = "@echo off\r\n"
+		}
+	} else {
+		name = "git"
+		script = fmt.Sprintf("#!/bin/sh\nexec sleep %d\n", sleepSecs)
+	}
+	fakeGitPath := filepath.Join(tmpDir, name)
 	if err := os.WriteFile(fakeGitPath, []byte(script), 0755); err != nil {
 		t.Fatalf("Failed to create fake git: %v", err)
 	}
