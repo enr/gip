@@ -140,6 +140,147 @@ func TestErrorOutputNoBanner(t *testing.T) {
 	}
 }
 
+// makeConfigWithTags writes a gip YAML config with tagged repos.
+func makeConfigWithTags(t *testing.T, path string, entries []struct {
+	dir  string
+	tags []string
+}) {
+	t.Helper()
+	var content string
+	for i, e := range entries {
+		content += fmt.Sprintf("- name: repo%d\n  local_path: %s\n  repository: \"https://example.com/r%d.git\"\n", i+1, e.dir, i+1)
+		if len(e.tags) > 0 {
+			content += "  tags:\n"
+			for _, tag := range e.tags {
+				content += fmt.Sprintf("  - %s\n", tag)
+			}
+		}
+	}
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatalf("Failed to create config: %v", err)
+	}
+}
+
+// TestTagFilterStatus verifies that --tag restricts which repos are processed.
+func TestTagFilterStatus(t *testing.T) {
+	tmpDir := t.TempDir()
+	binPath := buildBinary(t, tmpDir)
+	makeSlowGit(t, tmpDir, 0) // instant fake git
+
+	repo1 := filepath.Join(tmpDir, "repo1")
+	repo2 := filepath.Join(tmpDir, "repo2")
+	makeGitRepo(t, repo1)
+	makeGitRepo(t, repo2)
+
+	configPath := filepath.Join(tmpDir, ".gip")
+	makeConfigWithTags(t, configPath, []struct {
+		dir  string
+		tags []string
+	}{
+		{repo1, []string{"work"}},
+		{repo2, []string{"personal"}},
+	})
+
+	t.Setenv("PATH", tmpDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	// Only repo1 (tagged "work") should be processed; repo2 is skipped.
+	cmd := exec.Command(binPath, "-f", configPath, "status", "--tag", "work")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("status --tag work failed: %v\nOutput: %s", err, out)
+	}
+	if bytes.Contains(out, []byte("repo2")) {
+		t.Fatalf("output contains repo2 which should have been filtered out:\n%s", out)
+	}
+}
+
+// TestBranchCommand verifies that the branch command prints a table with branch names.
+func TestBranchCommand(t *testing.T) {
+	tmpDir := t.TempDir()
+	binPath := buildBinary(t, tmpDir)
+
+	// Fake git that prints "main" to stdout regardless of args.
+	script := "#!/bin/sh\necho main\n"
+	fakeGitPath := filepath.Join(tmpDir, "git")
+	if err := os.WriteFile(fakeGitPath, []byte(script), 0755); err != nil {
+		t.Fatalf("Failed to create fake git: %v", err)
+	}
+
+	repo1 := filepath.Join(tmpDir, "repo1")
+	makeGitRepo(t, repo1)
+
+	configPath := filepath.Join(tmpDir, ".gip")
+	makeConfig(t, configPath, []string{repo1})
+
+	t.Setenv("PATH", tmpDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	cmd := exec.Command(binPath, "-f", configPath, "branch")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("branch command failed: %v\nOutput: %s", err, out)
+	}
+	if !bytes.Contains(out, []byte("NAME")) {
+		t.Fatalf("expected table header 'NAME' in output:\n%s", out)
+	}
+	if !bytes.Contains(out, []byte("main")) {
+		t.Fatalf("expected branch 'main' in output:\n%s", out)
+	}
+}
+
+// TestInitCommand verifies that gip init scans a directory and writes a config file.
+func TestInitCommand(t *testing.T) {
+	tmpDir := t.TempDir()
+	binPath := buildBinary(t, tmpDir)
+
+	// Create a real git repo with an origin remote so getOriginURL works.
+	repoDir := filepath.Join(tmpDir, "myproject")
+	if err := os.MkdirAll(repoDir, 0755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	for _, gitCmd := range [][]string{
+		{"init", repoDir},
+		{"-C", repoDir, "remote", "add", "origin", "https://example.com/myproject.git"},
+	} {
+		if out, err := exec.Command("git", gitCmd...).CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", gitCmd, err, out)
+		}
+	}
+
+	outputPath := filepath.Join(tmpDir, "out.yaml")
+	cmd := exec.Command(binPath, "init", "--output", outputPath, "--force", repoDir)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("init command failed: %v\nOutput: %s", err, out)
+	}
+
+	data, err := os.ReadFile(outputPath)
+	if err != nil {
+		t.Fatalf("output file not created: %v", err)
+	}
+	if !bytes.Contains(data, []byte("myproject")) {
+		t.Fatalf("output YAML does not contain 'myproject':\n%s", data)
+	}
+	if !bytes.Contains(data, []byte("https://example.com/myproject.git")) {
+		t.Fatalf("output YAML does not contain origin URL:\n%s", data)
+	}
+}
+
+// TestInitCommand_NoRepos verifies that init exits 0 when no repos with origin are found.
+func TestInitCommand_NoRepos(t *testing.T) {
+	tmpDir := t.TempDir()
+	binPath := buildBinary(t, tmpDir)
+
+	emptyDir := filepath.Join(tmpDir, "empty")
+	if err := os.MkdirAll(emptyDir, 0755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+
+	cmd := exec.Command(binPath, "init", "--output", filepath.Join(tmpDir, "out.yaml"), "--force", emptyDir)
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("expected exit 0 when no repos found, got: %v", err)
+	}
+}
+
 // TestFetchRunsInParallel verifies that fetch operates on multiple repos concurrently.
 func TestFetchRunsInParallel(t *testing.T) {
 	if testing.Short() {

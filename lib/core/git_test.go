@@ -11,10 +11,14 @@ import (
 
 type mockGitWrapper struct {
 	requests []runcmdWrapperRequest
+	result   runcmdResult // if nil, defaults to a successful empty result
 }
 
 func (m *mockGitWrapper) exec(r runcmdWrapperRequest) runcmdResult {
 	m.requests = append(m.requests, r)
+	if m.result != nil {
+		return m.result
+	}
 	return &runcmdStubResult{success: true}
 }
 
@@ -152,6 +156,55 @@ func TestGitCommands_Fetch(t *testing.T) {
 	if err == nil {
 		t.Fatal("Expected error for dirpath starting with -")
 	}
+}
+
+func TestGitCommands_CurrentBranch(t *testing.T) {
+	t.Run("returns branch name", func(t *testing.T) {
+		ui := clui.DefaultClui()
+		mock := &mockGitWrapper{
+			result: &runcmdStubResult{success: true, stdout: "main\n"},
+		}
+		gitCmd := &GitCommands{ui: ui, executor: mock}
+
+		branch, err := gitCmd.CurrentBranch(context.Background(), "/tmp/myrepo")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if branch != "main" {
+			t.Fatalf("expected 'main', got %q", branch)
+		}
+		expectedArgs := []string{"rev-parse", "--abbrev-ref", "HEAD"}
+		if !reflect.DeepEqual(mock.requests[0].args, expectedArgs) {
+			t.Fatalf("expected args %v, got %v", expectedArgs, mock.requests[0].args)
+		}
+	})
+
+	t.Run("detached HEAD becomes (detached)", func(t *testing.T) {
+		ui := clui.DefaultClui()
+		mock := &mockGitWrapper{
+			result: &runcmdStubResult{success: true, stdout: "HEAD\n"},
+		}
+		gitCmd := &GitCommands{ui: ui, executor: mock}
+
+		branch, err := gitCmd.CurrentBranch(context.Background(), "/tmp/myrepo")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if branch != "(detached)" {
+			t.Fatalf("expected '(detached)', got %q", branch)
+		}
+	})
+
+	t.Run("injection prevention", func(t *testing.T) {
+		ui := clui.DefaultClui()
+		mock := &mockGitWrapper{}
+		gitCmd := &GitCommands{ui: ui, executor: mock}
+
+		_, err := gitCmd.CurrentBranch(context.Background(), "--myrepo")
+		if err == nil {
+			t.Fatal("expected error for dirpath starting with '-'")
+		}
+	})
 }
 
 func TestGitCommands_Status(t *testing.T) {

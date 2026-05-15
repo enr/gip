@@ -182,6 +182,42 @@ func TestPullPolicy(t *testing.T) {
 	}
 }
 
+func TestFilterByTag(t *testing.T) {
+	projects := []gipProject{
+		{Name: "frontend", Tags: []string{"work", "js"}},
+		{Name: "backend", Tags: []string{"work", "go"}},
+		{Name: "dotfiles", Tags: []string{"personal"}},
+		{Name: "noTags"},
+	}
+
+	cases := []struct {
+		tag      string
+		wantNames []string
+	}{
+		{"", []string{"frontend", "backend", "dotfiles", "noTags"}}, // no filter → all
+		{"work", []string{"frontend", "backend"}},
+		{"js", []string{"frontend"}},
+		{"personal", []string{"dotfiles"}},
+		{"work,personal", []string{"frontend", "backend", "dotfiles"}}, // OR logic
+		{"go", []string{"backend"}},
+		{"unknown", nil}, // no match
+		{"  work  ", []string{"frontend", "backend"}}, // trim spaces
+	}
+
+	for _, tc := range cases {
+		got := filterByTag(projects, tc.tag)
+		if len(got) != len(tc.wantNames) {
+			t.Errorf("filterByTag(%q): got %d results, want %d", tc.tag, len(got), len(tc.wantNames))
+			continue
+		}
+		for i, p := range got {
+			if p.Name != tc.wantNames[i] {
+				t.Errorf("filterByTag(%q)[%d]: got %q, want %q", tc.tag, i, p.Name, tc.wantNames[i])
+			}
+		}
+	}
+}
+
 func TestConfigurationFilePathMissing(t *testing.T) {
 	// Temporarily override HOME to an empty temp dir
 	// so that .gip is not found.

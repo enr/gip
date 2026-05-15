@@ -148,6 +148,27 @@ func (g *GitCommands) Fetch(ctx context.Context, dirpath string) error {
 	return err
 }
 
+// CurrentBranch returns the name of the current branch, or "(detached)" for a detached HEAD.
+func (g *GitCommands) CurrentBranch(ctx context.Context, dirpath string) (string, error) {
+	if strings.HasPrefix(dirpath, "-") {
+		return "", fmt.Errorf("invalid dirpath: cannot start with '-'")
+	}
+	r := runcmdWrapperRequest{
+		ctx:        ctx,
+		args:       []string{"rev-parse", "--abbrev-ref", "HEAD"},
+		workingDir: dirpath,
+	}
+	result := g.executor.exec(r)
+	if !result.Success() {
+		return "", result.Error()
+	}
+	branch := strings.TrimSpace(result.Stdout().String())
+	if branch == "HEAD" {
+		branch = "(detached)"
+	}
+	return branch, nil
+}
+
 func statusArguments(untracked bool) []string {
 	untrackedFlag := "=no"
 	if untracked {

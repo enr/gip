@@ -19,10 +19,11 @@ const (
 )
 
 type gipProject struct {
-	Name       string `json:"name" yaml:"name"`
-	Repository string `json:"repository" yaml:"repository"`
-	LocalPath  string `json:"local_path" yaml:"local_path"`
-	PullPolicy string `json:"pull_policy" yaml:"pull_policy"`
+	Name       string   `json:"name" yaml:"name"`
+	Repository string   `json:"repository" yaml:"repository"`
+	LocalPath  string   `json:"local_path" yaml:"local_path"`
+	PullPolicy string   `json:"pull_policy" yaml:"pull_policy"`
+	Tags       []string `json:"tags,omitempty" yaml:"tags,omitempty"`
 }
 
 func (p *gipProject) pullNever() bool {
@@ -114,6 +115,31 @@ func projectPath(ppath string) (string, error) {
 		retpath = filepath.FromSlash(path.Join(dir, relpath))
 	}
 	return os.ExpandEnv(retpath), nil
+}
+
+// filterByTag returns the subset of projects that carry at least one of the
+// comma-separated tags in tagList. An empty tagList returns all projects.
+func filterByTag(projects []gipProject, tagList string) []gipProject {
+	tagList = strings.TrimSpace(tagList)
+	if tagList == "" {
+		return projects
+	}
+	wanted := make(map[string]bool)
+	for _, t := range strings.Split(tagList, ",") {
+		if v := strings.TrimSpace(t); v != "" {
+			wanted[v] = true
+		}
+	}
+	var out []gipProject
+	for _, p := range projects {
+		for _, t := range p.Tags {
+			if wanted[strings.TrimSpace(t)] {
+				out = append(out, p)
+				break
+			}
+		}
+	}
+	return out
 }
 
 func isProjectDir(dirpath string) bool {
