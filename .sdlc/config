@@ -5,5 +5,5 @@ SDLC_GO_VENDOR='vendor'
 SDLC_GO_BASE=
 SDLC_DIST_DIR='dist'
 
-APP_VERSION='0.6.0' # APP_VERSION_AUTOLINE this line is automatically managed
+APP_VERSION='0.7.0-dev' # APP_VERSION_AUTOLINE this line is automatically managed
 
