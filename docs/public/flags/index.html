@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><script src="/gip/livereload.js?mindelay=10&amp;v=2&amp;port=1313&amp;path=gip/livereload" data-no-instant defer></script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Flags &amp; Output — gip</title>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" />
+  <link rel="stylesheet" href="/gip/style.css">
+</head>
+<body>
+  <div class="app">
+    <aside class="sb">
+      <a class="sb-brand" href="http://localhost:1313/" style="text-decoration: none">
+        <div class="sb-logo-text">gip</div>
+        <div class="sb-logo-sub">v0.6.0</div>
+      </a>
+      <div class="sb-tag">Bulk Git operations across all your repositories.</div>
+
+      <div class="sb-section">
+        <div class="sb-heading">GUIDE</div>
+        <nav class="sb-nav">
+          <a href="http://localhost:1313/gip/" class="">
+            <span class="num">01</span>
+            <span>Overview</span>
+          </a>
+          <a href="/gip/getting-started/" class="">
+            <span class="num">02</span>
+            <span>Getting Started</span>
+          </a>
+          <a href="/gip/configuration/" class="">
+            <span class="num">03</span>
+            <span>Configuration</span>
+          </a>
+        </nav>
+      </div>
+
+      <div class="sb-section">
+        <div class="sb-heading">REFERENCE</div>
+        <nav class="sb-nav">
+          <a href="/gip/commands/" class="">
+            <span class="num">04</span>
+            <span>Commands</span>
+          </a>
+          <a href="/gip/flags/" class="is-active">
+            <span class="num">05</span>
+            <span>Flags &amp; Output</span>
+          </a>
+        </nav>
+      </div>
+
+      <div class="sb-foot">
+        <div class="row"><span class="dot"></span> github.com/enr/gip</div>
+        <div class="row muted">MIT · linux · mac · windows</div>
+        <div class="row muted">v0.6.0</div>
+      </div>
+    </aside>
+
+    <main class="main">
+      <div class="tb">
+        <div class="crumbs">
+          
+            <span>docs</span> <span class="sep">/</span>
+            <span>reference</span>
+            <span class="sep">/</span> <span class="leaf">flags-output</span>
+          
+        </div>
+        <div class="spacer"></div>
+        <div class="meta">
+          <span><span class="dot"></span> v0.6.0</span>
+          <span class="muted">linux · mac · windows</span>
+        </div>
+      </div>
+      <div class="content">
+        
+<div class="doc-meta">
+  <span><span class="dot"></span> updated 0001-01-01</span>
+  <span class="muted">v0.6.0</span>
+</div>
+<h1>Flags &amp; Output</h1>
+
+<p class="dim" style="font-size: 16px; max-width: 62ch; margin-bottom: 24px;">Global flags, per-command flags, output modes, and dry-run behaviour</p>
+
+
+
+<div class="toc-callout">
+  <div class="toc-h">CONTENTS</div>
+  <nav id="TableOfContents">
+  <ul>
+    <li><a href="#global-flags">Global flags</a></li>
+    <li><a href="#command-flags">Command flags</a></li>
+    <li><a href="#output-modes">Output modes</a>
+      <ul>
+        <li><a href="#text-default">Text (default)</a></li>
+        <li><a href="#quiet---quiet">Quiet (<code>--quiet</code>)</a></li>
+        <li><a href="#json---json">JSON (<code>--json</code>)</a></li>
+        <li><a href="#dry-run---noop">Dry-run (<code>--noop</code>)</a></li>
+      </ul>
+    </li>
+  </ul>
+</nav>
+</div>
+
+
+<div class="doc-content">
+  <h2 id="global-flags">Global flags</h2>
+<p>These flags are available on every command.</p>
+<table>
+  <thead>
+      <tr>
+          <th>Flag</th>
+          <th>Description</th>
+      </tr>
+  </thead>
+  <tbody>
+      <tr>
+          <td><code>-f, --file &lt;path&gt;</code></td>
+          <td>Path to the configuration file (overrides all other lookup methods)</td>
+      </tr>
+      <tr>
+          <td><code>-d, --debug</code></td>
+          <td>Verbose output: logs every git command executed and the config file path</td>
+      </tr>
+      <tr>
+          <td><code>-q, --quiet</code></td>
+          <td>Suppress all output except the final summary line</td>
+      </tr>
+      <tr>
+          <td><code>--json</code></td>
+          <td>Emit a single JSON envelope to stdout instead of text output; takes precedence over <code>--quiet</code></td>
+      </tr>
+      <tr>
+          <td><code>--noop</code></td>
+          <td>Dry-run: print what would be done without executing any git command</td>
+      </tr>
+      <tr>
+          <td><code>-m, --ignore-missing</code></td>
+          <td>Silently skip projects whose <code>local_path</code> does not exist; without this flag a warning is printed</td>
+      </tr>
+  </tbody>
+</table>
+<h2 id="command-flags">Command flags</h2>
+<p>The following flags are available on all parallel commands (<code>status</code>, <code>statusfull</code>, <code>pull</code>, <code>fetch</code>, <code>branch</code>, <code>exec</code>):</p>
+<table>
+  <thead>
+      <tr>
+          <th>Flag</th>
+          <th>Description</th>
+      </tr>
+  </thead>
+  <tbody>
+      <tr>
+          <td><code>-j, --jobs &lt;n&gt;</code></td>
+          <td>Maximum number of repositories to process concurrently (default: 4)</td>
+      </tr>
+      <tr>
+          <td><code>-t, --timeout &lt;seconds&gt;</code></td>
+          <td>Per-operation timeout in seconds; 0 means no timeout (default: 0)</td>
+      </tr>
+      <tr>
+          <td><code>--tag &lt;tags&gt;</code></td>
+          <td>Filter projects by tag — comma-separated list with OR logic (e.g. <code>--tag work,js</code>)</td>
+      </tr>
+      <tr>
+          <td><code>--errors-last</code></td>
+          <td>Print a grouped error section after the summary instead of inline</td>
+      </tr>
+  </tbody>
+</table>
+<h2 id="output-modes">Output modes</h2>
+<h3 id="text-default">Text (default)</h3>
+<p>Each project prints its git output inline as it completes. A progress bar is shown on stderr while processing (TTY only, suppressed in <code>--quiet</code> and <code>--json</code> modes). At the end a summary line is printed:</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-text" data-lang="text"><span class="line"><span class="cl">─────────────────────────────────────────
+</span></span><span class="line"><span class="cl">OK: 5   Errors: 1   Skipped: 2   Duration: 3.4s
+</span></span></code></pre></div><h3 id="quiet---quiet">Quiet (<code>--quiet</code>)</h3>
+<p>All per-project output is suppressed; only the final summary line is printed.</p>
+<h3 id="json---json">JSON (<code>--json</code>)</h3>
+<p>A single JSON envelope is written to stdout after all projects have been processed:</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-json" data-lang="json"><span class="line"><span class="cl"><span class="p">{</span>
+</span></span><span class="line"><span class="cl">  <span class="nt">&#34;command&#34;</span><span class="p">:</span> <span class="s2">&#34;status&#34;</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">  <span class="nt">&#34;timestamp&#34;</span><span class="p">:</span> <span class="s2">&#34;2025-05-15T10:30:00Z&#34;</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">  <span class="nt">&#34;projects&#34;</span><span class="p">:</span> <span class="p">[</span>
+</span></span><span class="line"><span class="cl">    <span class="p">{</span>
+</span></span><span class="line"><span class="cl">      <span class="nt">&#34;name&#34;</span><span class="p">:</span> <span class="s2">&#34;frontend&#34;</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">      <span class="nt">&#34;local_path&#34;</span><span class="p">:</span> <span class="s2">&#34;/home/user/projects/frontend&#34;</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">      <span class="nt">&#34;status&#34;</span><span class="p">:</span> <span class="s2">&#34;ok&#34;</span>
+</span></span><span class="line"><span class="cl">    <span class="p">},</span>
+</span></span><span class="line"><span class="cl">    <span class="p">{</span>
+</span></span><span class="line"><span class="cl">      <span class="nt">&#34;name&#34;</span><span class="p">:</span> <span class="s2">&#34;legacy&#34;</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">      <span class="nt">&#34;local_path&#34;</span><span class="p">:</span> <span class="s2">&#34;/home/user/projects/legacy&#34;</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">      <span class="nt">&#34;status&#34;</span><span class="p">:</span> <span class="s2">&#34;skipped&#34;</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">      <span class="nt">&#34;reason&#34;</span><span class="p">:</span> <span class="s2">&#34;pull_policy: never&#34;</span>
+</span></span><span class="line"><span class="cl">    <span class="p">},</span>
+</span></span><span class="line"><span class="cl">    <span class="p">{</span>
+</span></span><span class="line"><span class="cl">      <span class="nt">&#34;name&#34;</span><span class="p">:</span> <span class="s2">&#34;broken&#34;</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">      <span class="nt">&#34;local_path&#34;</span><span class="p">:</span> <span class="s2">&#34;/home/user/broken&#34;</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">      <span class="nt">&#34;status&#34;</span><span class="p">:</span> <span class="s2">&#34;error&#34;</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">      <span class="nt">&#34;error&#34;</span><span class="p">:</span> <span class="s2">&#34;exit status 128&#34;</span>
+</span></span><span class="line"><span class="cl">    <span class="p">}</span>
+</span></span><span class="line"><span class="cl">  <span class="p">],</span>
+</span></span><span class="line"><span class="cl">  <span class="nt">&#34;summary&#34;</span><span class="p">:</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">    <span class="nt">&#34;total&#34;</span><span class="p">:</span> <span class="mi">3</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">    <span class="nt">&#34;ok&#34;</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">    <span class="nt">&#34;errors&#34;</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">    <span class="nt">&#34;skipped&#34;</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">    <span class="nt">&#34;duration_ms&#34;</span><span class="p">:</span> <span class="mi">1240</span>
+</span></span><span class="line"><span class="cl">  <span class="p">},</span>
+</span></span><span class="line"><span class="cl">  <span class="nt">&#34;warnings&#34;</span><span class="p">:</span> <span class="p">[]</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span></code></pre></div><p><code>status</code> values: <code>ok</code>, <code>error</code>, <code>skipped</code>. The <code>branch</code> command adds a <code>branch</code> field to each project entry. No ANSI codes appear in JSON output.</p>
+<h3 id="dry-run---noop">Dry-run (<code>--noop</code>)</h3>
+<p>No git command is executed. Each project prints a <code>[DRY-RUN]</code> line describing what would happen. Exit code is always 0.</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-bash" data-lang="bash"><span class="line"><span class="cl">$ gip --noop pull
+</span></span><span class="line"><span class="cl"><span class="o">[</span>DRY-RUN<span class="o">]</span> frontend → git pull  <span class="o">(</span>in ~/projects/frontend<span class="o">)</span>
+</span></span><span class="line"><span class="cl"><span class="o">[</span>DRY-RUN<span class="o">]</span> legacy   → SKIPPED  <span class="o">(</span>pull_policy: never<span class="o">)</span>
+</span></span></code></pre></div>
+</div>
+
+<div style="display: flex; justify-content: space-between; margin-top: 28px;">
+  
+    <span></span>
+  
+  
+    <a href="http://localhost:1313/gip/commands/" class="btn">Commands →</a>
+  
+</div>
+
+      </div>
+    </main>
+  </div>
+</body>
+</html>

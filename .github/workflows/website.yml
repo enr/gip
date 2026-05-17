@@ -1,24 +1,51 @@
-name: Create Website
+name: GitHub Pages
 
 on:
   push:
+    branches:
+      - master
+    paths:
+      - 'docs/**'
     tags:
       - 'v*'
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    container: 'asciidoctor/docker-asciidoctor:1.11.0'
     steps:
-    - name: Prepare container
-      run: |
-        echo Preparing container
-        apk --update add git
-    - name: Checkout code
-      uses: actions/checkout@v2
-    - name: Create website
-      env:
-        GH_TOKEN: ${{ secrets.ACTION_ACCESS_TOKEN }}
-      run: |
-        echo Start release ${{ github.ref }}
-        .sdlc/gh-pages
+      - uses: actions/checkout@v4
+
+      - name: Install Hugo
+        run: go install github.com/gohugoio/hugo@latest
+
+      - name: Add Hugo to PATH
+        run: echo "$HOME/go/bin" >> $GITHUB_PATH
+
+      - uses: actions/configure-pages@v5
+
+      - name: Build site
+        run: hugo --minify --source docs
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs/public
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

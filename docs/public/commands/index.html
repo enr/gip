@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><script src="/gip/livereload.js?mindelay=10&amp;v=2&amp;port=1313&amp;path=gip/livereload" data-no-instant defer></script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Commands — gip</title>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" />
+  <link rel="stylesheet" href="/gip/style.css">
+</head>
+<body>
+  <div class="app">
+    <aside class="sb">
+      <a class="sb-brand" href="http://localhost:1313/" style="text-decoration: none">
+        <div class="sb-logo-text">gip</div>
+        <div class="sb-logo-sub">v0.6.0</div>
+      </a>
+      <div class="sb-tag">Bulk Git operations across all your repositories.</div>
+
+      <div class="sb-section">
+        <div class="sb-heading">GUIDE</div>
+        <nav class="sb-nav">
+          <a href="http://localhost:1313/gip/" class="">
+            <span class="num">01</span>
+            <span>Overview</span>
+          </a>
+          <a href="/gip/getting-started/" class="">
+            <span class="num">02</span>
+            <span>Getting Started</span>
+          </a>
+          <a href="/gip/configuration/" class="">
+            <span class="num">03</span>
+            <span>Configuration</span>
+          </a>
+        </nav>
+      </div>
+
+      <div class="sb-section">
+        <div class="sb-heading">REFERENCE</div>
+        <nav class="sb-nav">
+          <a href="/gip/commands/" class="is-active">
+            <span class="num">04</span>
+            <span>Commands</span>
+          </a>
+          <a href="/gip/flags/" class="">
+            <span class="num">05</span>
+            <span>Flags &amp; Output</span>
+          </a>
+        </nav>
+      </div>
+
+      <div class="sb-foot">
+        <div class="row"><span class="dot"></span> github.com/enr/gip</div>
+        <div class="row muted">MIT · linux · mac · windows</div>
+        <div class="row muted">v0.6.0</div>
+      </div>
+    </aside>
+
+    <main class="main">
+      <div class="tb">
+        <div class="crumbs">
+          
+            <span>docs</span> <span class="sep">/</span>
+            <span>reference</span>
+            <span class="sep">/</span> <span class="leaf">commands</span>
+          
+        </div>
+        <div class="spacer"></div>
+        <div class="meta">
+          <span><span class="dot"></span> v0.6.0</span>
+          <span class="muted">linux · mac · windows</span>
+        </div>
+      </div>
+      <div class="content">
+        
+<div class="doc-meta">
+  <span><span class="dot"></span> updated 0001-01-01</span>
+  <span class="muted">v0.6.0</span>
+</div>
+<h1>Commands</h1>
+
+<p class="dim" style="font-size: 16px; max-width: 62ch; margin-bottom: 24px;">Full reference for all gip commands with flags and examples</p>
+
+
+
+<div class="toc-callout">
+  <div class="toc-h">CONTENTS</div>
+  <nav id="TableOfContents">
+  <ul>
+    <li><a href="#status--statusfull">status / statusfull</a></li>
+    <li><a href="#list">list</a></li>
+    <li><a href="#pull">pull</a></li>
+    <li><a href="#fetch">fetch</a></li>
+    <li><a href="#branch">branch</a></li>
+    <li><a href="#exec">exec</a></li>
+    <li><a href="#init">init</a></li>
+  </ul>
+</nav>
+</div>
+
+
+<div class="doc-content">
+  <h2 id="status--statusfull">status / statusfull</h2>
+<p>Run <code>git status --porcelain</code> on all managed projects. <code>statusfull</code> also shows untracked files.</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-bash" data-lang="bash"><span class="line"><span class="cl">gip status
+</span></span><span class="line"><span class="cl">gip statusfull
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="c1"># only work-tagged repos, errors grouped at the bottom</span>
+</span></span><span class="line"><span class="cl">gip status --tag work --errors-last
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="c1"># ignore repos whose directory does not exist</span>
+</span></span><span class="line"><span class="cl">gip -m status
+</span></span></code></pre></div><h2 id="list">list</h2>
+<p>List all registered projects in an aligned table showing name, local path, pull policy, detected provider, and tags.</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-bash" data-lang="bash"><span class="line"><span class="cl">gip list
+</span></span><span class="line"><span class="cl">gip list --tag personal
+</span></span><span class="line"><span class="cl">gip --json list
+</span></span></code></pre></div><p>Example output:</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-text" data-lang="text"><span class="line"><span class="cl">NAME        LOCAL_PATH              POLICY    PROVIDER     TAGS
+</span></span><span class="line"><span class="cl">frontend    ~/projects/frontend     default   github.com   work, js
+</span></span><span class="line"><span class="cl">dotfiles    ~/dotfiles              default   github.com   personal
+</span></span><span class="line"><span class="cl">legacy      ~/projects/legacy       never     github.com   —
+</span></span></code></pre></div><p>With <code>--json</code>:</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-json" data-lang="json"><span class="line"><span class="cl"><span class="p">{</span>
+</span></span><span class="line"><span class="cl">  <span class="nt">&#34;command&#34;</span><span class="p">:</span> <span class="s2">&#34;list&#34;</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">  <span class="nt">&#34;timestamp&#34;</span><span class="p">:</span> <span class="s2">&#34;2025-05-15T10:30:00Z&#34;</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">  <span class="nt">&#34;projects&#34;</span><span class="p">:</span> <span class="p">[</span>
+</span></span><span class="line"><span class="cl">    <span class="p">{</span>
+</span></span><span class="line"><span class="cl">      <span class="nt">&#34;name&#34;</span><span class="p">:</span> <span class="s2">&#34;frontend&#34;</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">      <span class="nt">&#34;local_path&#34;</span><span class="p">:</span> <span class="s2">&#34;~/projects/frontend&#34;</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">      <span class="nt">&#34;repository&#34;</span><span class="p">:</span> <span class="s2">&#34;https://github.com/org/frontend.git&#34;</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">      <span class="nt">&#34;policy&#34;</span><span class="p">:</span> <span class="s2">&#34;default&#34;</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">      <span class="nt">&#34;provider&#34;</span><span class="p">:</span> <span class="s2">&#34;github.com&#34;</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">      <span class="nt">&#34;tags&#34;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&#34;work&#34;</span><span class="p">,</span> <span class="s2">&#34;js&#34;</span><span class="p">],</span>
+</span></span><span class="line"><span class="cl">      <span class="nt">&#34;missing&#34;</span><span class="p">:</span> <span class="kc">false</span>
+</span></span><span class="line"><span class="cl">    <span class="p">}</span>
+</span></span><span class="line"><span class="cl">  <span class="p">],</span>
+</span></span><span class="line"><span class="cl">  <span class="nt">&#34;warnings&#34;</span><span class="p">:</span> <span class="p">[]</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span>
+</span></span></code></pre></div><h2 id="pull">pull</h2>
+<p>Run <code>git pull</code> on managed projects.</p>
+<ul>
+<li>Projects whose <code>local_path</code> does not exist are <strong>skipped</strong> unless <code>pull_policy: always</code> is set, in which case a <code>git clone</code> is performed.</li>
+<li>Projects with <code>pull_policy: never</code> are always skipped.</li>
+</ul>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-bash" data-lang="bash"><span class="line"><span class="cl">gip pull
+</span></span><span class="line"><span class="cl">gip pull --tag work -j <span class="m">8</span>
+</span></span><span class="line"><span class="cl">gip pull -a           <span class="c1"># pull all; clone missing repos with pull_policy: always</span>
+</span></span><span class="line"><span class="cl">gip --noop pull       <span class="c1"># preview what would be done</span>
+</span></span></code></pre></div><h2 id="fetch">fetch</h2>
+<p>Run <code>git fetch --all --prune</code> on all managed projects without merging into the working tree. Projects with <code>pull_policy: never</code> are skipped.</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-bash" data-lang="bash"><span class="line"><span class="cl">gip fetch
+</span></span><span class="line"><span class="cl">gip fetch -j <span class="m">8</span> -t <span class="m">60</span>
+</span></span><span class="line"><span class="cl">gip fetch --tag work
+</span></span></code></pre></div><h2 id="branch">branch</h2>
+<p>Show the current branch for every project in an aligned table.</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-bash" data-lang="bash"><span class="line"><span class="cl">gip branch
+</span></span><span class="line"><span class="cl">gip branch --tag work
+</span></span><span class="line"><span class="cl">gip --json branch
+</span></span></code></pre></div><p>Example output:</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-text" data-lang="text"><span class="line"><span class="cl">NAME        BRANCH         LOCAL_PATH
+</span></span><span class="line"><span class="cl">frontend    main           ~/projects/frontend
+</span></span><span class="line"><span class="cl">backend     feature/auth   ~/projects/backend
+</span></span><span class="line"><span class="cl">infra       (detached)     ~/work/infra
+</span></span></code></pre></div><p>Repositories in detached HEAD state show <code>(detached)</code> as the branch name.</p>
+<h2 id="exec">exec</h2>
+<p>Execute an arbitrary command inside every project directory. Use <code>--</code> to separate gip flags from the command and its arguments.</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-bash" data-lang="bash"><span class="line"><span class="cl">gip <span class="nb">exec</span> -- git fetch --prune
+</span></span><span class="line"><span class="cl">gip <span class="nb">exec</span> -- git log --oneline -5
+</span></span><span class="line"><span class="cl">gip <span class="nb">exec</span> -j <span class="m">8</span> -- make <span class="nb">test</span>
+</span></span><span class="line"><span class="cl">gip <span class="nb">exec</span> --tag work -- git remote -v
+</span></span><span class="line"><span class="cl">gip --noop <span class="nb">exec</span> -- git reset --hard origin/main
+</span></span></code></pre></div><p>The command is run in the <code>local_path</code> of each project. stdout and stderr of every invocation are collected and printed in a synchronised block so output from different projects does not interleave.</p>
+<h2 id="init">init</h2>
+<p>Scan a directory recursively for Git repositories and generate a gip configuration file.</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-bash" data-lang="bash"><span class="line"><span class="cl"><span class="c1"># scan ~/projects and write to ~/.gip (asks for confirmation if it exists)</span>
+</span></span><span class="line"><span class="cl">gip init ~/projects
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="c1"># write to a specific output file</span>
+</span></span><span class="line"><span class="cl">gip init ~/projects --output ~/work/.gip
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="c1"># overwrite without prompting, scan up to 3 levels deep</span>
+</span></span><span class="line"><span class="cl">gip init . --force --depth <span class="m">3</span>
+</span></span></code></pre></div><p>For each <code>.git/</code> directory found, gip detects:</p>
+<ul>
+<li>the directory name as <code>name</code></li>
+<li>the <code>origin</code> remote URL as <code>repository</code> (via <code>git remote get-url origin</code>)</li>
+<li>the absolute path as <code>local_path</code></li>
+</ul>
+<p>Repositories without a configured <code>origin</code> remote are skipped with a warning. The generated file is in YAML format.</p>
+<table>
+  <thead>
+      <tr>
+          <th>Flag</th>
+          <th>Description</th>
+      </tr>
+  </thead>
+  <tbody>
+      <tr>
+          <td><code>-o, --output &lt;path&gt;</code></td>
+          <td>Output file path (default: <code>~/.gip</code>)</td>
+      </tr>
+      <tr>
+          <td><code>--force</code></td>
+          <td>Overwrite existing file without prompting</td>
+      </tr>
+      <tr>
+          <td><code>--depth &lt;n&gt;</code></td>
+          <td>Maximum directory scan depth (default: 5)</td>
+      </tr>
+  </tbody>
+</table>
+
+</div>
+
+<div style="display: flex; justify-content: space-between; margin-top: 28px;">
+  
+    <a href="http://localhost:1313/gip/flags/" class="btn">← Flags &amp; Output</a>
+  
+  
+    <a href="http://localhost:1313/gip/configuration/" class="btn">Configuration →</a>
+  
+</div>
+
+      </div>
+    </main>
+  </div>
+</body>
+</html>

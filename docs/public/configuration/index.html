@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><script src="/gip/livereload.js?mindelay=10&amp;v=2&amp;port=1313&amp;path=gip/livereload" data-no-instant defer></script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Configuration — gip</title>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" />
+  <link rel="stylesheet" href="/gip/style.css">
+</head>
+<body>
+  <div class="app">
+    <aside class="sb">
+      <a class="sb-brand" href="http://localhost:1313/" style="text-decoration: none">
+        <div class="sb-logo-text">gip</div>
+        <div class="sb-logo-sub">v0.6.0</div>
+      </a>
+      <div class="sb-tag">Bulk Git operations across all your repositories.</div>
+
+      <div class="sb-section">
+        <div class="sb-heading">GUIDE</div>
+        <nav class="sb-nav">
+          <a href="http://localhost:1313/gip/" class="">
+            <span class="num">01</span>
+            <span>Overview</span>
+          </a>
+          <a href="/gip/getting-started/" class="">
+            <span class="num">02</span>
+            <span>Getting Started</span>
+          </a>
+          <a href="/gip/configuration/" class="is-active">
+            <span class="num">03</span>
+            <span>Configuration</span>
+          </a>
+        </nav>
+      </div>
+
+      <div class="sb-section">
+        <div class="sb-heading">REFERENCE</div>
+        <nav class="sb-nav">
+          <a href="/gip/commands/" class="">
+            <span class="num">04</span>
+            <span>Commands</span>
+          </a>
+          <a href="/gip/flags/" class="">
+            <span class="num">05</span>
+            <span>Flags &amp; Output</span>
+          </a>
+        </nav>
+      </div>
+
+      <div class="sb-foot">
+        <div class="row"><span class="dot"></span> github.com/enr/gip</div>
+        <div class="row muted">MIT · linux · mac · windows</div>
+        <div class="row muted">v0.6.0</div>
+      </div>
+    </aside>
+
+    <main class="main">
+      <div class="tb">
+        <div class="crumbs">
+          
+            <span>docs</span> <span class="sep">/</span>
+            <span>guide</span>
+            <span class="sep">/</span> <span class="leaf">configuration</span>
+          
+        </div>
+        <div class="spacer"></div>
+        <div class="meta">
+          <span><span class="dot"></span> v0.6.0</span>
+          <span class="muted">linux · mac · windows</span>
+        </div>
+      </div>
+      <div class="content">
+        
+<div class="doc-meta">
+  <span><span class="dot"></span> updated 0001-01-01</span>
+  <span class="muted">v0.6.0</span>
+</div>
+<h1>Configuration</h1>
+
+<p class="dim" style="font-size: 16px; max-width: 62ch; margin-bottom: 24px;">Config file format, project fields, tags, file lookup cascade, and validation warnings</p>
+
+
+
+<div class="toc-callout">
+  <div class="toc-h">CONTENTS</div>
+  <nav id="TableOfContents">
+  <ul>
+    <li><a href="#file-format">File format</a>
+      <ul>
+        <li><a href="#yaml-example">YAML example</a></li>
+        <li><a href="#json-example">JSON example</a></li>
+      </ul>
+    </li>
+    <li><a href="#fields">Fields</a></li>
+    <li><a href="#tag-filtering">Tag filtering</a></li>
+    <li><a href="#config-file-lookup">Config file lookup</a></li>
+    <li><a href="#validation-warnings">Validation warnings</a></li>
+  </ul>
+</nav>
+</div>
+
+
+<div class="doc-content">
+  <h2 id="file-format">File format</h2>
+<p>The config file is a list of project entries in YAML or JSON. Each entry describes one repository.</p>
+<h3 id="yaml-example">YAML example</h3>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-yaml" data-lang="yaml"><span class="line"><span class="cl">- <span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">frontend</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">repository</span><span class="p">:</span><span class="w"> </span><span class="s2">&#34;https://github.com/org/frontend.git&#34;</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">local_path</span><span class="p">:</span><span class="w"> </span><span class="l">~/projects/frontend</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">tags</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="l">work, js]</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">
+</span></span></span><span class="line"><span class="cl">- <span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">dotfiles</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">repository</span><span class="p">:</span><span class="w"> </span><span class="s2">&#34;git@github.com:user/dotfiles.git&#34;</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">local_path</span><span class="p">:</span><span class="w"> </span><span class="l">~/dotfiles</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">tags</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="l">personal]</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">
+</span></span></span><span class="line"><span class="cl">- <span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">legacy</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">repository</span><span class="p">:</span><span class="w"> </span><span class="s2">&#34;https://github.com/org/legacy.git&#34;</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">local_path</span><span class="p">:</span><span class="w"> </span><span class="l">~/projects/legacy</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">pull_policy</span><span class="p">:</span><span class="w"> </span><span class="l">never</span><span class="w">
+</span></span></span></code></pre></div><h3 id="json-example">JSON example</h3>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-json" data-lang="json"><span class="line"><span class="cl"><span class="p">[</span>
+</span></span><span class="line"><span class="cl">  <span class="p">{</span>
+</span></span><span class="line"><span class="cl">    <span class="nt">&#34;name&#34;</span><span class="p">:</span> <span class="s2">&#34;frontend&#34;</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">    <span class="nt">&#34;repository&#34;</span><span class="p">:</span> <span class="s2">&#34;https://github.com/org/frontend.git&#34;</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">    <span class="nt">&#34;local_path&#34;</span><span class="p">:</span> <span class="s2">&#34;~/projects/frontend&#34;</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">    <span class="nt">&#34;tags&#34;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&#34;work&#34;</span><span class="p">,</span> <span class="s2">&#34;js&#34;</span><span class="p">]</span>
+</span></span><span class="line"><span class="cl">  <span class="p">},</span>
+</span></span><span class="line"><span class="cl">  <span class="p">{</span>
+</span></span><span class="line"><span class="cl">    <span class="nt">&#34;name&#34;</span><span class="p">:</span> <span class="s2">&#34;dotfiles&#34;</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">    <span class="nt">&#34;repository&#34;</span><span class="p">:</span> <span class="s2">&#34;git@github.com:user/dotfiles.git&#34;</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">    <span class="nt">&#34;local_path&#34;</span><span class="p">:</span> <span class="s2">&#34;~/dotfiles&#34;</span><span class="p">,</span>
+</span></span><span class="line"><span class="cl">    <span class="nt">&#34;tags&#34;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&#34;personal&#34;</span><span class="p">]</span>
+</span></span><span class="line"><span class="cl">  <span class="p">}</span>
+</span></span><span class="line"><span class="cl"><span class="p">]</span>
+</span></span></code></pre></div><h2 id="fields">Fields</h2>
+<table>
+  <thead>
+      <tr>
+          <th>Field</th>
+          <th>Required</th>
+          <th>Description</th>
+      </tr>
+  </thead>
+  <tbody>
+      <tr>
+          <td><code>name</code></td>
+          <td>yes</td>
+          <td>Descriptive name for the project. Must be unique across the file.</td>
+      </tr>
+      <tr>
+          <td><code>repository</code></td>
+          <td>yes</td>
+          <td>Remote URL (HTTPS or SSH). Used by <code>pull_policy: always</code> to clone missing repos.</td>
+      </tr>
+      <tr>
+          <td><code>local_path</code></td>
+          <td>yes</td>
+          <td>Local directory path. <code>~</code> and environment variables are expanded.</td>
+      </tr>
+      <tr>
+          <td><code>pull_policy</code></td>
+          <td>no</td>
+          <td><code>never</code> — always skip this project for <code>pull</code> and <code>fetch</code>. <code>always</code> — clone via <code>git clone</code> if <code>local_path</code> does not exist. Omit for default behaviour: operate only on already-present directories.</td>
+      </tr>
+      <tr>
+          <td><code>tags</code></td>
+          <td>no</td>
+          <td>List of free-form labels. Used by <code>--tag</code> filtering (see <a href="#tag-filtering">Tag filtering</a>).</td>
+      </tr>
+  </tbody>
+</table>
+<h2 id="tag-filtering">Tag filtering</h2>
+<p>Tags allow you to run any gip command against a named subset of projects without maintaining separate config files.</p>
+<p>Both YAML list syntaxes are accepted:</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-yaml" data-lang="yaml"><span class="line"><span class="cl"><span class="c"># inline (flow) syntax</span><span class="w">
+</span></span></span><span class="line"><span class="cl">- <span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">frontend</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">repository</span><span class="p">:</span><span class="w"> </span><span class="s2">&#34;https://github.com/org/frontend.git&#34;</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">local_path</span><span class="p">:</span><span class="w"> </span><span class="l">~/projects/frontend</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">tags</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="l">work, js, client-acme]</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="c"># block (expanded) syntax</span><span class="w">
+</span></span></span><span class="line"><span class="cl">- <span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">infra</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">repository</span><span class="p">:</span><span class="w"> </span><span class="s2">&#34;git@github.com:org/infra.git&#34;</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">local_path</span><span class="p">:</span><span class="w"> </span><span class="l">~/work/infra</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">tags</span><span class="p">:</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span>- <span class="l">work</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span>- <span class="l">ops</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="c"># no tags — never selected by --tag</span><span class="w">
+</span></span></span><span class="line"><span class="cl">- <span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l">dotfiles</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">repository</span><span class="p">:</span><span class="w"> </span><span class="s2">&#34;git@github.com:user/dotfiles.git&#34;</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">  </span><span class="nt">local_path</span><span class="p">:</span><span class="w"> </span><span class="l">~/dotfiles</span><span class="w">
+</span></span></span></code></pre></div><p>A project with no <code>tags</code> key is <strong>never matched</strong> when <code>--tag</code> is active.</p>
+<p>Use <code>--tag</code> with a comma-separated list for OR logic:</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-bash" data-lang="bash"><span class="line"><span class="cl"><span class="c1"># only repos tagged &#34;work&#34;</span>
+</span></span><span class="line"><span class="cl">gip status --tag work
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="c1"># OR: repos tagged &#34;js&#34; or &#34;personal&#34;</span>
+</span></span><span class="line"><span class="cl">gip pull --tag js,personal
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="c1"># combine with other flags</span>
+</span></span><span class="line"><span class="cl">gip <span class="nb">exec</span> --tag work -j <span class="m">8</span> -- make build
+</span></span></code></pre></div><p>Matching is case-sensitive.</p>
+<h2 id="config-file-lookup">Config file lookup</h2>
+<p>gip searches for the config file in this order:</p>
+<ol>
+<li>The path given by <code>-f / --file</code> flag</li>
+<li>The <code>GIP_FILE</code> environment variable</li>
+<li><code>.gip</code> in the current working directory</li>
+<li><code>~/.gip</code> (home directory)</li>
+</ol>
+<p>The first match wins. Run with <code>--debug</code> to see which file is being used.</p>
+<div class="highlight"><pre tabindex="0" class="chroma"><code class="language-bash" data-lang="bash"><span class="line"><span class="cl"><span class="c1"># explicit path</span>
+</span></span><span class="line"><span class="cl">gip -f ~/work/gip.yaml status
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="c1"># per-workspace config picked up automatically</span>
+</span></span><span class="line"><span class="cl"><span class="nb">cd</span> ~/work <span class="o">&amp;&amp;</span> gip status
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="c1"># override via environment variable</span>
+</span></span><span class="line"><span class="cl"><span class="nv">GIP_FILE</span><span class="o">=</span>/tmp/test.yaml gip list
+</span></span></code></pre></div><h2 id="validation-warnings">Validation warnings</h2>
+<p>When the config file is loaded, gip validates every entry and prints a warning for each anomaly before executing the command:</p>
+<ul>
+<li>missing or empty <code>name</code></li>
+<li>missing or empty <code>local_path</code></li>
+<li>duplicate <code>name</code> values</li>
+<li>unknown <code>pull_policy</code> (accepted values: <code>never</code>, <code>always</code>)</li>
+<li>missing <code>repository</code> URL</li>
+<li>repository URL from which the provider cannot be detected</li>
+</ul>
+<p>Warnings are printed in yellow and do not block execution. With <code>--quiet</code> they are suppressed; with <code>--json</code> they appear in the <code>warnings</code> array of the output envelope.</p>
+
+</div>
+
+<div style="display: flex; justify-content: space-between; margin-top: 28px;">
+  
+    <a href="http://localhost:1313/gip/commands/" class="btn">← Commands</a>
+  
+  
+    <a href="http://localhost:1313/gip/getting-started/" class="btn">Getting Started →</a>
+  
+</div>
+
+      </div>
+    </main>
+  </div>
+</body>
+</html>
