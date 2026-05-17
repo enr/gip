@@ -30,12 +30,12 @@ jobs:
       - name: Add Hugo to PATH
         run: echo "$HOME/go/bin" >> $GITHUB_PATH
 
-      - uses: actions/configure-pages@v5
+      - uses: actions/configure-pages@v6
 
       - name: Build site
         run: hugo --minify --source docs
 
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: docs/public
 
