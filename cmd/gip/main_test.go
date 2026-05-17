@@ -225,8 +225,9 @@ func TestNoopFlag(t *testing.T) {
 	if err != nil {
 		t.Fatalf("--noop pull failed: %v\nOutput: %s", err, out)
 	}
-	// Should complete fast (no git call)
-	if elapsed > 2*time.Second {
+	// Should complete well under the 10s fake-git sleep (no git call).
+	// 5s gives headroom for slow Windows CI process startup.
+	if elapsed > 5*time.Second {
 		t.Fatalf("--noop took %v; expected near-instant (no git executed)", elapsed)
 	}
 	if !bytes.Contains(out, []byte("[DRY-RUN]")) {
