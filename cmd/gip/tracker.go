@@ -96,12 +96,13 @@ type listOutputJSON struct {
 // tracker records per-project outcomes, drives the progress bar on stderr
 // (TTY only), and renders either a text summary or JSON output at the end.
 type tracker struct {
-	mu      sync.Mutex  // guards results slice
-	outMu   *sync.Mutex // serialises all terminal writes; shared with core output funcs
-	results []opResult
-	total   int
-	started time.Time
-	tty     bool
+	mu              sync.Mutex  // guards results slice
+	outMu           *sync.Mutex // serialises all terminal writes; shared with core output funcs
+	results         []opResult
+	total           int
+	started         time.Time
+	tty             bool
+	lastProgressLen int // display-column width of the last progress line; guarded by outMu
 }
 
 func newTracker(total int) *tracker {
@@ -154,8 +155,15 @@ func (t *tracker) drawProgress(done int, name string) {
 	filled := done * 20 / t.total
 	pct := done * 100 / t.total
 	bar := strings.Repeat("█", filled) + strings.Repeat("░", 20-filled)
+	line := fmt.Sprintf("[%s] %d/%d (%d%%) — %s", bar, done, t.total, pct, name)
+	cols := len([]rune(line))
 	t.outMu.Lock()
-	fmt.Fprintf(os.Stderr, "\r[%s] %d/%d (%d%%) — %s   ", bar, done, t.total, pct, name)
+	padding := t.lastProgressLen - cols
+	if padding < 0 {
+		padding = 0
+	}
+	fmt.Fprintf(os.Stderr, "\r%s%s", line, strings.Repeat(" ", padding))
+	t.lastProgressLen = cols
 	t.outMu.Unlock()
 }
 
@@ -164,7 +172,8 @@ func (t *tracker) clearProgressLocked() {
 	if !t.tty {
 		return
 	}
-	fmt.Fprintf(os.Stderr, "\r%s\r", strings.Repeat(" ", 80))
+	fmt.Fprintf(os.Stderr, "\r%s\r", strings.Repeat(" ", t.lastProgressLen))
+	t.lastProgressLen = 0
 }
 
 func (t *tracker) clearProgress() {
