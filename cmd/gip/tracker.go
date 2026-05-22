@@ -201,9 +201,9 @@ func (t *tracker) printSummary(errorsLast bool) {
 	}
 
 	elapsed := time.Since(t.started)
-	okStr := t.color(ansiGreen, fmt.Sprintf("OK: %d", okCount))
-	errStr := t.color(ansiRed, fmt.Sprintf("Errors: %d", errCount))
-	skipStr := t.color(ansiYellow, fmt.Sprintf("Skipped: %d", skipCount))
+	okStr := t.colorIf(okCount > 0, ansiGreen, fmt.Sprintf("OK: %d", okCount))
+	errStr := t.colorIf(errCount > 0, ansiRed, fmt.Sprintf("Errors: %d", errCount))
+	skipStr := t.colorIf(skipCount > 0, ansiYellow, fmt.Sprintf("Skipped: %d", skipCount))
 	fmt.Fprintf(os.Stdout, "─────────────────────────────────────────\n")
 	fmt.Fprintf(os.Stdout, "%s   %s   %s   Duration: %.1fs\n", okStr, errStr, skipStr, elapsed.Seconds())
 	if noopMode {
@@ -280,6 +280,13 @@ func (t *tracker) color(code, text string) string {
 		return text
 	}
 	return code + text + ansiReset
+}
+
+func (t *tracker) colorIf(cond bool, code, text string) string {
+	if !cond {
+		return text
+	}
+	return t.color(code, text)
 }
 
 func isTTY(f *os.File) bool {
