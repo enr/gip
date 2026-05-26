@@ -46,13 +46,26 @@ var behindFilterFlag = &cli.BoolFlag{
 	Usage: "only include repos behind their upstream (includes diverged); requires up-to-date remote refs — run gip fetch first",
 }
 
+const maxJobs = 32
+
 var parallelFlags = []cli.Flag{
-	&cli.IntFlag{Name: "jobs", Aliases: []string{"j"}, Value: 4, Usage: "maximum number of repos to operate on concurrently"},
+	&cli.IntFlag{Name: "jobs", Aliases: []string{"j"}, Value: 4, Usage: fmt.Sprintf("maximum number of repos to operate on concurrently (1-%d)", maxJobs)},
 	&cli.IntFlag{Name: "timeout", Aliases: []string{"t"}, Value: 0, Usage: "per-operation timeout in seconds (0 = no timeout)"},
 	tagFlag,
 	errorsLastFlag,
 	dirtyFilterFlag,
 	behindFilterFlag,
+}
+
+func resolveJobs(c *cli.Context) (int, error) {
+	n := c.Int("jobs")
+	if n < 1 {
+		return 0, fmt.Errorf("--jobs must be at least 1, got %d", n)
+	}
+	if n > maxJobs {
+		return 0, fmt.Errorf("--jobs must be at most %d, got %d", maxJobs, n)
+	}
+	return n, nil
 }
 
 var commands = []*cli.Command{
@@ -183,13 +196,12 @@ func gitStatus(c *cli.Context, untracked bool) error {
 	if err != nil {
 		return exitErrorf(1, "Error loading git: %v", err)
 	}
-
 	filterDirty := c.Bool("dirty")
 	filterBehind := c.Bool("behind")
 
-	jobs := c.Int("jobs")
-	if jobs < 1 {
-		jobs = 1
+	jobs, err := resolveJobs(c)
+	if err != nil {
+		return exitErrorf(1, "%v", err)
 	}
 
 	untrackedFlag := "--untracked-files=no"
@@ -276,30 +288,10 @@ type listRow struct {
 	hasExtended  bool
 }
 
-func doList(c *cli.Context) error {
-	configurationFile, err := configurationFilePath(c)
-	if err != nil {
-		return exitErrorf(1, "Error loading configuration file %s: %v", c.String("f"), err)
-	}
-	projects, warnings, err := projectsList(configurationFile)
-	if err != nil {
-		return exitErrorf(1, "Error loading projects list: %v", err)
-	}
-	projects = filterByTag(projects, c.String("tag"))
-	showAll := c.Bool("all")
-	if !showAll {
-		projects = filterDisabled(projects)
-	}
-
-	extended := c.Bool("extended")
-	filterDirty := c.Bool("dirty")
-	filterBehind := c.Bool("behind")
-	needsGit := extended || filterDirty || filterBehind
-
+func buildListRows(projects []gipProject) ([]listRow, bool, map[string]error) {
 	hasTags := false
 	rows := make([]listRow, 0, len(projects))
 	errs := map[string]error{}
-
 	for _, project := range projects {
 		policy := project.PullPolicy
 		if policy == "" {
@@ -314,12 +306,10 @@ func doList(c *cli.Context) error {
 			hasTags = true
 			tags = strings.Join(project.Tags, ", ")
 		}
-
 		displayName := project.Name
 		if project.Disabled {
 			displayName += " (disabled)"
 		}
-
 		localPath, err := projectPath(project.LocalPath)
 		if err != nil {
 			errs[project.Name] = err
@@ -342,58 +332,50 @@ func doList(c *cli.Context) error {
 			rawPath: localPath,
 		})
 	}
+	return rows, hasTags, errs
+}
 
-	// Run git queries for extended/filter modes (sequential, no timeout for list).
-	if needsGit {
-		git, gitErr := core.NewGit(ui)
-		if gitErr != nil {
-			return exitErrorf(1, "Error loading git: %v", gitErr)
+func enrichRowsWithGit(ctx context.Context, git *core.GitCommands, rows []listRow) {
+	for i := range rows {
+		r := &rows[i]
+		if r.missingDir || r.pathErr != nil {
+			continue
 		}
-		ctx := context.Background()
-		for i := range rows {
-			r := &rows[i]
-			if r.missingDir || r.pathErr != nil {
-				continue
-			}
-			r.branch, _ = git.CurrentBranch(ctx, r.rawPath)
-			syncSt, dirtySt, siErr := git.StatusInfo(ctx, r.rawPath)
-			if siErr == nil {
-				r.syncAhead = syncSt.Ahead
-				r.syncBehind = syncSt.Behind
-				r.syncNoRemote = syncSt.NoRemote
-				syms := dirtySt.Symbols()
-				if syms != "—" {
-					r.dirtySymbols = syms
-				}
-				r.hasExtended = true
-			}
+		r.branch, _ = git.CurrentBranch(ctx, r.rawPath)
+		syncSt, dirtySt, siErr := git.StatusInfo(ctx, r.rawPath)
+		if siErr != nil {
+			continue
 		}
-
-		if filterDirty || filterBehind {
-			filtered := rows[:0:0]
-			for _, r := range rows {
-				if r.missingDir || r.pathErr != nil || !r.hasExtended {
-					continue
-				}
-				if filterDirty && r.dirtySymbols == "" {
-					continue
-				}
-				if filterBehind && r.syncBehind == 0 {
-					continue
-				}
-				filtered = append(filtered, r)
-			}
-			rows = filtered
+		r.syncAhead = syncSt.Ahead
+		r.syncBehind = syncSt.Behind
+		r.syncNoRemote = syncSt.NoRemote
+		syms := dirtySt.Symbols()
+		if syms != "—" {
+			r.dirtySymbols = syms
 		}
+		r.hasExtended = true
 	}
+}
 
-	if jsonMode {
-		return printListJSON(rows, projects, warnings)
+func filterListRows(rows []listRow, filterDirty, filterBehind bool) []listRow {
+	filtered := rows[:0:0]
+	for _, r := range rows {
+		if r.missingDir || r.pathErr != nil || !r.hasExtended {
+			continue
+		}
+		if filterDirty && r.dirtySymbols == "" {
+			continue
+		}
+		if filterBehind && r.syncBehind == 0 {
+			continue
+		}
+		filtered = append(filtered, r)
 	}
+	return filtered
+}
 
-	t := newTracker(0) // used only for colorSync; no progress tracking needed
+func printListTable(rows []listRow, extended, hasTags bool, t *tracker) {
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-
 	switch {
 	case extended && hasTags:
 		fmt.Fprintln(w, "NAME\tBRANCH\tSTATUS\tDIRTY\tPATH\tPOLICY\tPROVIDER\tTAGS")
@@ -419,6 +401,44 @@ func doList(c *cli.Context) error {
 		}
 	}
 	w.Flush()
+}
+
+func doList(c *cli.Context) error {
+	configurationFile, err := configurationFilePath(c)
+	if err != nil {
+		return exitErrorf(1, "Error loading configuration file %s: %v", c.String("f"), err)
+	}
+	projects, warnings, err := projectsList(configurationFile)
+	if err != nil {
+		return exitErrorf(1, "Error loading projects list: %v", err)
+	}
+	projects = filterByTag(projects, c.String("tag"))
+	if !c.Bool("all") {
+		projects = filterDisabled(projects)
+	}
+
+	extended := c.Bool("extended")
+	filterDirty := c.Bool("dirty")
+	filterBehind := c.Bool("behind")
+
+	rows, hasTags, errs := buildListRows(projects)
+
+	if extended || filterDirty || filterBehind {
+		git, gitErr := core.NewGit(ui)
+		if gitErr != nil {
+			return exitErrorf(1, "Error loading git: %v", gitErr)
+		}
+		enrichRowsWithGit(context.Background(), git, rows)
+		if filterDirty || filterBehind {
+			rows = filterListRows(rows, filterDirty, filterBehind)
+		}
+	}
+
+	if jsonMode {
+		return printListJSON(rows, projects, warnings)
+	}
+	t := newTracker(0)
+	printListTable(rows, extended, hasTags, t)
 	return buildError(errs)
 }
 
@@ -525,9 +545,9 @@ func doPull(c *cli.Context) error {
 		return exitErrorf(1, "Error loading git: %v", err)
 	}
 
-	jobs := c.Int("jobs")
-	if jobs < 1 {
-		jobs = 1
+	jobs, err := resolveJobs(c)
+	if err != nil {
+		return exitErrorf(1, "%v", err)
 	}
 
 	sem := make(chan struct{}, jobs)
@@ -635,9 +655,9 @@ func doFetch(c *cli.Context) error {
 	filterDirty := c.Bool("dirty")
 	filterBehind := c.Bool("behind")
 
-	jobs := c.Int("jobs")
-	if jobs < 1 {
-		jobs = 1
+	jobs, err := resolveJobs(c)
+	if err != nil {
+		return exitErrorf(1, "%v", err)
 	}
 	sem := make(chan struct{}, jobs)
 	var wg sync.WaitGroup
@@ -700,17 +720,17 @@ func doFetch(c *cli.Context) error {
 }
 
 type branchEntry struct {
-	name        string
-	path        string
-	branch      string
-	err         error
-	syncAhead   int
-	syncBehind  int
+	name         string
+	path         string
+	branch       string
+	err          error
+	syncAhead    int
+	syncBehind   int
 	syncNoRemote bool
 	dirtySymbols string // "+*?$" or "" when not collected/clean
-	commitMsg   string
-	commitDate  string
-	hasExtended bool // whether extended info was successfully collected
+	commitMsg    string
+	commitDate   string
+	hasExtended  bool // whether extended info was successfully collected
 }
 
 // filterByGitState checks dirty/behind filter flags against a repo's StatusInfo.
@@ -732,6 +752,137 @@ func filterByGitState(ctx context.Context, git *core.GitCommands, dirpath string
 	return false, "", nil
 }
 
+// enrichBranchEntry populates extended fields on entry from git status. Returns true if the project should be skipped.
+func enrichBranchEntry(ctx context.Context, git *core.GitCommands, entry *branchEntry, projectName, line string, filterDirty, filterBehind, extended bool, t *tracker) bool {
+	syncSt, dirtySt, siErr := git.StatusInfo(ctx, line)
+	if siErr != nil {
+		return false
+	}
+	entry.syncAhead = syncSt.Ahead
+	entry.syncBehind = syncSt.Behind
+	entry.syncNoRemote = syncSt.NoRemote
+	if syms := dirtySt.Symbols(); syms != "—" {
+		entry.dirtySymbols = syms
+	}
+	entry.hasExtended = true
+	if filterDirty && !dirtySt.IsDirty() {
+		t.record(opResult{project: projectName, localPath: line, status: opSkipped, reason: "not dirty"})
+		return true
+	}
+	if filterBehind && syncSt.Behind == 0 {
+		t.record(opResult{project: projectName, localPath: line, status: opSkipped, reason: "not behind"})
+		return true
+	}
+	if extended {
+		msg, date, _ := git.LastCommit(ctx, line)
+		entry.commitMsg = msg
+		entry.commitDate = date
+	}
+	return false
+}
+
+func processBranchProject(project gipProject, git *core.GitCommands, t *tracker, entries *[]branchEntry, mu *sync.Mutex, needsStatusInfo, filterDirty, filterBehind, extended bool, c *cli.Context) {
+	entry := branchEntry{name: project.Name}
+	line, err := projectPath(project.LocalPath)
+	if err != nil {
+		entry.err = err
+		t.record(opResult{project: project.Name, status: opError, err: err})
+		mu.Lock()
+		*entries = append(*entries, entry)
+		mu.Unlock()
+		return
+	}
+	entry.path = line
+	if !isProjectDir(line) {
+		entry.branch = "(missing)"
+		if noopMode {
+			t.printNoop("%s → SKIPPED  (directory missing)", project.Name)
+		}
+		t.record(opResult{project: project.Name, localPath: line, status: opSkipped, reason: "local dir missing"})
+		if !filterDirty && !filterBehind {
+			mu.Lock()
+			*entries = append(*entries, entry)
+			mu.Unlock()
+		}
+		return
+	}
+	if noopMode {
+		t.printNoop("%s → git rev-parse --abbrev-ref HEAD  (in %s)", project.Name, line)
+		entry.branch = "(noop)"
+		t.record(opResult{project: project.Name, localPath: line, status: opOK, branch: "(noop)"})
+		mu.Lock()
+		*entries = append(*entries, entry)
+		mu.Unlock()
+		return
+	}
+	ctx, cancel := opContext(c)
+	defer cancel()
+	entry.branch, entry.err = git.CurrentBranch(ctx, line)
+	if entry.err != nil {
+		t.record(opResult{project: project.Name, localPath: line, status: opError, err: entry.err})
+		mu.Lock()
+		*entries = append(*entries, entry)
+		mu.Unlock()
+		return
+	}
+	if needsStatusInfo {
+		if enrichBranchEntry(ctx, git, &entry, project.Name, line, filterDirty, filterBehind, extended, t) {
+			return
+		}
+	}
+	res := opResult{
+		project: project.Name, localPath: line, status: opOK,
+		branch: entry.branch, commitMsg: entry.commitMsg, commitDate: entry.commitDate,
+		dirtySymbols: entry.dirtySymbols,
+	}
+	if entry.hasExtended {
+		res.syncAhead = entry.syncAhead
+		res.syncBehind = entry.syncBehind
+		res.syncNoRemote = entry.syncNoRemote
+		res.syncSet = true
+	}
+	t.record(res)
+	mu.Lock()
+	*entries = append(*entries, entry)
+	mu.Unlock()
+}
+
+func printBranchTable(entries []branchEntry, extended bool, t *tracker) {
+	sort.Slice(entries, func(i, j int) bool { return entries[i].name < entries[j].name })
+	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+	if extended {
+		fmt.Fprintln(w, "NAME\tBRANCH\tSTATUS\tDIRTY\tCOMMIT\tDATE\tPATH")
+		for _, e := range entries {
+			branch := e.branch
+			if e.err != nil {
+				branch = fmt.Sprintf("ERROR: %v", e.err)
+			}
+			status, dirty, commit, date := "—", "—", "—", "—"
+			if e.hasExtended {
+				status = t.colorSync(e.syncAhead, e.syncBehind, e.syncNoRemote)
+				if e.dirtySymbols != "" {
+					dirty = e.dirtySymbols
+				}
+				if e.commitMsg != "" {
+					commit = e.commitMsg
+					date = e.commitDate
+				}
+			}
+			fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n", e.name, branch, status, dirty, commit, date, e.path)
+		}
+	} else {
+		fmt.Fprintln(w, "NAME\tBRANCH\tPATH")
+		for _, e := range entries {
+			branch := e.branch
+			if e.err != nil {
+				branch = fmt.Sprintf("ERROR: %v", e.err)
+			}
+			fmt.Fprintf(w, "%s\t%s\t%s\n", e.name, branch, e.path)
+		}
+	}
+	w.Flush()
+}
+
 func doBranch(c *cli.Context) error {
 	configurationFile, err := configurationFilePath(c)
 	if err != nil {
@@ -748,22 +899,18 @@ func doBranch(c *cli.Context) error {
 	if err != nil {
 		return exitErrorf(1, "Error loading git: %v", err)
 	}
-
 	extended := c.Bool("extended")
 	filterDirty := c.Bool("dirty")
 	filterBehind := c.Bool("behind")
 	needsStatusInfo := extended || filterDirty || filterBehind
-
-	jobs := c.Int("jobs")
-	if jobs < 1 {
-		jobs = 1
+	jobs, err := resolveJobs(c)
+	if err != nil {
+		return exitErrorf(1, "%v", err)
 	}
-
 	var entriesMu sync.Mutex
 	entries := make([]branchEntry, 0, len(projects))
 	sem := make(chan struct{}, jobs)
 	var wg sync.WaitGroup
-
 	for _, project := range projects {
 		project := project
 		wg.Add(1)
@@ -771,147 +918,51 @@ func doBranch(c *cli.Context) error {
 		go func() {
 			defer wg.Done()
 			defer func() { <-sem }()
-
-			entry := branchEntry{name: project.Name}
-			line, err := projectPath(project.LocalPath)
-			if err != nil {
-				entry.err = err
-				t.record(opResult{project: project.Name, status: opError, err: err})
-				entriesMu.Lock()
-				entries = append(entries, entry)
-				entriesMu.Unlock()
-				return
-			}
-			entry.path = line
-			if !isProjectDir(line) {
-				entry.branch = "(missing)"
-				if noopMode {
-					t.printNoop("%s → SKIPPED  (directory missing)", project.Name)
-				}
-				t.record(opResult{project: project.Name, localPath: line, status: opSkipped, reason: "local dir missing"})
-				if !filterDirty && !filterBehind {
-					entriesMu.Lock()
-					entries = append(entries, entry)
-					entriesMu.Unlock()
-				}
-				return
-			}
-			if noopMode {
-				t.printNoop("%s → git rev-parse --abbrev-ref HEAD  (in %s)", project.Name, line)
-				entry.branch = "(noop)"
-				t.record(opResult{project: project.Name, localPath: line, status: opOK, branch: "(noop)"})
-				entriesMu.Lock()
-				entries = append(entries, entry)
-				entriesMu.Unlock()
-				return
-			}
-
-			ctx, cancel := opContext(c)
-			defer cancel()
-
-			entry.branch, entry.err = git.CurrentBranch(ctx, line)
-			if entry.err != nil {
-				t.record(opResult{project: project.Name, localPath: line, status: opError, err: entry.err})
-				entriesMu.Lock()
-				entries = append(entries, entry)
-				entriesMu.Unlock()
-				return
-			}
-
-			if needsStatusInfo {
-				syncSt, dirtySt, siErr := git.StatusInfo(ctx, line)
-				if siErr == nil {
-					entry.syncAhead = syncSt.Ahead
-					entry.syncBehind = syncSt.Behind
-					entry.syncNoRemote = syncSt.NoRemote
-					syms := dirtySt.Symbols()
-					if syms != "—" {
-						entry.dirtySymbols = syms
-					}
-					entry.hasExtended = true
-
-					if filterDirty && !dirtySt.IsDirty() {
-						t.record(opResult{project: project.Name, localPath: line, status: opSkipped, reason: "not dirty"})
-						return
-					}
-					if filterBehind && syncSt.Behind == 0 {
-						t.record(opResult{project: project.Name, localPath: line, status: opSkipped, reason: "not behind"})
-						return
-					}
-				}
-				if extended && siErr == nil {
-					msg, date, _ := git.LastCommit(ctx, line)
-					entry.commitMsg = msg
-					entry.commitDate = date
-				}
-			}
-
-			res := opResult{
-				project:      project.Name,
-				localPath:    line,
-				status:       opOK,
-				branch:       entry.branch,
-				commitMsg:    entry.commitMsg,
-				commitDate:   entry.commitDate,
-				dirtySymbols: entry.dirtySymbols,
-			}
-			if entry.hasExtended {
-				res.syncAhead = entry.syncAhead
-				res.syncBehind = entry.syncBehind
-				res.syncNoRemote = entry.syncNoRemote
-				res.syncSet = true
-			}
-			t.record(res)
-			entriesMu.Lock()
-			entries = append(entries, entry)
-			entriesMu.Unlock()
+			processBranchProject(project, git, t, &entries, &entriesMu, needsStatusInfo, filterDirty, filterBehind, extended, c)
 		}()
 	}
 	wg.Wait()
-
 	if jsonMode {
 		t.printJSON("branch", warnings)
 	} else {
-		sort.Slice(entries, func(i, j int) bool { return entries[i].name < entries[j].name })
-		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-		if extended {
-			fmt.Fprintln(w, "NAME\tBRANCH\tSTATUS\tDIRTY\tCOMMIT\tDATE\tPATH")
-			for _, e := range entries {
-				branch := e.branch
-				if e.err != nil {
-					branch = fmt.Sprintf("ERROR: %v", e.err)
-				}
-				status := "—"
-				dirty := "—"
-				commit := "—"
-				date := "—"
-				if e.hasExtended {
-					status = t.colorSync(e.syncAhead, e.syncBehind, e.syncNoRemote)
-					if e.dirtySymbols != "" {
-						dirty = e.dirtySymbols
-					}
-					if e.commitMsg != "" {
-						commit = e.commitMsg
-						date = e.commitDate
-					}
-				}
-				fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
-					e.name, branch, status, dirty, commit, date, e.path)
-			}
-		} else {
-			fmt.Fprintln(w, "NAME\tBRANCH\tPATH")
-			for _, e := range entries {
-				branch := e.branch
-				if e.err != nil {
-					branch = fmt.Sprintf("ERROR: %v", e.err)
-				}
-				fmt.Fprintf(w, "%s\t%s\t%s\n", e.name, branch, e.path)
-			}
-		}
-		w.Flush()
+		printBranchTable(entries, extended, t)
 		t.printSummary(c.Bool("errors-last"))
 	}
 	return buildError(t.errors())
+}
+
+func execProject(project gipProject, runner *core.CommandRunner, git *core.GitCommands, cmdName string, cmdArgs []string, filterDirty, filterBehind bool, t *tracker, c *cli.Context) {
+	line, err := projectPath(project.LocalPath)
+	if err != nil {
+		t.record(opResult{project: project.Name, status: opError, err: err})
+		return
+	}
+	if !isProjectDir(line) {
+		t.withOutput(func() { warnMissingDir(line) })
+		if noopMode {
+			t.printNoop("%s → SKIPPED  (directory missing)", project.Name)
+		}
+		t.record(opResult{project: project.Name, localPath: line, status: opSkipped, reason: "not a project dir"})
+		return
+	}
+	if noopMode {
+		t.printNoop("%s → %s %s  (in %s)", project.Name, cmdName, strings.Join(cmdArgs, " "), line)
+		t.record(opResult{project: project.Name, localPath: line, status: opOK})
+		return
+	}
+	ctx, cancel := opContext(c)
+	defer cancel()
+	if git != nil {
+		if skip, reason, _ := filterByGitState(ctx, git, line, filterDirty, filterBehind); skip {
+			t.record(opResult{project: project.Name, localPath: line, status: opSkipped, reason: reason})
+			return
+		}
+	}
+	if err = runner.Run(ctx, line, cmdName, cmdArgs); err != nil {
+		t.record(opResult{project: project.Name, localPath: line, status: opError, err: err})
+	} else {
+		t.record(opResult{project: project.Name, localPath: line, status: opOK})
+	}
 }
 
 func doExec(c *cli.Context) error {
@@ -921,7 +972,6 @@ func doExec(c *cli.Context) error {
 	}
 	cmdName := args[0]
 	cmdArgs := args[1:]
-
 	configurationFile, err := configurationFilePath(c)
 	if err != nil {
 		return exitErrorf(1, "Error loading configuration file %s: %v", c.String("f"), err)
@@ -934,7 +984,6 @@ func doExec(c *cli.Context) error {
 	projects = filterDisabled(projects)
 	t := newTracker(len(projects))
 	runner := core.NewCommandRunner(ui, core.WithSharedOutputRunner(t.sharedOutput()))
-
 	filterDirty := c.Bool("dirty")
 	filterBehind := c.Bool("behind")
 	var git *core.GitCommands
@@ -944,14 +993,12 @@ func doExec(c *cli.Context) error {
 			return exitErrorf(1, "Error loading git: %v", err)
 		}
 	}
-
-	jobs := c.Int("jobs")
-	if jobs < 1 {
-		jobs = 1
+	jobs, err := resolveJobs(c)
+	if err != nil {
+		return exitErrorf(1, "%v", err)
 	}
 	sem := make(chan struct{}, jobs)
 	var wg sync.WaitGroup
-
 	for _, project := range projects {
 		project := project
 		wg.Add(1)
@@ -959,38 +1006,7 @@ func doExec(c *cli.Context) error {
 		go func() {
 			defer wg.Done()
 			defer func() { <-sem }()
-
-			line, err := projectPath(project.LocalPath)
-			if err != nil {
-				t.record(opResult{project: project.Name, status: opError, err: err})
-				return
-			}
-			if !isProjectDir(line) {
-				t.withOutput(func() { warnMissingDir(line) })
-				if noopMode {
-					t.printNoop("%s → SKIPPED  (directory missing)", project.Name)
-				}
-				t.record(opResult{project: project.Name, localPath: line, status: opSkipped, reason: "not a project dir"})
-				return
-			}
-			if noopMode {
-				t.printNoop("%s → %s %s  (in %s)", project.Name, cmdName, strings.Join(cmdArgs, " "), line)
-				t.record(opResult{project: project.Name, localPath: line, status: opOK})
-				return
-			}
-			ctx, cancel := opContext(c)
-			defer cancel()
-			if git != nil {
-				if skip, reason, _ := filterByGitState(ctx, git, line, filterDirty, filterBehind); skip {
-					t.record(opResult{project: project.Name, localPath: line, status: opSkipped, reason: reason})
-					return
-				}
-			}
-			if err = runner.Run(ctx, line, cmdName, cmdArgs); err != nil {
-				t.record(opResult{project: project.Name, localPath: line, status: opError, err: err})
-			} else {
-				t.record(opResult{project: project.Name, localPath: line, status: opOK})
-			}
+			execProject(project, runner, git, cmdName, cmdArgs, filterDirty, filterBehind, t, c)
 		}()
 	}
 	wg.Wait()

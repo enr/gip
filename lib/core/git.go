@@ -281,6 +281,27 @@ func (d DirtyStatus) IsDirty() bool {
 	return d.Staged || d.Unstaged || d.Untracked
 }
 
+func parseStatusLine(line string, sync *BranchSyncStatus, dirty *DirtyStatus) {
+	switch {
+	case strings.HasPrefix(line, "# branch.ab "):
+		sync.NoRemote = false
+		fmt.Sscanf(strings.TrimPrefix(line, "# branch.ab "), "+%d -%d", &sync.Ahead, &sync.Behind)
+	case strings.HasPrefix(line, "1 ") || strings.HasPrefix(line, "2 "):
+		if len(line) >= 4 {
+			if line[2] != '.' {
+				dirty.Staged = true
+			}
+			if line[3] != '.' {
+				dirty.Unstaged = true
+			}
+		}
+	case strings.HasPrefix(line, "u "):
+		dirty.Staged = true
+	case strings.HasPrefix(line, "? "):
+		dirty.Untracked = true
+	}
+}
+
 // StatusInfo runs "git status --porcelain=v2 --branch" and "git stash list" to
 // collect upstream delta and working-tree indicators in two calls.
 func (g *GitCommands) StatusInfo(ctx context.Context, dirpath string) (BranchSyncStatus, DirtyStatus, error) {
@@ -301,25 +322,7 @@ func (g *GitCommands) StatusInfo(ctx context.Context, dirpath string) (BranchSyn
 	sync.NoRemote = true
 
 	for _, line := range strings.Split(r.Stdout().String(), "\n") {
-		switch {
-		case strings.HasPrefix(line, "# branch.ab "):
-			sync.NoRemote = false
-			fmt.Sscanf(strings.TrimPrefix(line, "# branch.ab "), "+%d -%d", &sync.Ahead, &sync.Behind)
-		case strings.HasPrefix(line, "1 ") || strings.HasPrefix(line, "2 "):
-			if len(line) >= 4 {
-				if line[2] != '.' {
-					dirty.Staged = true
-				}
-				if line[3] != '.' {
-					dirty.Unstaged = true
-				}
-			}
-		case strings.HasPrefix(line, "u "):
-			// unmerged (conflict) — treat as staged
-			dirty.Staged = true
-		case strings.HasPrefix(line, "? "):
-			dirty.Untracked = true
-		}
+		parseStatusLine(line, &sync, &dirty)
 	}
 
 	stash := g.executor.exec(runcmdWrapperRequest{
