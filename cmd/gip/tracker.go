@@ -7,15 +7,17 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"charm.land/lipgloss/v2"
 )
 
-const (
-	ansiReset   = "\033[0m"
-	ansiRed     = "\033[31m"
-	ansiGreen   = "\033[32m"
-	ansiYellow  = "\033[33m"
-	ansiMagenta = "\033[35m"
-	ansiWhite   = "\033[37m"
+var (
+	styleOK      = lipgloss.NewStyle().Foreground(lipgloss.Green)
+	styleErr     = lipgloss.NewStyle().Foreground(lipgloss.Red)
+	styleSkip    = lipgloss.NewStyle().Foreground(lipgloss.Yellow)
+	styleMag     = lipgloss.NewStyle().Foreground(lipgloss.Magenta)
+	styleWhite   = lipgloss.NewStyle().Foreground(lipgloss.White)
+	styleDivider = lipgloss.NewStyle().Faint(true)
 )
 
 type opStatus int
@@ -222,18 +224,18 @@ func (t *tracker) printSummary(errorsLast bool) {
 	}
 
 	elapsed := time.Since(t.started)
-	okStr := t.colorIf(okCount > 0, ansiGreen, fmt.Sprintf("OK: %d", okCount))
-	errStr := t.colorIf(errCount > 0, ansiRed, fmt.Sprintf("Errors: %d", errCount))
-	skipStr := t.colorIf(skipCount > 0, ansiYellow, fmt.Sprintf("Skipped: %d", skipCount))
-	fmt.Fprintf(os.Stdout, "─────────────────────────────────────────\n")
+	okStr := t.styleIf(okCount > 0, styleOK, fmt.Sprintf("OK: %d", okCount))
+	errStr := t.styleIf(errCount > 0, styleErr, fmt.Sprintf("Errors: %d", errCount))
+	skipStr := t.styleIf(skipCount > 0, styleSkip, fmt.Sprintf("Skipped: %d", skipCount))
+	fmt.Fprintf(os.Stdout, "%s\n", styleDivider.Render("─────────────────────────────────────────"))
 	fmt.Fprintf(os.Stdout, "%s   %s   %s   Duration: %.1fs\n", okStr, errStr, skipStr, elapsed.Seconds())
 	if noopMode {
 		fmt.Fprintf(os.Stdout, "DRY-RUN — no operations performed. Remove --noop to proceed.\n")
 	}
 	if errorsLast && len(errEntries) > 0 {
-		fmt.Fprintf(os.Stdout, "\n── Errors ────────────────────────────────\n")
+		fmt.Fprintf(os.Stdout, "\n%s\n", styleDivider.Render("── Errors ────────────────────────────────"))
 		for _, r := range errEntries {
-			fmt.Fprintf(os.Stdout, "%s %s — %v\n", t.color(ansiRed, "[ERR]"), r.project, r.err)
+			fmt.Fprintf(os.Stdout, "%s %s — %v\n", t.applyStyle(styleErr, "[ERR]"), r.project, r.err)
 		}
 	}
 }
@@ -306,41 +308,37 @@ func (t *tracker) errors() map[string]error {
 	return m
 }
 
-func (t *tracker) color(code, text string) string {
+// applyStyle renders text with a lipgloss style, but only when writing to a TTY
+// and not in JSON mode. Falls back to plain text otherwise.
+func (t *tracker) applyStyle(s lipgloss.Style, text string) string {
 	if !t.tty || jsonMode {
 		return text
 	}
-	return code + text + ansiReset
+	return s.Render(text)
 }
 
-func (t *tracker) colorIf(cond bool, code, text string) string {
+func (t *tracker) styleIf(cond bool, s lipgloss.Style, text string) string {
 	if !cond {
 		return text
 	}
-	return t.color(code, text)
+	return t.applyStyle(s, text)
 }
 
-// colorSync returns the sync label coloured by state (TTY only, no-op in JSON mode).
+// colorSync returns the sync label styled by state (TTY only, no-op in JSON mode).
 // ahead=0 behind=0 → green; ahead>0 behind=0 → magenta; behind>0 ahead=0 → yellow;
 // both>0 (diverged) → red; noRemote → white.
 func (t *tracker) colorSync(ahead, behind int, noRemote bool) string {
-	var label string
 	switch {
 	case noRemote:
-		label = "no-remote"
-		return t.color(ansiWhite, label)
+		return t.applyStyle(styleWhite, "no-remote")
 	case ahead == 0 && behind == 0:
-		label = "synced"
-		return t.color(ansiGreen, label)
+		return t.applyStyle(styleOK, "synced")
 	case ahead > 0 && behind > 0:
-		label = fmt.Sprintf("↑%d↓%d", ahead, behind)
-		return t.color(ansiRed, label)
+		return t.applyStyle(styleErr, fmt.Sprintf("↑%d↓%d", ahead, behind))
 	case ahead > 0:
-		label = fmt.Sprintf("↑%d", ahead)
-		return t.color(ansiMagenta, label)
+		return t.applyStyle(styleMag, fmt.Sprintf("↑%d", ahead))
 	default:
-		label = fmt.Sprintf("↓%d", behind)
-		return t.color(ansiYellow, label)
+		return t.applyStyle(styleSkip, fmt.Sprintf("↓%d", behind))
 	}
 }
 
