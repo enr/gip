@@ -19,6 +19,8 @@ These flags are available on every command.
 
 ## Command flags
 
+### Parallel command flags
+
 The following flags are available on all parallel commands (`status`, `statusfull`, `pull`, `fetch`, `branch`, `exec`):
 
 | Flag | Description |
@@ -27,6 +29,57 @@ The following flags are available on all parallel commands (`status`, `statusful
 | `-t, --timeout <seconds>` | Per-operation timeout in seconds; 0 means no timeout (default: 0) |
 | `--tag <tags>` | Filter projects by tag — comma-separated list with OR logic (e.g. `--tag work,js`) |
 | `--errors-last` | Print a grouped error section after the summary instead of inline |
+| `--dirty` | Only include repos with uncommitted changes (staged, unstaged, or untracked files) |
+| `--behind` | Only include repos behind their upstream; requires up-to-date remote refs — run `gip fetch` first |
+
+### Extended view (`--extended`)
+
+Available on `branch` and `list`. Runs additional git calls per repo to collect upstream sync state, working-tree indicators, and (for `branch`) last commit info.
+
+| Flag | Available on | Description |
+|------|-------------|-------------|
+| `--extended` | `branch`, `list` | Show BRANCH, STATUS, DIRTY columns and (branch only) COMMIT and DATE |
+
+**STATUS values and colours (TTY only):**
+
+| Value | Meaning | Colour |
+|-------|---------|--------|
+| `synced` | Up to date with upstream | Green |
+| `↑N` | N commits ahead of upstream | Magenta |
+| `↓N` | N commits behind upstream | Yellow |
+| `↑N↓M` | Diverged — N ahead, M behind | Red |
+| `no-remote` | No upstream tracking branch | White |
+
+**DIRTY symbols:**
+
+| Symbol | Meaning |
+|--------|---------|
+| `+` | Staged changes |
+| `*` | Unstaged changes |
+| `?` | Untracked files |
+| `$` | Stash present |
+| `—` | Clean working tree |
+
+### Git-state filter flags (`--dirty` / `--behind`)
+
+`--dirty` and `--behind` skip repos that do not match the requested state before running the main operation. An extra `git status --porcelain=v2 --branch` call is made per repo to evaluate the condition.
+
+```bash
+# show status only for repos with uncommitted changes
+gip status --dirty
+
+# pull only repos that are behind their upstream
+gip pull --behind
+
+# run stash only in repos with local changes
+gip exec --dirty -- git stash
+
+# see which repos need attention
+gip branch --dirty --extended
+gip branch --behind --extended
+```
+
+> **Note:** `--behind` compares against the last fetched remote tracking refs. If you have not run `gip fetch` recently the result may be stale.
 
 ## Output modes
 
@@ -81,7 +134,48 @@ A single JSON envelope is written to stdout after all projects have been process
 }
 ```
 
-`status` values: `ok`, `error`, `skipped`. The `branch` command adds a `branch` field to each project entry. No ANSI codes appear in JSON output.
+`status` values: `ok`, `error`, `skipped`. The `reason` field is set for skipped entries (e.g. `"pull_policy: never"`, `"not dirty"`, `"not behind"`).
+
+#### Extended JSON fields (`branch --extended`)
+
+When `--extended` is used with `branch`, each project entry may include:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `branch` | string | Current branch name or `"(detached)"` |
+| `ahead` | int | Commits ahead of upstream (omitted when 0) |
+| `behind` | int | Commits behind upstream (omitted when 0) |
+| `no_remote` | bool | `true` when no upstream tracking branch is configured |
+| `dirty` | string | Dirty symbols (e.g. `"+*"`); omitted when clean |
+| `commit_msg` | string | Last commit subject line |
+| `commit_date` | string | Relative date of last commit (e.g. `"2 hours ago"`) |
+
+```json
+{
+  "command": "branch",
+  "timestamp": "2025-05-15T10:30:00Z",
+  "projects": [
+    {
+      "name": "backend",
+      "local_path": "~/projects/backend",
+      "status": "ok",
+      "branch": "dev",
+      "ahead": 2,
+      "dirty": "+*",
+      "commit_msg": "feat: add auth endpoint",
+      "commit_date": "2 hours ago"
+    }
+  ],
+  "summary": { "total": 1, "ok": 1, "errors": 0, "skipped": 0, "duration_ms": 45 },
+  "warnings": []
+}
+```
+
+#### Extended JSON fields (`list --extended`)
+
+When `--extended` is used with `list`, each project entry may include `branch`, `ahead`, `behind`, `no_remote`, and `dirty` (same meaning as above; no commit fields).
+
+No ANSI codes appear in any JSON output.
 
 ### Dry-run (`--noop`)
 

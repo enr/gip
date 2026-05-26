@@ -75,6 +75,38 @@ List all registered projects:
 gip list
 ```
 
+## Get a richer overview
+
+Add `--extended` to `branch` or `list` for a dashboard view with sync status, dirty indicators, and last commit info:
+
+```bash
+gip branch --extended
+gip list --extended
+```
+
+```text
+NAME        BRANCH    STATUS    DIRTY  COMMIT                    DATE        PATH
+frontend    main      synced    —      chore: bump deps          3 days ago  ~/projects/frontend
+backend     dev       ↑2        +*     feat: add auth endpoint   2 hours ago ~/projects/backend
+dotfiles    main      ↓1        —      docs: update README       1 week ago  ~/dotfiles
+```
+
+STATUS colour: green = synced · magenta = ahead · yellow = behind · red = diverged · white = no remote  
+DIRTY symbols: `+` staged · `*` unstaged · `?` untracked · `$` stash
+
+## Focus on repos that need attention
+
+Use `--dirty` or `--behind` to limit any command to repos that match:
+
+```bash
+# only repos with uncommitted changes
+gip status --dirty
+gip branch --dirty --extended
+
+# only repos behind their upstream (run fetch first)
+gip fetch && gip pull --behind
+```
+
 ## Filter by tag
 
 Run any command against a tagged subset:
