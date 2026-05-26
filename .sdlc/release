@@ -63,6 +63,7 @@ echo "" >> "$tmp_config"
 echo "APP_VERSION='${release_version}' # ${APP_VERSION_LINE_IDENTIFIER} this line is automatically managed" >> "$tmp_config"
 echo "" >> "$tmp_config"
 cp "$tmp_config" "${sdlc_dir}/config"
+sed -i "s/currentAppVersion = \".*\"/currentAppVersion = \"${release_version}\"/" "${prj_home}/docs/hugo.toml"
 git commit -a -m "release ${release_version}"
 git tag "${tag_name}"
 
@@ -72,6 +73,7 @@ echo "" >> "$tmp_config"
 echo "APP_VERSION='${snapshot_version}' # ${APP_VERSION_LINE_IDENTIFIER} this line is automatically managed" >> "$tmp_config"
 echo "" >> "$tmp_config"
 cp "$tmp_config" "${sdlc_dir}/config"
+sed -i "s/currentAppVersion = \".*\"/currentAppVersion = \"${snapshot_version}\"/" "${prj_home}/docs/hugo.toml"
 
 git commit -a -m '[skip ci] back to snapshot'
 git push
