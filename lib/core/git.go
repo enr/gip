@@ -223,6 +223,142 @@ func (g *GitCommands) CurrentBranch(ctx context.Context, dirpath string) (string
 	return branch, nil
 }
 
+// BranchSyncStatus holds the upstream delta for the checked-out branch.
+type BranchSyncStatus struct {
+	Ahead    int
+	Behind   int
+	NoRemote bool // true when no upstream tracking branch is configured
+}
+
+// SyncLabel returns a compact display string (e.g. "synced", "↑2", "↓3", "↑1↓2", "no-remote").
+func (s BranchSyncStatus) SyncLabel() string {
+	if s.NoRemote {
+		return "no-remote"
+	}
+	if s.Ahead == 0 && s.Behind == 0 {
+		return "synced"
+	}
+	if s.Ahead > 0 && s.Behind > 0 {
+		return fmt.Sprintf("↑%d↓%d", s.Ahead, s.Behind)
+	}
+	if s.Ahead > 0 {
+		return fmt.Sprintf("↑%d", s.Ahead)
+	}
+	return fmt.Sprintf("↓%d", s.Behind)
+}
+
+// DirtyStatus captures working-tree and index state.
+type DirtyStatus struct {
+	Staged    bool
+	Unstaged  bool
+	Untracked bool
+	Stashed   bool
+}
+
+// Symbols returns compact status indicators (+*?$), or "—" when clean.
+func (d DirtyStatus) Symbols() string {
+	var b strings.Builder
+	if d.Staged {
+		b.WriteByte('+')
+	}
+	if d.Unstaged {
+		b.WriteByte('*')
+	}
+	if d.Untracked {
+		b.WriteByte('?')
+	}
+	if d.Stashed {
+		b.WriteByte('$')
+	}
+	if b.Len() == 0 {
+		return "—"
+	}
+	return b.String()
+}
+
+// IsDirty reports whether the working tree or index has any uncommitted change.
+func (d DirtyStatus) IsDirty() bool {
+	return d.Staged || d.Unstaged || d.Untracked
+}
+
+// StatusInfo runs "git status --porcelain=v2 --branch" and "git stash list" to
+// collect upstream delta and working-tree indicators in two calls.
+func (g *GitCommands) StatusInfo(ctx context.Context, dirpath string) (BranchSyncStatus, DirtyStatus, error) {
+	if strings.HasPrefix(dirpath, "-") {
+		return BranchSyncStatus{}, DirtyStatus{}, fmt.Errorf("invalid dirpath: cannot start with '-'")
+	}
+	r := g.executor.exec(runcmdWrapperRequest{
+		ctx:        ctx,
+		args:       []string{"status", "--porcelain=v2", "--branch"},
+		workingDir: dirpath,
+	})
+	if !r.Success() {
+		return BranchSyncStatus{}, DirtyStatus{}, gitResultError(r)
+	}
+
+	var sync BranchSyncStatus
+	var dirty DirtyStatus
+	sync.NoRemote = true
+
+	for _, line := range strings.Split(r.Stdout().String(), "\n") {
+		switch {
+		case strings.HasPrefix(line, "# branch.ab "):
+			sync.NoRemote = false
+			fmt.Sscanf(strings.TrimPrefix(line, "# branch.ab "), "+%d -%d", &sync.Ahead, &sync.Behind)
+		case strings.HasPrefix(line, "1 ") || strings.HasPrefix(line, "2 "):
+			if len(line) >= 4 {
+				if line[2] != '.' {
+					dirty.Staged = true
+				}
+				if line[3] != '.' {
+					dirty.Unstaged = true
+				}
+			}
+		case strings.HasPrefix(line, "u "):
+			// unmerged (conflict) — treat as staged
+			dirty.Staged = true
+		case strings.HasPrefix(line, "? "):
+			dirty.Untracked = true
+		}
+	}
+
+	stash := g.executor.exec(runcmdWrapperRequest{
+		ctx:        ctx,
+		args:       []string{"stash", "list"},
+		workingDir: dirpath,
+	})
+	if stash.Success() && strings.TrimSpace(stash.Stdout().String()) != "" {
+		dirty.Stashed = true
+	}
+
+	return sync, dirty, nil
+}
+
+// LastCommit returns the subject line and relative date of the most recent commit.
+func (g *GitCommands) LastCommit(ctx context.Context, dirpath string) (subject, relDate string, err error) {
+	if strings.HasPrefix(dirpath, "-") {
+		return "", "", fmt.Errorf("invalid dirpath: cannot start with '-'")
+	}
+	r := g.executor.exec(runcmdWrapperRequest{
+		ctx:        ctx,
+		args:       []string{"log", "-1", "--format=%s%n%cr"},
+		workingDir: dirpath,
+	})
+	if !r.Success() {
+		return "", "", gitResultError(r)
+	}
+	out := strings.TrimSpace(r.Stdout().String())
+	if out == "" {
+		return "(no commits)", "", nil
+	}
+	parts := strings.SplitN(out, "\n", 2)
+	subject = strings.TrimSpace(parts[0])
+	if len(parts) > 1 {
+		relDate = strings.TrimSpace(parts[1])
+	}
+	return subject, relDate, nil
+}
+
 func statusArguments(untracked bool) []string {
 	untrackedFlag := "=no"
 	if untracked {

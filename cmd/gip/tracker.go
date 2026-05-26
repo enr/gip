@@ -10,10 +10,12 @@ import (
 )
 
 const (
-	ansiReset  = "\033[0m"
-	ansiRed    = "\033[31m"
-	ansiGreen  = "\033[32m"
-	ansiYellow = "\033[33m"
+	ansiReset   = "\033[0m"
+	ansiRed     = "\033[31m"
+	ansiGreen   = "\033[32m"
+	ansiYellow  = "\033[33m"
+	ansiMagenta = "\033[35m"
+	ansiWhite   = "\033[37m"
 )
 
 type opStatus int
@@ -31,6 +33,14 @@ type opResult struct {
 	err       error
 	reason    string // human-readable reason for opSkipped
 	branch    string // set by doBranch
+	// extended sync/dirty/commit info (set when --extended/--dirty/--behind is used)
+	syncAhead    int
+	syncBehind   int
+	syncNoRemote bool
+	syncSet      bool   // whether sync info was collected
+	dirtySymbols string // "+*?$" indicators, empty string when not collected or clean
+	commitMsg    string
+	commitDate   string
 }
 
 func (r opResult) statusString() string {
@@ -49,12 +59,18 @@ func (r opResult) statusString() string {
 // --- JSON output types ---
 
 type projectJSON struct {
-	Name      string `json:"name"`
-	LocalPath string `json:"local_path"`
-	Status    string `json:"status"`
-	Error     string `json:"error,omitempty"`
-	Reason    string `json:"reason,omitempty"`
-	Branch    string `json:"branch,omitempty"`
+	Name       string `json:"name"`
+	LocalPath  string `json:"local_path"`
+	Status     string `json:"status"`
+	Error      string `json:"error,omitempty"`
+	Reason     string `json:"reason,omitempty"`
+	Branch     string `json:"branch,omitempty"`
+	Ahead      int    `json:"ahead,omitempty"`
+	Behind     int    `json:"behind,omitempty"`
+	NoRemote   bool   `json:"no_remote,omitempty"`
+	Dirty      string `json:"dirty,omitempty"`
+	CommitMsg  string `json:"commit_msg,omitempty"`
+	CommitDate string `json:"commit_date,omitempty"`
 }
 
 type summaryJSON struct {
@@ -82,6 +98,11 @@ type listProjectJSON struct {
 	Tags       []string `json:"tags"`
 	Missing    bool     `json:"missing,omitempty"`
 	Disabled   bool     `json:"disabled,omitempty"`
+	Branch     string   `json:"branch,omitempty"`
+	Ahead      int      `json:"ahead,omitempty"`
+	Behind     int      `json:"behind,omitempty"`
+	NoRemote   bool     `json:"no_remote,omitempty"`
+	Dirty      string   `json:"dirty,omitempty"`
 }
 
 type listOutputJSON struct {
@@ -225,14 +246,24 @@ func (t *tracker) printJSON(command string, warnings []string) {
 	var okCount, errCount, skipCount int
 	for _, r := range t.results {
 		p := projectJSON{
-			Name:      r.project,
-			LocalPath: r.localPath,
-			Status:    r.statusString(),
-			Reason:    r.reason,
-			Branch:    r.branch,
+			Name:       r.project,
+			LocalPath:  r.localPath,
+			Status:     r.statusString(),
+			Reason:     r.reason,
+			Branch:     r.branch,
+			CommitMsg:  r.commitMsg,
+			CommitDate: r.commitDate,
 		}
 		if r.err != nil {
 			p.Error = r.err.Error()
+		}
+		if r.syncSet {
+			p.Ahead = r.syncAhead
+			p.Behind = r.syncBehind
+			p.NoRemote = r.syncNoRemote
+		}
+		if r.dirtySymbols != "" {
+			p.Dirty = r.dirtySymbols
 		}
 		projects = append(projects, p)
 		switch r.status {
@@ -287,6 +318,30 @@ func (t *tracker) colorIf(cond bool, code, text string) string {
 		return text
 	}
 	return t.color(code, text)
+}
+
+// colorSync returns the sync label coloured by state (TTY only, no-op in JSON mode).
+// ahead=0 behind=0 → green; ahead>0 behind=0 → magenta; behind>0 ahead=0 → yellow;
+// both>0 (diverged) → red; noRemote → white.
+func (t *tracker) colorSync(ahead, behind int, noRemote bool) string {
+	var label string
+	switch {
+	case noRemote:
+		label = "no-remote"
+		return t.color(ansiWhite, label)
+	case ahead == 0 && behind == 0:
+		label = "synced"
+		return t.color(ansiGreen, label)
+	case ahead > 0 && behind > 0:
+		label = fmt.Sprintf("↑%d↓%d", ahead, behind)
+		return t.color(ansiRed, label)
+	case ahead > 0:
+		label = fmt.Sprintf("↑%d", ahead)
+		return t.color(ansiMagenta, label)
+	default:
+		label = fmt.Sprintf("↓%d", behind)
+		return t.color(ansiYellow, label)
+	}
 }
 
 func isTTY(f *os.File) bool {
