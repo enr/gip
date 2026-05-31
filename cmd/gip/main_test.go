@@ -189,7 +189,7 @@ func TestListTabular(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list failed: %v\nOutput: %s", err, out)
 	}
-	for _, col := range []string{"NAME", "PATH", "POLICY", "PROVIDER"} {
+	for _, col := range []string{"NAME", "BRANCH", "STATUS", "PATH", "POLICY", "PROVIDER"} {
 		if !bytes.Contains(out, []byte(col)) {
 			t.Errorf("expected column header %q in list output:\n%s", col, out)
 		}

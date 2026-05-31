@@ -33,7 +33,7 @@ var errorsLastFlag = &cli.BoolFlag{
 
 var extendedFlag = &cli.BoolFlag{
 	Name:  "extended",
-	Usage: "show branch sync status, dirty indicators, and last commit info (requires extra git calls per repo)",
+	Usage: "show dirty indicators in addition to branch and sync status",
 }
 
 var dirtyFilterFlag = &cli.BoolFlag{
@@ -107,7 +107,7 @@ var commandList = cli.Command{
 	Name:        "list",
 	Aliases:     []string{"ls"},
 	Usage:       "list registered projects",
-	Description: `List projects in a table with name, path, policy, provider and tags.`,
+	Description: `List projects in a table with name, branch, sync status, path, policy, provider and tags.`,
 	Action:      doList,
 	Flags: []cli.Flag{
 		tagFlag,
@@ -116,6 +116,8 @@ var commandList = cli.Command{
 		dirtyFilterFlag,
 		behindFilterFlag,
 		aheadFilterFlag,
+		&cli.IntFlag{Name: "jobs", Aliases: []string{"j"}, Value: 4, Usage: fmt.Sprintf("maximum number of repos to query concurrently (1-%d)", maxJobs)},
+		&cli.IntFlag{Name: "timeout", Aliases: []string{"t"}, Value: 0, Usage: "per-repo git status timeout in seconds (0 = no timeout)"},
 	},
 }
 
@@ -343,26 +345,35 @@ func buildListRows(projects []gipProject) ([]listRow, bool, map[string]error) {
 	return rows, hasTags, errs
 }
 
-func enrichRowsWithGit(ctx context.Context, git *core.GitCommands, rows []listRow) {
+func enrichRowsWithGit(ctx context.Context, git *core.GitCommands, rows []listRow, jobs int) {
+	sem := make(chan struct{}, jobs)
+	var wg sync.WaitGroup
 	for i := range rows {
 		r := &rows[i]
 		if r.missingDir || r.pathErr != nil {
 			continue
 		}
-		r.branch, _ = git.CurrentBranch(ctx, r.rawPath)
-		syncSt, dirtySt, siErr := git.StatusInfo(ctx, r.rawPath)
-		if siErr != nil {
-			continue
-		}
-		r.syncAhead = syncSt.Ahead
-		r.syncBehind = syncSt.Behind
-		r.syncNoRemote = syncSt.NoRemote
-		syms := dirtySt.Symbols()
-		if syms != "—" {
-			r.dirtySymbols = syms
-		}
-		r.hasExtended = true
+		wg.Add(1)
+		sem <- struct{}{}
+		go func() {
+			defer wg.Done()
+			defer func() { <-sem }()
+			r.branch, _ = git.CurrentBranch(ctx, r.rawPath)
+			syncSt, dirtySt, siErr := git.StatusInfo(ctx, r.rawPath)
+			if siErr != nil {
+				return
+			}
+			r.syncAhead = syncSt.Ahead
+			r.syncBehind = syncSt.Behind
+			r.syncNoRemote = syncSt.NoRemote
+			syms := dirtySt.Symbols()
+			if syms != "—" {
+				r.dirtySymbols = syms
+			}
+			r.hasExtended = true
+		}()
 	}
+	wg.Wait()
 }
 
 func filterListRows(rows []listRow, filterDirty, filterBehind, filterAhead bool) []listRow {
@@ -401,14 +412,16 @@ func printListTable(rows []listRow, extended, hasTags bool, t *tracker) {
 				r.name, listBranch(r), listSync(t, r), listDirty(r), r.path, r.policy, r.provider)
 		}
 	case hasTags:
-		fmt.Fprintln(w, "NAME\tPATH\tPOLICY\tPROVIDER\tTAGS")
+		fmt.Fprintln(w, "NAME\tBRANCH\tSTATUS\tPATH\tPOLICY\tPROVIDER\tTAGS")
 		for _, r := range rows {
-			fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n", r.name, r.path, r.policy, r.provider, r.tags)
+			fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+				r.name, listBranch(r), listSync(t, r), r.path, r.policy, r.provider, r.tags)
 		}
 	default:
-		fmt.Fprintln(w, "NAME\tPATH\tPOLICY\tPROVIDER")
+		fmt.Fprintln(w, "NAME\tBRANCH\tSTATUS\tPATH\tPOLICY\tPROVIDER")
 		for _, r := range rows {
-			fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", r.name, r.path, r.policy, r.provider)
+			fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n",
+				r.name, listBranch(r), listSync(t, r), r.path, r.policy, r.provider)
 		}
 	}
 	w.Flush()
@@ -433,17 +446,22 @@ func doList(c *cli.Context) error {
 	filterBehind := c.Bool("behind")
 	filterAhead := c.Bool("ahead")
 
+	jobs, err := resolveJobs(c)
+	if err != nil {
+		return exitErrorf(1, "%v", err)
+	}
+
 	rows, hasTags, errs := buildListRows(projects)
 
-	if extended || filterDirty || filterBehind || filterAhead {
-		git, gitErr := core.NewGit(ui)
-		if gitErr != nil {
-			return exitErrorf(1, "Error loading git: %v", gitErr)
-		}
-		enrichRowsWithGit(context.Background(), git, rows)
-		if filterDirty || filterBehind || filterAhead {
-			rows = filterListRows(rows, filterDirty, filterBehind, filterAhead)
-		}
+	git, gitErr := core.NewGit(ui)
+	if gitErr != nil {
+		return exitErrorf(1, "Error loading git: %v", gitErr)
+	}
+	ctx, cancel := opContext(c)
+	defer cancel()
+	enrichRowsWithGit(ctx, git, rows, jobs)
+	if filterDirty || filterBehind || filterAhead {
+		rows = filterListRows(rows, filterDirty, filterBehind, filterAhead)
 	}
 
 	if jsonMode {
