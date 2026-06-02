@@ -9,11 +9,13 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"sync"
 	"text/tabwriter"
 	"time"
+	"unicode/utf8"
 
 	"github.com/enr/gip/lib/core"
 
@@ -385,46 +387,81 @@ func filterListRows(rows []listRow, filterDirty, filterBehind, filterAhead bool)
 		if filterDirty && r.dirtySymbols == "" {
 			continue
 		}
-		if filterBehind && r.syncBehind == 0 {
-			continue
-		}
-		if filterAhead && r.syncAhead == 0 {
-			continue
+		if filterBehind || filterAhead {
+			matchBehind := filterBehind && r.syncBehind > 0
+			matchAhead := filterAhead && r.syncAhead > 0
+			if !matchBehind && !matchAhead {
+				continue
+			}
 		}
 		filtered = append(filtered, r)
 	}
 	return filtered
 }
 
-func printListTable(rows []listRow, extended, hasTags bool, t *tracker) {
-	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	switch {
-	case extended && hasTags:
-		fmt.Fprintln(w, "NAME\tBRANCH\tSTATUS\tDIRTY\tPATH\tPOLICY\tPROVIDER\tTAGS")
-		for _, r := range rows {
-			fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
-				r.name, listBranch(r), listSync(t, r), listDirty(r), r.path, r.policy, r.provider, r.tags)
-		}
-	case extended:
-		fmt.Fprintln(w, "NAME\tBRANCH\tSTATUS\tDIRTY\tPATH\tPOLICY\tPROVIDER")
-		for _, r := range rows {
-			fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
-				r.name, listBranch(r), listSync(t, r), listDirty(r), r.path, r.policy, r.provider)
-		}
-	case hasTags:
-		fmt.Fprintln(w, "NAME\tBRANCH\tSTATUS\tPATH\tPOLICY\tPROVIDER\tTAGS")
-		for _, r := range rows {
-			fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
-				r.name, listBranch(r), listSync(t, r), r.path, r.policy, r.provider, r.tags)
-		}
-	default:
-		fmt.Fprintln(w, "NAME\tBRANCH\tSTATUS\tPATH\tPOLICY\tPROVIDER")
-		for _, r := range rows {
-			fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n",
-				r.name, listBranch(r), listSync(t, r), r.path, r.policy, r.provider)
+// ansiRe matches ANSI CSI escape sequences (e.g. color codes from lipgloss).
+var ansiRe = regexp.MustCompile(`\x1b\[[0-9;]*m`)
+
+// visualLen returns the visible character width of s, ignoring ANSI escape sequences.
+func visualLen(s string) int {
+	return utf8.RuneCountInString(ansiRe.ReplaceAllString(s, ""))
+}
+
+// renderTable prints rows with consistent column alignment, correctly handling
+// ANSI color codes (which have byte length > visual width).
+// gap is the number of spaces between columns.
+func renderTable(rows [][]string, gap int) {
+	if len(rows) == 0 {
+		return
+	}
+	cols := len(rows[0])
+	widths := make([]int, cols)
+	for _, row := range rows {
+		for j := range widths {
+			if j < len(row) {
+				if vl := visualLen(row[j]); vl > widths[j] {
+					widths[j] = vl
+				}
+			}
 		}
 	}
-	w.Flush()
+	for _, row := range rows {
+		var sb strings.Builder
+		for j, cell := range row {
+			sb.WriteString(cell)
+			if j < cols-1 {
+				sb.WriteString(strings.Repeat(" ", widths[j]-visualLen(cell)+gap))
+			}
+		}
+		fmt.Fprintln(os.Stdout, sb.String())
+	}
+}
+
+func printListTable(rows []listRow, extended, hasTags bool, t *tracker) {
+	var table [][]string
+	switch {
+	case extended && hasTags:
+		table = append(table, []string{"NAME", "BRANCH", "STATUS", "DIRTY", "PATH", "POLICY", "PROVIDER", "TAGS"})
+		for _, r := range rows {
+			table = append(table, []string{r.name, listBranch(r), listSync(t, r), listDirty(r), r.path, r.policy, r.provider, r.tags})
+		}
+	case extended:
+		table = append(table, []string{"NAME", "BRANCH", "STATUS", "DIRTY", "PATH", "POLICY", "PROVIDER"})
+		for _, r := range rows {
+			table = append(table, []string{r.name, listBranch(r), listSync(t, r), listDirty(r), r.path, r.policy, r.provider})
+		}
+	case hasTags:
+		table = append(table, []string{"NAME", "BRANCH", "STATUS", "PATH", "POLICY", "PROVIDER", "TAGS"})
+		for _, r := range rows {
+			table = append(table, []string{r.name, listBranch(r), listSync(t, r), r.path, r.policy, r.provider, r.tags})
+		}
+	default:
+		table = append(table, []string{"NAME", "BRANCH", "STATUS", "PATH", "POLICY", "PROVIDER"})
+		for _, r := range rows {
+			table = append(table, []string{r.name, listBranch(r), listSync(t, r), r.path, r.policy, r.provider})
+		}
+	}
+	renderTable(table, 2)
 }
 
 func doList(c *cli.Context) error {
@@ -778,11 +815,12 @@ func filterByGitState(ctx context.Context, git *core.GitCommands, dirpath string
 	if filterDirty && !dirty.IsDirty() {
 		return true, "not dirty", nil
 	}
-	if filterBehind && sync.Behind == 0 {
-		return true, "not behind", nil
-	}
-	if filterAhead && sync.Ahead == 0 {
-		return true, "not ahead", nil
+	if filterBehind || filterAhead {
+		matchBehind := filterBehind && sync.Behind > 0
+		matchAhead := filterAhead && sync.Ahead > 0
+		if !matchBehind && !matchAhead {
+			return true, "not ahead or behind", nil
+		}
 	}
 	return false, "", nil
 }
