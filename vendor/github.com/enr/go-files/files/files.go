@@ -5,9 +5,7 @@ import (
 	"crypto/sha1"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
-	"path"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -32,10 +30,14 @@ func Copy(source, destination string) error {
 	}
 	if IsDir(dst) {
 		basename := filepath.Base(src)
-		dst = path.Join(dst, basename)
+		dst = filepath.Join(dst, basename)
 	}
 
-	d, err := os.Create(dst)
+	srcInfo, err := s.Stat()
+	if err != nil {
+		return err
+	}
+	d, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, srcInfo.Mode())
 	if err != nil {
 		return err
 	}
@@ -48,7 +50,7 @@ func Copy(source, destination string) error {
 
 func existsWithError(filepath string) (bool, error) {
 	name := cleanPath(filepath)
-	s, err := os.Stat(name)
+	_, err := os.Stat(name)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return false, err
@@ -63,15 +65,24 @@ func existsWithError(filepath string) (bool, error) {
 				}
 			}
 		}
-		return s != nil, err
+		return false, err
 	}
 	return true, nil
 }
 
-// Exists reports whether the named file or directory exists.
+// Exists reports whether the named file or directory exists and is accessible.
+// Returns false if the path does not exist or cannot be accessed (e.g. permission denied).
+// Use ExistsWithError to distinguish between these cases.
 func Exists(filepath string) bool {
 	exist, _ := existsWithError(filepath)
 	return exist
+}
+
+// ExistsWithError reports whether the named file or directory exists.
+// Unlike Exists, it returns the underlying error so callers can distinguish
+// between "does not exist" and "exists but inaccessible" (e.g. permission denied).
+func ExistsWithError(filepath string) (bool, error) {
+	return existsWithError(filepath)
 }
 
 // IsDir reports whether d is a directory.
@@ -92,7 +103,9 @@ func IsRegular(fpath string) bool {
 	return false
 }
 
-// Sha1Sum gives the checksum for the given file
+// Sha1Sum gives the checksum for the given file.
+// SHA-1 is not collision-resistant; do not use for security or integrity
+// verification where an adversary controls the input — use SHA-256 for that.
 func Sha1Sum(fpath string) (string, error) {
 	name := cleanPath(fpath)
 	f, err := os.Open(name)
@@ -111,11 +124,11 @@ func Sha1Sum(fpath string) (string, error) {
 // ReadLines returns a slice containing file lines.
 func ReadLines(path string) ([]string, error) {
 	lines := []string{}
-	file, err := os.Open(path)
-	defer file.Close()
+	file, err := os.Open(cleanPath(path))
 	if err != nil {
 		return []string{}, err
 	}
+	defer file.Close()
 
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
@@ -157,11 +170,11 @@ type EachLineFunc func(line string) error
 // EachLine walks lines, calling EachLineFunc for each line of the file.
 // All errors that arise visiting lines are filtered by callback function.
 func EachLine(path string, walkFn EachLineFunc) error {
-	file, err := os.Open(path)
-	defer file.Close()
+	file, err := os.Open(cleanPath(path))
 	if err != nil {
 		return err
 	}
+	defer file.Close()
 
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
@@ -179,14 +192,15 @@ func EachLine(path string, walkFn EachLineFunc) error {
 }
 
 // IsSamePath returns true if two different strings refer to the same file.
+// Returns false if either path cannot be resolved (e.g. working directory unavailable).
 func IsSamePath(p1 string, p2 string) bool {
 	first, err := normalizedPath(p1)
 	if err != nil {
-		panic(err)
+		return false
 	}
 	second, err := normalizedPath(p2)
 	if err != nil {
-		panic(err)
+		return false
 	}
 	return first == second
 }
@@ -206,22 +220,21 @@ func normalizedPath(p string) (string, error) {
 
 // CopyDir copies a whole directory recursively overwriting contents
 func CopyDir(src string, dst string) error {
-	var err error
-	var fds []os.FileInfo
-	var info os.FileInfo
-	if info, err = os.Stat(src); err != nil {
+	info, err := os.Stat(src)
+	if err != nil {
 		return err
 	}
 	if err = os.MkdirAll(dst, info.Mode()); err != nil {
 		return err
 	}
 
-	if fds, err = ioutil.ReadDir(src); err != nil {
+	fds, err := os.ReadDir(src)
+	if err != nil {
 		return err
 	}
 	for _, fd := range fds {
-		sourcePath := path.Join(src, fd.Name())
-		destinationPath := path.Join(dst, fd.Name())
+		sourcePath := filepath.Join(src, fd.Name())
+		destinationPath := filepath.Join(dst, fd.Name())
 
 		if fd.IsDir() {
 			if err = CopyDir(sourcePath, destinationPath); err != nil {
