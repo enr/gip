@@ -65,6 +65,26 @@ var parallelFlags = []cli.Flag{
 	aheadFilterFlag,
 }
 
+func bashCompleteWithFlags(flags []cli.Flag) cli.BashCompleteFunc {
+	return func(c *cli.Context) {
+		partial := ""
+		args := os.Args
+		if len(args) >= 2 {
+			prev := args[len(args)-2]
+			if strings.HasPrefix(prev, "-") {
+				partial = strings.TrimLeft(prev, "-")
+			}
+		}
+		for _, flag := range flags {
+			for _, name := range flag.Names() {
+				if len(name) > 1 && strings.HasPrefix(name, partial) {
+					fmt.Fprintf(c.App.Writer, "--%s\n", name)
+				}
+			}
+		}
+	}
+}
+
 func resolveJobs(c *cli.Context) (int, error) {
 	n := c.Int("jobs")
 	if n < 1 {
@@ -89,66 +109,78 @@ var commands = []*cli.Command{
 }
 
 var commandStatus = cli.Command{
-	Name:        "status",
-	Aliases:     []string{"s"},
-	Usage:       "show modified files in projects",
-	Description: `Prints modified files.`,
-	Action:      doStatus,
-	Flags:       parallelFlags,
+	Name:         "status",
+	Aliases:      []string{"s"},
+	Usage:        "show modified files in projects",
+	Description:  `Prints modified files.`,
+	Action:       doStatus,
+	Flags:        parallelFlags,
+	BashComplete: bashCompleteWithFlags(parallelFlags),
 }
 
 var commandStatusFull = cli.Command{
-	Name:        "statusfull",
-	Aliases:     []string{"sf"},
-	Usage:       "show modified and new files in projects",
-	Description: `Prints modified files and new ones.`,
-	Action:      doStatusFull,
-	Flags:       parallelFlags,
+	Name:         "statusfull",
+	Aliases:      []string{"sf"},
+	Usage:        "show modified and new files in projects",
+	Description:  `Prints modified files and new ones.`,
+	Action:       doStatusFull,
+	Flags:        parallelFlags,
+	BashComplete: bashCompleteWithFlags(parallelFlags),
+}
+
+var listFlags = []cli.Flag{
+	tagFlag,
+	&cli.BoolFlag{Name: "all", Aliases: []string{"a"}, Usage: "include disabled projects in the list"},
+	extendedFlag,
+	dirtyFilterFlag,
+	behindFilterFlag,
+	aheadFilterFlag,
+	&cli.IntFlag{Name: "jobs", Aliases: []string{"j"}, Value: 4, Usage: fmt.Sprintf("maximum number of repos to query concurrently (1-%d)", maxJobs)},
+	&cli.IntFlag{Name: "timeout", Aliases: []string{"t"}, Value: 0, Usage: "per-repo git status timeout in seconds (0 = no timeout)"},
 }
 
 var commandList = cli.Command{
-	Name:        "list",
-	Aliases:     []string{"ls"},
-	Usage:       "list registered projects",
-	Description: `List projects in a table with name, branch, sync status, path, policy, provider and tags.`,
-	Action:      doList,
-	Flags: []cli.Flag{
-		tagFlag,
-		&cli.BoolFlag{Name: "all", Aliases: []string{"a"}, Usage: "include disabled projects in the list"},
-		extendedFlag,
-		dirtyFilterFlag,
-		behindFilterFlag,
-		aheadFilterFlag,
-		&cli.IntFlag{Name: "jobs", Aliases: []string{"j"}, Value: 4, Usage: fmt.Sprintf("maximum number of repos to query concurrently (1-%d)", maxJobs)},
-		&cli.IntFlag{Name: "timeout", Aliases: []string{"t"}, Value: 0, Usage: "per-repo git status timeout in seconds (0 = no timeout)"},
-	},
+	Name:         "list",
+	Aliases:      []string{"ls"},
+	Usage:        "list registered projects",
+	Description:  `List projects in a table with name, branch, sync status, path, policy, provider and tags.`,
+	Action:       doList,
+	Flags:        listFlags,
+	BashComplete: bashCompleteWithFlags(listFlags),
 }
 
+var pullFlags = append(parallelFlags,
+	&cli.BoolFlag{Name: "all", Aliases: []string{"a"}, Usage: `Pull all registered projects doing a checkout if needed. Otherwise only the projects already present are updated.`},
+)
+
 var commandPull = cli.Command{
-	Name:        "pull",
-	Usage:       "update projects from remote repositories",
-	Description: `Pull projects`,
-	Action:      doPull,
-	Flags: append(parallelFlags,
-		&cli.BoolFlag{Name: "all", Aliases: []string{"a"}, Usage: `Pull all registered projects doing a checkout if needed. Otherwise only the projects already present are updated.`},
-	),
+	Name:         "pull",
+	Usage:        "update projects from remote repositories",
+	Description:  `Pull projects`,
+	Action:       doPull,
+	Flags:        pullFlags,
+	BashComplete: bashCompleteWithFlags(pullFlags),
 }
 
 var commandFetch = cli.Command{
-	Name:        "fetch",
-	Usage:       "fetch remote refs for all projects without merging",
-	Description: `Executes "git fetch --all --prune" for each project. Projects with pull_policy "never" are skipped.`,
-	Action:      doFetch,
-	Flags:       parallelFlags,
+	Name:         "fetch",
+	Usage:        "fetch remote refs for all projects without merging",
+	Description:  `Executes "git fetch --all --prune" for each project. Projects with pull_policy "never" are skipped.`,
+	Action:       doFetch,
+	Flags:        parallelFlags,
+	BashComplete: bashCompleteWithFlags(parallelFlags),
 }
 
+var branchFlags = append(parallelFlags, extendedFlag)
+
 var commandBranch = cli.Command{
-	Name:        "branch",
-	Aliases:     []string{"br"},
-	Usage:       "show current branch for each project",
-	Description: `Prints the current branch (or "(detached)" for a detached HEAD) for every project in a table.`,
-	Action:      doBranch,
-	Flags:       append(parallelFlags, extendedFlag),
+	Name:         "branch",
+	Aliases:      []string{"br"},
+	Usage:        "show current branch for each project",
+	Description:  `Prints the current branch (or "(detached)" for a detached HEAD) for every project in a table.`,
+	Action:       doBranch,
+	Flags:        branchFlags,
+	BashComplete: bashCompleteWithFlags(branchFlags),
 }
 
 var commandExec = cli.Command{
@@ -159,20 +191,24 @@ Use -- to separate gip flags from the command and its arguments:
 
    gip exec -- git fetch --prune
    gip exec -j 8 -- make test`,
-	Action: doExec,
-	Flags:  parallelFlags,
+	Action:       doExec,
+	Flags:        parallelFlags,
+	BashComplete: bashCompleteWithFlags(parallelFlags),
+}
+
+var initFlags = []cli.Flag{
+	&cli.StringFlag{Name: "output", Aliases: []string{"o"}, Usage: "output file path (default: ./.gip)"},
+	&cli.BoolFlag{Name: "force", Usage: "overwrite existing config without prompting"},
+	&cli.IntFlag{Name: "depth", Value: 5, Usage: "maximum directory scan depth"},
 }
 
 var commandInit = cli.Command{
-	Name:        "init",
-	Usage:       "scan a directory for git repositories and generate configuration",
-	Description: `Scans a directory recursively for git repositories and writes a gip configuration file.`,
-	Action:      doInit,
-	Flags: []cli.Flag{
-		&cli.StringFlag{Name: "output", Aliases: []string{"o"}, Usage: "output file path (default: ./.gip)"},
-		&cli.BoolFlag{Name: "force", Usage: "overwrite existing config without prompting"},
-		&cli.IntFlag{Name: "depth", Value: 5, Usage: "maximum directory scan depth"},
-	},
+	Name:         "init",
+	Usage:        "scan a directory for git repositories and generate configuration",
+	Description:  `Scans a directory recursively for git repositories and writes a gip configuration file.`,
+	Action:       doInit,
+	Flags:        initFlags,
+	BashComplete: bashCompleteWithFlags(initFlags),
 }
 
 var commandCompletion = cli.Command{
@@ -194,9 +230,16 @@ _gip_completion() {
     local cur
     COMPREPLY=()
     cur="${COMP_WORDS[COMP_CWORD]}"
-    local args=("${COMP_WORDS[@]:1:$COMP_CWORD}")
+    # Words before the current partial word (exclude gip itself at index 0)
+    local -a base_args=("${COMP_WORDS[@]:1:$((COMP_CWORD-1))}")
+    # Build trigger args: add cur as last arg so our BashComplete sees it as
+    # the prefix to filter, but skip "--" (urfave disables completion on --)
+    local -a trigger_args=("${base_args[@]}")
+    if [[ -n "$cur" && "$cur" != "--" ]]; then
+        trigger_args+=("$cur")
+    fi
     local coms
-    coms=$(gip "${args[@]}" --generate-bash-completion 2>/dev/null)
+    coms=$(gip "${trigger_args[@]}" --generate-bash-completion 2>/dev/null)
     while IFS='' read -r line; do COMPREPLY+=("$line"); done < <(compgen -W "$coms" -- "$cur")
     return 0
 }
@@ -207,9 +250,15 @@ const zshCompletionScript = `# zsh completion for gip — source <(gip completio
 _gip() {
     local -a completions
     local cur="${words[CURRENT]}"
+    # Words before current partial (1-indexed; words[1] is gip, skip it)
     local -a partial_args
-    partial_args=("${words[@]:1:$((CURRENT-2))}")
-    completions=($(gip "${partial_args[@]}" --generate-bash-completion 2>/dev/null))
+    partial_args=("${words[@]:2:$((CURRENT-2))}")
+    # Add current partial as trigger (skip "--" which disables urfave completion)
+    local -a trigger_args=("${partial_args[@]}")
+    if [[ -n "$cur" && "$cur" != "--" ]]; then
+        trigger_args+=("$cur")
+    fi
+    completions=($(gip "${trigger_args[@]}" --generate-bash-completion 2>/dev/null))
     compadd -a completions
 }
 compdef _gip gip
