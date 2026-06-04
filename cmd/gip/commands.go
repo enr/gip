@@ -85,6 +85,7 @@ var commands = []*cli.Command{
 	&commandBranch,
 	&commandExec,
 	&commandInit,
+	&commandCompletion,
 }
 
 var commandStatus = cli.Command{
@@ -172,6 +173,68 @@ var commandInit = cli.Command{
 		&cli.BoolFlag{Name: "force", Usage: "overwrite existing config without prompting"},
 		&cli.IntFlag{Name: "depth", Value: 5, Usage: "maximum directory scan depth"},
 	},
+}
+
+var commandCompletion = cli.Command{
+	Name:  "completion",
+	Usage: "generate shell completion script",
+	Description: `Output a shell completion script for the specified shell.
+
+Supported shells: bash, zsh, fish
+
+Examples:
+   source <(gip completion bash)
+   source <(gip completion zsh)
+   gip completion fish > ~/.config/fish/completions/gip.fish`,
+	Action: doCompletion,
+}
+
+const bashCompletionScript = `# bash completion for gip — source <(gip completion bash)
+_gip_completion() {
+    local cur
+    COMPREPLY=()
+    cur="${COMP_WORDS[COMP_CWORD]}"
+    local args=("${COMP_WORDS[@]:1:$COMP_CWORD}")
+    local coms
+    coms=$(gip "${args[@]}" --generate-bash-completion 2>/dev/null)
+    while IFS='' read -r line; do COMPREPLY+=("$line"); done < <(compgen -W "$coms" -- "$cur")
+    return 0
+}
+complete -F _gip_completion gip
+`
+
+const zshCompletionScript = `# zsh completion for gip — source <(gip completion zsh)
+_gip() {
+    local -a completions
+    local cur="${words[CURRENT]}"
+    local -a partial_args
+    partial_args=("${words[@]:1:$((CURRENT-2))}")
+    completions=($(gip "${partial_args[@]}" --generate-bash-completion 2>/dev/null))
+    compadd -a completions
+}
+compdef _gip gip
+`
+
+func doCompletion(c *cli.Context) error {
+	shell := c.Args().First()
+	if shell == "" {
+		return exitErrorf(1, "completion requires a shell argument: bash, zsh, or fish")
+	}
+	switch shell {
+	case "fish":
+		script, err := c.App.ToFishCompletion()
+		if err != nil {
+			return exitErrorf(1, "Error generating fish completion: %v", err)
+		}
+		fmt.Fprint(os.Stdout, script)
+	case "bash":
+		fmt.Fprint(os.Stdout, bashCompletionScript)
+	case "zsh":
+		fmt.Fprint(os.Stdout, zshCompletionScript)
+	default:
+		return exitErrorf(1, "unsupported shell %q: supported shells are bash, zsh, fish", shell)
+	}
+	return nil
 }
 
 func doStatus(c *cli.Context) error {
