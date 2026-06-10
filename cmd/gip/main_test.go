@@ -127,7 +127,9 @@ func TestPullRunsInParallel(t *testing.T) {
 
 	start := time.Now()
 	// No --jobs flag: relies on the default job count being > 1 after the fix.
-	exec.Command(binPath, "-f", configPath, "pull").Run()
+	// --force skips the pre-pull dirty check so each repo is a single git call,
+	// keeping this test focused purely on parallelism.
+	exec.Command(binPath, "-f", configPath, "pull", "--force").Run()
 	elapsed := time.Since(start)
 
 	// Serial: ~4s. Parallel (≥2 jobs): ~2s. Allow 3.5s slack.
@@ -674,5 +676,65 @@ func TestPullRespectsTimeout(t *testing.T) {
 	const threshold = 2500 * time.Millisecond
 	if elapsed > threshold {
 		t.Fatalf("pull --timeout=1 took %v; expected < %v (timeout not respected)", elapsed, threshold)
+	}
+}
+
+// makeDirtyGit installs a fake git that reports an unstaged-modified working tree
+// for `status`, an empty `stash list`, and appends to logPath whenever `pull` runs.
+// This lets tests assert whether a pull was actually attempted.
+func makeDirtyGit(t *testing.T, tmpDir, logPath string) {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("dirty-git fake not implemented for windows")
+	}
+	script := fmt.Sprintf(`#!/bin/sh
+case "$1" in
+  status)
+    echo "# branch.head main"
+    echo "1 .M N... 100644 100644 100644 aaa bbb file.txt"
+    ;;
+  stash)
+    ;;
+  pull)
+    echo "pulled $(pwd)" >> %q
+    ;;
+esac
+exit 0
+`, logPath)
+	if err := os.WriteFile(filepath.Join(tmpDir, "git"), []byte(script), 0755); err != nil {
+		t.Fatalf("Failed to create fake git: %v", err)
+	}
+}
+
+// TestPullSkipsDirtyByDefault verifies that `gip pull` skips a repo with
+// uncommitted changes unless --force is given.
+func TestPullSkipsDirtyByDefault(t *testing.T) {
+	tmpDir := t.TempDir()
+	binPath := buildBinary(t, tmpDir)
+	logPath := filepath.Join(tmpDir, "pull.log")
+	makeDirtyGit(t, tmpDir, logPath)
+
+	repo1 := filepath.Join(tmpDir, "repo1")
+	makeGitRepo(t, repo1)
+	configPath := filepath.Join(tmpDir, ".gip")
+	makeConfig(t, configPath, []string{repo1})
+
+	t.Setenv("PATH", tmpDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	// Default: dirty repo must be skipped, no pull attempted.
+	out, _ := exec.Command(binPath, "-f", configPath, "pull", "--json").CombinedOutput()
+	if _, err := os.Stat(logPath); err == nil {
+		t.Fatalf("pull ran on a dirty repo without --force; output:\n%s", out)
+	}
+	if !bytes.Contains(out, []byte("uncommitted changes")) {
+		t.Fatalf("expected skip reason 'uncommitted changes' in output:\n%s", out)
+	}
+
+	// --force: pull must be attempted despite the dirty tree.
+	if out, err := exec.Command(binPath, "-f", configPath, "pull", "--force").CombinedOutput(); err != nil {
+		t.Fatalf("pull --force failed: %v\n%s", err, out)
+	}
+	if _, err := os.Stat(logPath); err != nil {
+		t.Fatalf("pull --force did not run git pull on the dirty repo: %v", err)
 	}
 }

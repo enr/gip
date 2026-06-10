@@ -151,6 +151,7 @@ var commandList = cli.Command{
 
 var pullFlags = append(parallelFlags,
 	&cli.BoolFlag{Name: "all", Aliases: []string{"a"}, Usage: `Pull all registered projects doing a checkout if needed. Otherwise only the projects already present are updated.`},
+	&cli.BoolFlag{Name: "force", Usage: "pull even when the working tree has uncommitted changes (by default such repos are skipped)"},
 )
 
 var commandPull = cli.Command{
@@ -784,6 +785,12 @@ func pullOne(c *cli.Context, git *core.GitCommands, project gipProject, all bool
 	if skip, reason, _ := filterByGitState(ctx, git, line, filterDirty, filterBehind, filterAhead); skip {
 		t.record(opResult{project: project.Name, localPath: line, status: opSkipped, reason: reason})
 		return
+	}
+	if !c.Bool("force") {
+		if _, dirty, siErr := git.StatusInfo(ctx, line); siErr == nil && dirty.IsDirty() {
+			t.record(opResult{project: project.Name, localPath: line, status: opSkipped, reason: "uncommitted changes (use --force)"})
+			return
+		}
 	}
 	if err = git.Pull(ctx, line); err != nil {
 		t.record(opResult{project: project.Name, localPath: line, status: opError, err: err})
