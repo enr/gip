@@ -31,6 +31,8 @@ The following flags are available on all parallel commands (`status`, `statusful
 | `--errors-last` | Print a grouped error section after the summary instead of inline |
 | `--dirty` | Only include repos with uncommitted changes (staged, unstaged, or untracked files) |
 | `--behind` | Only include repos behind their upstream; requires up-to-date remote refs — run `gip fetch` first |
+| `--ahead` | Only include repos ahead of their upstream; requires up-to-date remote refs — run `gip fetch` first |
+| `--unsynced` | Only include repos out of sync with upstream (ahead or behind); alias for `--behind --ahead` |
 
 ### Extended view (`--extended`)
 
@@ -60,9 +62,9 @@ Available on `branch` and `list`. Runs additional git calls per repo to collect 
 | `$` | Stash present |
 | `—` | Clean working tree |
 
-### Git-state filter flags (`--dirty` / `--behind`)
+### Git-state filter flags (`--dirty` / `--behind` / `--ahead` / `--unsynced`)
 
-`--dirty` and `--behind` skip repos that do not match the requested state before running the main operation. An extra `git status --porcelain=v2 --branch` call is made per repo to evaluate the condition.
+These flags skip repos that do not match the requested state before running the main operation. An extra `git status --porcelain=v2 --branch` call is made per repo to evaluate the condition. `--unsynced` is shorthand for `--behind --ahead` and matches any repo that is ahead of or behind its upstream.
 
 ```bash
 # show status only for repos with uncommitted changes
@@ -70,6 +72,9 @@ gip status --dirty
 
 # pull only repos that are behind their upstream
 gip pull --behind
+
+# list repos that have drifted from upstream in either direction
+gip list --unsynced --extended
 
 # run stash only in repos with local changes
 gip exec --dirty -- git stash
@@ -79,7 +84,7 @@ gip branch --dirty --extended
 gip branch --behind --extended
 ```
 
-> **Note:** `--behind` compares against the last fetched remote tracking refs. If you have not run `gip fetch` recently the result may be stale.
+> **Note:** `--behind`, `--ahead` and `--unsynced` compare against the last fetched remote tracking refs. If you have not run `gip fetch` recently the result may be stale.
 
 ## Output modes
 

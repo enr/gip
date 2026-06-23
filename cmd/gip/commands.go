@@ -53,6 +53,18 @@ var aheadFilterFlag = &cli.BoolFlag{
 	Usage: "only include repos ahead of their upstream (includes diverged); requires up-to-date remote refs — run gip fetch first",
 }
 
+var unsyncedFilterFlag = &cli.BoolFlag{
+	Name:  "unsynced",
+	Usage: "only include repos out of sync with upstream (ahead or behind); alias for --behind --ahead; requires up-to-date remote refs — run gip fetch first",
+}
+
+// syncFilters resolves the behind/ahead filter flags, folding in --unsynced
+// (which is shorthand for both --behind and --ahead).
+func syncFilters(c *cli.Context) (filterBehind, filterAhead bool) {
+	unsynced := c.Bool("unsynced")
+	return c.Bool("behind") || unsynced, c.Bool("ahead") || unsynced
+}
+
 const maxJobs = 32
 
 var parallelFlags = []cli.Flag{
@@ -63,6 +75,7 @@ var parallelFlags = []cli.Flag{
 	dirtyFilterFlag,
 	behindFilterFlag,
 	aheadFilterFlag,
+	unsyncedFilterFlag,
 }
 
 func bashCompleteWithFlags(flags []cli.Flag) cli.BashCompleteFunc {
@@ -135,6 +148,7 @@ var listFlags = []cli.Flag{
 	dirtyFilterFlag,
 	behindFilterFlag,
 	aheadFilterFlag,
+	unsyncedFilterFlag,
 	&cli.IntFlag{Name: "jobs", Aliases: []string{"j"}, Value: 4, Usage: fmt.Sprintf("maximum number of repos to query concurrently (1-%d)", maxJobs)},
 	&cli.IntFlag{Name: "timeout", Aliases: []string{"t"}, Value: 0, Usage: "per-repo git status timeout in seconds (0 = no timeout)"},
 }
@@ -321,8 +335,7 @@ func gitStatus(c *cli.Context, untracked bool) error {
 		return exitErrorf(1, "Error loading git: %v", err)
 	}
 	filterDirty := c.Bool("dirty")
-	filterBehind := c.Bool("behind")
-	filterAhead := c.Bool("ahead")
+	filterBehind, filterAhead := syncFilters(c)
 
 	jobs, err := resolveJobs(c)
 	if err != nil {
@@ -593,8 +606,7 @@ func doList(c *cli.Context) error {
 
 	extended := c.Bool("extended")
 	filterDirty := c.Bool("dirty")
-	filterBehind := c.Bool("behind")
-	filterAhead := c.Bool("ahead")
+	filterBehind, filterAhead := syncFilters(c)
 
 	jobs, err := resolveJobs(c)
 	if err != nil {
@@ -734,8 +746,7 @@ func doPull(c *cli.Context) error {
 	var wg sync.WaitGroup
 
 	filterDirty := c.Bool("dirty")
-	filterBehind := c.Bool("behind")
-	filterAhead := c.Bool("ahead")
+	filterBehind, filterAhead := syncFilters(c)
 
 	for _, project := range projects {
 		project := project
@@ -840,8 +851,7 @@ func doFetch(c *cli.Context) error {
 	}
 
 	filterDirty := c.Bool("dirty")
-	filterBehind := c.Bool("behind")
-	filterAhead := c.Bool("ahead")
+	filterBehind, filterAhead := syncFilters(c)
 
 	jobs, err := resolveJobs(c)
 	if err != nil {
@@ -1099,8 +1109,7 @@ func doBranch(c *cli.Context) error {
 	}
 	extended := c.Bool("extended")
 	filterDirty := c.Bool("dirty")
-	filterBehind := c.Bool("behind")
-	filterAhead := c.Bool("ahead")
+	filterBehind, filterAhead := syncFilters(c)
 	needsStatusInfo := extended || filterDirty || filterBehind || filterAhead
 	jobs, err := resolveJobs(c)
 	if err != nil {
@@ -1184,8 +1193,7 @@ func doExec(c *cli.Context) error {
 	t := newTracker(len(projects))
 	runner := core.NewCommandRunner(ui, core.WithSharedOutputRunner(t.sharedOutput()))
 	filterDirty := c.Bool("dirty")
-	filterBehind := c.Bool("behind")
-	filterAhead := c.Bool("ahead")
+	filterBehind, filterAhead := syncFilters(c)
 	var git *core.GitCommands
 	if filterDirty || filterBehind || filterAhead {
 		git, err = core.NewGit(ui, core.WithSharedOutput(t.sharedOutput()))
