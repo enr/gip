@@ -41,7 +41,7 @@ mkdir -p "$dist_dir"
   export GOPROXY='off'
 }
 
-platforms="windows/amd64 linux/amd64 darwin/amd64"
+platforms="windows/amd64 linux/amd64 darwin/amd64 darwin/arm64"
 
 for dir in $(find "$CMDS_DIR" -mindepth 1 -maxdepth 1 -type d); do
   app_name=$(basename "$dir")
