@@ -991,6 +991,7 @@ func processBranchProject(project gipProject, git *core.GitCommands, t *tracker,
 	entry.path = line
 	if !isProjectDir(line) {
 		entry.branch = "(missing)"
+		t.withOutput(func() { warnMissingDir(line) })
 		if noopMode {
 			t.printNoop("%s → SKIPPED  (directory missing)", project.Name)
 		}
@@ -1044,6 +1045,7 @@ func processBranchProject(project gipProject, git *core.GitCommands, t *tracker,
 }
 
 func printBranchTable(entries []branchEntry, extended bool, t *tracker) {
+	t.clearProgress() // erase the progress bar before the table prints to stdout
 	sort.Slice(entries, func(i, j int) bool { return entries[i].name < entries[j].name })
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 	if extended {
