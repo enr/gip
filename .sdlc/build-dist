@@ -78,3 +78,8 @@ for dir in $(find "$dist_dir" -mindepth 1 -maxdepth 1 -type d); do
   zip -r "${dist_folder}.zip" "$dist_folder"
   rm -r "$dist_folder"
 done
+
+echo "===  Create checksums"
+checksums_file="${REPO_NAME}-${APP_VERSION}_checksums.txt"
+sha256sum *.zip > "$checksums_file"
+cat "$checksums_file"
