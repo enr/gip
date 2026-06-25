@@ -400,8 +400,7 @@ func gitStatus(c *cli.Context, untracked bool) error {
 					}
 				} else {
 					t.withOutput(func() {
-						ui.Title(line)
-						ui.Lifecycle(t.colorSync(syncSt.Ahead, syncSt.Behind, syncSt.NoRemote))
+						ui.Lifecyclef("%s  %s", line, t.colorSync(syncSt.Ahead, syncSt.Behind, syncSt.NoRemote))
 					})
 					res.status = opOK
 				}
