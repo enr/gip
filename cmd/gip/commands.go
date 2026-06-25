@@ -374,6 +374,41 @@ func gitStatus(c *cli.Context, untracked bool) error {
 			}
 			ctx, cancel := opContext(c)
 			defer cancel()
+
+			if untracked && !filterDirty && !filterBehind && !filterAhead {
+				// status full: show unsynced repos (ahead/behind/no-remote) together with dirty ones
+				syncSt, dirtySt, siErr := git.StatusInfo(ctx, line)
+				if siErr != nil {
+					t.record(opResult{project: project.Name, localPath: line, status: opError, err: siErr})
+					return
+				}
+				isUnsynced := syncSt.NoRemote || syncSt.Behind > 0 || syncSt.Ahead > 0
+				if !dirtySt.IsDirty() && !isUnsynced {
+					t.record(opResult{project: project.Name, localPath: line, status: opSkipped, reason: "clean and in sync"})
+					return
+				}
+				res := opResult{
+					project: project.Name, localPath: line,
+					syncSet: true, syncAhead: syncSt.Ahead, syncBehind: syncSt.Behind, syncNoRemote: syncSt.NoRemote,
+				}
+				if dirtySt.IsDirty() {
+					if err = git.Status(ctx, line, untracked); err != nil {
+						res.status = opError
+						res.err = err
+					} else {
+						res.status = opOK
+					}
+				} else {
+					t.withOutput(func() {
+						ui.Title(line)
+						ui.Lifecycle(t.colorSync(syncSt.Ahead, syncSt.Behind, syncSt.NoRemote))
+					})
+					res.status = opOK
+				}
+				t.record(res)
+				return
+			}
+
 			if skip, reason, _ := filterByGitState(ctx, git, line, filterDirty, filterBehind, filterAhead); skip {
 				t.record(opResult{project: project.Name, localPath: line, status: opSkipped, reason: reason})
 				return
