@@ -356,67 +356,7 @@ func gitStatus(c *cli.Context, untracked bool) error {
 		go func() {
 			defer wg.Done()
 			defer func() { <-sem }()
-
-			line, err := projectPath(project.LocalPath)
-			if err != nil {
-				t.record(opResult{project: project.Name, status: opError, err: err})
-				return
-			}
-			if !isProjectDir(line) {
-				t.withOutput(func() { warnMissingDir(line) })
-				t.record(opResult{project: project.Name, localPath: line, status: opSkipped, reason: "not a project dir"})
-				return
-			}
-			if noopMode {
-				t.printNoop("%s → git status --porcelain %s  (in %s)", project.Name, untrackedFlag, line)
-				t.record(opResult{project: project.Name, localPath: line, status: opOK})
-				return
-			}
-			ctx, cancel := opContext(c)
-			defer cancel()
-
-			if untracked && !filterDirty && !filterBehind && !filterAhead {
-				// status full: show unsynced repos (ahead/behind/no-remote) together with dirty ones
-				syncSt, dirtySt, siErr := git.StatusInfo(ctx, line)
-				if siErr != nil {
-					t.record(opResult{project: project.Name, localPath: line, status: opError, err: siErr})
-					return
-				}
-				isUnsynced := syncSt.NoRemote || syncSt.Behind > 0 || syncSt.Ahead > 0
-				if !dirtySt.IsDirty() && !isUnsynced {
-					t.record(opResult{project: project.Name, localPath: line, status: opSkipped, reason: "clean and in sync"})
-					return
-				}
-				res := opResult{
-					project: project.Name, localPath: line,
-					syncSet: true, syncAhead: syncSt.Ahead, syncBehind: syncSt.Behind, syncNoRemote: syncSt.NoRemote,
-				}
-				if dirtySt.IsDirty() {
-					if err = git.Status(ctx, line, untracked); err != nil {
-						res.status = opError
-						res.err = err
-					} else {
-						res.status = opOK
-					}
-				} else {
-					t.withOutput(func() {
-						ui.Lifecyclef("%s  %s", line, t.colorSync(syncSt.Ahead, syncSt.Behind, syncSt.NoRemote))
-					})
-					res.status = opOK
-				}
-				t.record(res)
-				return
-			}
-
-			if skip, reason, _ := filterByGitState(ctx, git, line, filterDirty, filterBehind, filterAhead); skip {
-				t.record(opResult{project: project.Name, localPath: line, status: opSkipped, reason: reason})
-				return
-			}
-			if err = git.Status(ctx, line, untracked); err != nil {
-				t.record(opResult{project: project.Name, localPath: line, status: opError, err: err})
-			} else {
-				t.record(opResult{project: project.Name, localPath: line, status: opOK})
-			}
+			doStatusProject(c, git, t, project, untracked, untrackedFlag, filterDirty, filterBehind, filterAhead)
 		}()
 	}
 	wg.Wait()
@@ -426,6 +366,72 @@ func gitStatus(c *cli.Context, untracked bool) error {
 		t.printSummary(c.Bool("errors-last"))
 	}
 	return buildError(t.errors())
+}
+
+func doStatusProject(c *cli.Context, git *core.GitCommands, t *tracker, project gipProject, untracked bool, untrackedFlag string, filterDirty, filterBehind, filterAhead bool) {
+	line, err := projectPath(project.LocalPath)
+	if err != nil {
+		t.record(opResult{project: project.Name, status: opError, err: err})
+		return
+	}
+	if !isProjectDir(line) {
+		t.withOutput(func() { warnMissingDir(line) })
+		t.record(opResult{project: project.Name, localPath: line, status: opSkipped, reason: "not a project dir"})
+		return
+	}
+	if noopMode {
+		t.printNoop("%s → git status --porcelain %s  (in %s)", project.Name, untrackedFlag, line)
+		t.record(opResult{project: project.Name, localPath: line, status: opOK})
+		return
+	}
+	ctx, cancel := opContext(c)
+	defer cancel()
+
+	if untracked && !filterDirty && !filterBehind && !filterAhead {
+		statusProjectFull(ctx, git, t, project, line)
+		return
+	}
+	if skip, reason, _ := filterByGitState(ctx, git, line, filterDirty, filterBehind, filterAhead); skip {
+		t.record(opResult{project: project.Name, localPath: line, status: opSkipped, reason: reason})
+		return
+	}
+	if err = git.Status(ctx, line, untracked); err != nil {
+		t.record(opResult{project: project.Name, localPath: line, status: opError, err: err})
+	} else {
+		t.record(opResult{project: project.Name, localPath: line, status: opOK})
+	}
+}
+
+// statusProjectFull handles "status sf": shows unsynced repos (ahead/behind/no-remote) together with dirty ones.
+func statusProjectFull(ctx context.Context, git *core.GitCommands, t *tracker, project gipProject, line string) {
+	syncSt, dirtySt, err := git.StatusInfo(ctx, line)
+	if err != nil {
+		t.record(opResult{project: project.Name, localPath: line, status: opError, err: err})
+		return
+	}
+	isUnsynced := syncSt.NoRemote || syncSt.Behind > 0 || syncSt.Ahead > 0
+	if !dirtySt.IsDirty() && !isUnsynced {
+		t.record(opResult{project: project.Name, localPath: line, status: opSkipped, reason: "clean and in sync"})
+		return
+	}
+	res := opResult{
+		project: project.Name, localPath: line,
+		syncSet: true, syncAhead: syncSt.Ahead, syncBehind: syncSt.Behind, syncNoRemote: syncSt.NoRemote,
+	}
+	if dirtySt.IsDirty() {
+		if err = git.Status(ctx, line, true); err != nil {
+			res.status = opError
+			res.err = err
+		} else {
+			res.status = opOK
+		}
+	} else {
+		t.withOutput(func() {
+			ui.Lifecyclef("%s  %s", line, t.colorSync(syncSt.Ahead, syncSt.Behind, syncSt.NoRemote))
+		})
+		res.status = opOK
+	}
+	t.record(res)
 }
 
 func buildError(errors map[string]error) error {
