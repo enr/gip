@@ -7,7 +7,7 @@ theme = "gip"
 [params]
   tagline = "Bulk Git operations across all your repositories."
   repoURL = "https://github.com/enr/gip"
-  currentAppVersion = "0.9.0-dev"
+  currentAppVersion = "0.9.0"
 
 [markup.goldmark.renderer]
   unsafe = true
