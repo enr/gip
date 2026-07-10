@@ -124,16 +124,18 @@ type tracker struct {
 	results         []opResult
 	total           int
 	started         time.Time
-	tty             bool
-	lastProgressLen int // display-column width of the last progress line; guarded by outMu
+	tty             bool // stderr is a TTY: gates the progress bar
+	colorTTY        bool // stdout is a TTY: gates ANSI styling of summary/tables
+	lastProgressLen int  // display-column width of the last progress line; guarded by outMu
 }
 
 func newTracker(total int) *tracker {
 	return &tracker{
-		outMu:   &sync.Mutex{},
-		total:   total,
-		started: time.Now(),
-		tty:     isTTY(os.Stderr),
+		outMu:    &sync.Mutex{},
+		total:    total,
+		started:  time.Now(),
+		tty:      isTTY(os.Stderr),
+		colorTTY: isTTY(os.Stdout),
 	}
 }
 
@@ -227,13 +229,13 @@ func (t *tracker) printSummary(errorsLast bool) {
 	okStr := t.styleIf(okCount > 0, styleOK, fmt.Sprintf("OK: %d", okCount))
 	errStr := t.styleIf(errCount > 0, styleErr, fmt.Sprintf("Errors: %d", errCount))
 	skipStr := t.styleIf(skipCount > 0, styleSkip, fmt.Sprintf("Skipped: %d", skipCount))
-	fmt.Fprintf(os.Stdout, "%s\n", styleDivider.Render("─────────────────────────────────────────"))
+	fmt.Fprintf(os.Stdout, "%s\n", t.applyStyle(styleDivider, "─────────────────────────────────────────"))
 	fmt.Fprintf(os.Stdout, "%s   %s   %s   Duration: %.1fs\n", okStr, errStr, skipStr, elapsed.Seconds())
 	if noopMode {
 		fmt.Fprintf(os.Stdout, "DRY-RUN — no operations performed. Remove --noop to proceed.\n")
 	}
 	if errorsLast && len(errEntries) > 0 {
-		fmt.Fprintf(os.Stdout, "\n%s\n", styleDivider.Render("── Errors ────────────────────────────────"))
+		fmt.Fprintf(os.Stdout, "\n%s\n", t.applyStyle(styleDivider, "── Errors ────────────────────────────────"))
 		for _, r := range errEntries {
 			fmt.Fprintf(os.Stdout, "%s %s — %v\n", t.applyStyle(styleErr, "[ERR]"), r.project, r.err)
 		}
@@ -311,7 +313,7 @@ func (t *tracker) errors() map[string]error {
 // applyStyle renders text with a lipgloss style, but only when writing to a TTY
 // and not in JSON mode. Falls back to plain text otherwise.
 func (t *tracker) applyStyle(s lipgloss.Style, text string) string {
-	if !t.tty || jsonMode {
+	if !t.colorTTY || jsonMode {
 		return text
 	}
 	return s.Render(text)
