@@ -72,12 +72,16 @@ func (g defaultGitWrapper) exec(r runcmdWrapperRequest) runcmdResult {
 	result := &execResult{}
 	cmd.Stdout = &result.stdout
 	cmd.Stderr = &result.stderr
-	devNull, _ := os.Open(os.DevNull)
-	cmd.Stdin = devNull
-	cmd.Env = append(os.Environ(),
-		"GIT_TERMINAL_PROMPT=0",
-		"GIT_SSH_COMMAND=ssh -o BatchMode=yes",
-	)
+	// Leaving Stdin nil makes os/exec connect the child to os.DevNull and close
+	// it for us; opening /dev/null by hand here would leak a descriptor per call.
+	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
+	// Force non-interactive ssh, but preserve a user-provided GIT_SSH_COMMAND
+	// (custom identity file, jump host, ...) instead of clobbering it.
+	if existing := os.Getenv("GIT_SSH_COMMAND"); existing != "" {
+		cmd.Env = append(cmd.Env, "GIT_SSH_COMMAND="+existing+" -o BatchMode=yes")
+	} else {
+		cmd.Env = append(cmd.Env, "GIT_SSH_COMMAND=ssh -o BatchMode=yes")
+	}
 
 	g.ui.Confidentialf("Execute command %s %v in %s", g.git, r.args, r.workingDir)
 	if err := cmd.Run(); err != nil {

@@ -513,7 +513,7 @@ func buildListRows(projects []gipProject) ([]listRow, bool, map[string]error) {
 	return rows, hasTags, errs
 }
 
-func enrichRowsWithGit(ctx context.Context, git *core.GitCommands, rows []listRow, jobs int) {
+func enrichRowsWithGit(c *cli.Context, git *core.GitCommands, rows []listRow, jobs int) {
 	sem := make(chan struct{}, jobs)
 	var wg sync.WaitGroup
 	for i := range rows {
@@ -526,6 +526,10 @@ func enrichRowsWithGit(ctx context.Context, git *core.GitCommands, rows []listRo
 		go func() {
 			defer wg.Done()
 			defer func() { <-sem }()
+			// Per-repo timeout: the --timeout budget applies to each repo, not
+			// to the whole batch (which would starve repos queued behind the pool).
+			ctx, cancel := opContext(c)
+			defer cancel()
 			r.branch, _ = git.CurrentBranch(ctx, r.rawPath)
 			syncSt, dirtySt, siErr := git.StatusInfo(ctx, r.rawPath)
 			if siErr != nil {
@@ -659,15 +663,16 @@ func doList(c *cli.Context) error {
 	if gitErr != nil {
 		return exitErrorf(1, "Error loading git: %v", gitErr)
 	}
-	ctx, cancel := opContext(c)
-	defer cancel()
-	enrichRowsWithGit(ctx, git, rows, jobs)
+	enrichRowsWithGit(c, git, rows, jobs)
 	if filterDirty || filterBehind || filterAhead {
 		rows = filterListRows(rows, filterDirty, filterBehind, filterAhead)
 	}
 
 	if jsonMode {
-		return printListJSON(rows, projects, warnings)
+		if err := printListJSON(rows, projects, warnings); err != nil {
+			return err
+		}
+		return buildError(errs)
 	}
 	t := newTracker(0)
 	printListTable(rows, extended, hasTags, t)
