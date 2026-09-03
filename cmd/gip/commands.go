@@ -23,9 +23,15 @@ import (
 	yaml "gopkg.in/yaml.v3"
 )
 
-var tagFlag = &cli.StringFlag{
+var tagFlag = &cli.StringSliceFlag{
 	Name:  "tag",
-	Usage: "filter projects by tag (comma-separated, OR logic): --tag work,js",
+	Usage: "filter projects by tag (comma-separated and/or repeated, OR logic): --tag work,js or --tag work --tag js",
+}
+
+// tagFilterValue joins the (possibly repeated, possibly comma-separated)
+// --tag flag values into the single comma-separated string filterByTag expects.
+func tagFilterValue(c *cli.Context) string {
+	return strings.Join(c.StringSlice("tag"), ",")
 }
 
 var errorsLastFlag = &cli.BoolFlag{
@@ -327,7 +333,7 @@ func gitStatus(c *cli.Context, untracked bool) error {
 	if err != nil {
 		return exitErrorf(1, "Error loading projects list: %v", err)
 	}
-	projects = filterByTag(projects, c.String("tag"))
+	projects = filterByTag(projects, tagFilterValue(c))
 	projects = filterDisabled(projects)
 	t := newTracker(len(projects))
 	git, err := core.NewGit(ui, core.WithSharedOutput(t.sharedOutput()))
@@ -643,7 +649,7 @@ func doList(c *cli.Context) error {
 	if err != nil {
 		return exitErrorf(1, "Error loading projects list: %v", err)
 	}
-	projects = filterByTag(projects, c.String("tag"))
+	projects = filterByTag(projects, tagFilterValue(c))
 	if !c.Bool("all") {
 		projects = filterDisabled(projects)
 	}
@@ -774,7 +780,7 @@ func doPull(c *cli.Context) error {
 	if err != nil {
 		return exitErrorf(1, "Error loading projects list: %v", err)
 	}
-	projects = filterByTag(projects, c.String("tag"))
+	projects = filterByTag(projects, tagFilterValue(c))
 	projects = filterDisabled(projects)
 	t := newTracker(len(projects))
 	git, err := core.NewGit(ui, core.WithSharedOutput(t.sharedOutput()))
@@ -887,7 +893,7 @@ func doFetch(c *cli.Context) error {
 	if err != nil {
 		return exitErrorf(1, "Error loading projects list: %v", err)
 	}
-	projects = filterByTag(projects, c.String("tag"))
+	projects = filterByTag(projects, tagFilterValue(c))
 	projects = filterDisabled(projects)
 	t := newTracker(len(projects))
 	git, err := core.NewGit(ui, core.WithSharedOutput(t.sharedOutput()))
@@ -1145,7 +1151,7 @@ func doBranch(c *cli.Context) error {
 	if err != nil {
 		return exitErrorf(1, "Error loading projects list: %v", err)
 	}
-	projects = filterByTag(projects, c.String("tag"))
+	projects = filterByTag(projects, tagFilterValue(c))
 	projects = filterDisabled(projects)
 	t := newTracker(len(projects))
 	git, err := core.NewGit(ui, core.WithSharedOutput(t.sharedOutput()))
@@ -1233,7 +1239,7 @@ func doExec(c *cli.Context) error {
 	if err != nil {
 		return exitErrorf(1, "Error loading projects list: %v", err)
 	}
-	projects = filterByTag(projects, c.String("tag"))
+	projects = filterByTag(projects, tagFilterValue(c))
 	projects = filterDisabled(projects)
 	t := newTracker(len(projects))
 	runner := core.NewCommandRunner(ui, core.WithSharedOutputRunner(t.sharedOutput()))
