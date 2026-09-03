@@ -328,12 +328,17 @@ func (t *tracker) styleIf(cond bool, s lipgloss.Style, text string) string {
 
 // colorSync returns the sync label styled by state (TTY only, no-op in JSON mode).
 // ahead=0 behind=0 → green; ahead>0 behind=0 → magenta; behind>0 ahead=0 → yellow;
-// both>0 (diverged) → red; noRemote → white.
-func (t *tracker) colorSync(ahead, behind int, noRemote bool) string {
+// both>0 (diverged) → red; noRemote → white. When dirty is true and the repo is
+// otherwise in sync, the label is suffixed with "*" so "synced" doesn't imply
+// "nothing to do" for a repo with uncommitted local changes.
+func (t *tracker) colorSync(ahead, behind int, noRemote, dirty bool) string {
 	switch {
 	case noRemote:
 		return t.applyStyle(styleWhite, "no-remote")
 	case ahead == 0 && behind == 0:
+		if dirty {
+			return t.applyStyle(styleOK, "synced*")
+		}
 		return t.applyStyle(styleOK, "synced")
 	case ahead > 0 && behind > 0:
 		return t.applyStyle(styleErr, fmt.Sprintf("↑%d↓%d", ahead, behind))

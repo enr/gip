@@ -427,7 +427,7 @@ func statusProjectFull(ctx context.Context, git *core.GitCommands, t *tracker, p
 		}
 	} else {
 		t.withOutput(func() {
-			ui.Lifecyclef("%s  %s", line, t.colorSync(syncSt.Ahead, syncSt.Behind, syncSt.NoRemote))
+			ui.Lifecyclef("%s  %s", line, t.colorSync(syncSt.Ahead, syncSt.Behind, syncSt.NoRemote, false))
 		})
 		res.status = opOK
 	}
@@ -690,7 +690,7 @@ func listSync(t *tracker, r listRow) string {
 	if !r.hasExtended {
 		return "—"
 	}
-	return t.colorSync(r.syncAhead, r.syncBehind, r.syncNoRemote)
+	return t.colorSync(r.syncAhead, r.syncBehind, r.syncNoRemote, r.dirtySymbols != "")
 }
 
 func listDirty(r listRow) string {
@@ -1112,7 +1112,7 @@ func printBranchTable(entries []branchEntry, extended bool, t *tracker) {
 			}
 			status, dirty, commit, date := "—", "—", "—", "—"
 			if e.hasExtended {
-				status = t.colorSync(e.syncAhead, e.syncBehind, e.syncNoRemote)
+				status = t.colorSync(e.syncAhead, e.syncBehind, e.syncNoRemote, false)
 				if e.dirtySymbols != "" {
 					dirty = e.dirtySymbols
 				}
