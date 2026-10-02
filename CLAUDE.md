@@ -91,6 +91,7 @@ type gipProject struct {
     LocalPath  string
     PullPolicy string   // "", "never", "always"
     Tags       []string // optional; used by --tag filter (OR logic, comma-separated)
+    Branches   []string // optional; extra branches reported by status and fast-forwarded by pull (cmd/gip/branches.go)
 }
 ```
 

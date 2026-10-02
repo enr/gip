@@ -54,7 +54,24 @@ The config file is a list of project entries in YAML or JSON. Each entry describ
 | `repository` | yes | Remote URL (HTTPS or SSH). Used by `pull_policy: always` to clone missing repos. |
 | `local_path` | yes | Local directory path. `~` and environment variables are expanded. |
 | `pull_policy` | no | `never` — always skip this project for `pull` and `fetch`. `always` — clone via `git clone` if `local_path` does not exist. Omit for default behaviour: operate only on already-present directories. |
+| `branches` | no | Extra local branches reported by `status` and fast-forwarded by `pull` (see [Extra branches](#extra-branches)). |
 | `tags` | no | List of free-form labels. Used by `--tag` filtering (see [Tag filtering](#tag-filtering)). |
+
+## Extra branches
+
+By default gip only looks at the branch currently checked out in each repo. List more with `branches`:
+
+```yaml
+- name: api
+  repository: git@github.com:acme/api.git
+  local_path: ~/work/api
+  branches: [main, release/1.x]
+```
+
+- `gip status` / `statusfull` print one extra line per listed branch that is ahead, behind or without upstream (`repo [release/1.x]  ↓2`). It reads local refs only: run `gip fetch` first to refresh them. Results appear as `name@branch` in the summary and JSON output.
+- `gip pull` fast-forwards each listed branch that is not checked out (`git fetch <remote> b:b`). Branches that cannot fast-forward (diverged) are reported as errors; local-only or ahead-only branches, missing branches and branches without upstream are skipped. Nothing is ever rewritten and the checked-out branch is never switched.
+- `pull_policy: never` also disables branch updates. The checked-out branch keeps being handled by the normal pull.
+- Without `branches` nothing changes.
 
 ## Tag filtering
 

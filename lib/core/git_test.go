@@ -413,3 +413,57 @@ func TestGitCommands_LastCommit(t *testing.T) {
 		}
 	})
 }
+
+func TestGitCommands_BranchInfos(t *testing.T) {
+	out := "dev\torigin/dev\torigin\tahead 1\t \n" +
+		"rel\torigin/rel\torigin\tbehind 2\t \n" +
+		"main\torigin/main\torigin\t\t*\n" +
+		"gone\torigin/gone\torigin\tgone\t \n" +
+		"local\t\t\t\t \n"
+	mock := &mockGitWrapper{result: &runcmdStubResult{success: true, stdout: out}}
+	g := &GitCommands{ui: clui.DefaultClui(), executor: mock}
+
+	infos, err := g.BranchInfos(context.Background(), "/tmp/r", []string{"dev", "rel", "main", "gone", "local", "missing"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	want := []BranchInfo{
+		{Name: "dev", Exists: true, Remote: "origin", Ahead: 1},
+		{Name: "rel", Exists: true, Remote: "origin", Behind: 2},
+		{Name: "main", Exists: true, Remote: "origin", CheckedOut: true},
+		{Name: "gone", Exists: true, Remote: "origin", NoRemote: true},
+		{Name: "local", Exists: true, NoRemote: true},
+		{Name: "missing"},
+	}
+	if !reflect.DeepEqual(infos, want) {
+		t.Fatalf("got %+v, want %+v", infos, want)
+	}
+	if got := mock.requests[0].args[len(mock.requests[0].args)-1]; got != "refs/heads/missing" {
+		t.Fatalf("expected refs/heads/ patterns, last arg %q", got)
+	}
+
+	if _, err := g.BranchInfos(context.Background(), "/tmp/r", []string{"--evil"}); err == nil {
+		t.Fatal("expected error for branch starting with '-'")
+	}
+	if _, err := g.BranchInfos(context.Background(), "--r", []string{"a"}); err == nil {
+		t.Fatal("expected error for dirpath starting with '-'")
+	}
+}
+
+func TestGitCommands_FastForwardBranch(t *testing.T) {
+	mock := &mockGitWrapper{}
+	g := &GitCommands{ui: clui.DefaultClui(), executor: mock}
+	if err := g.FastForwardBranch(context.Background(), "/tmp/r", "origin", "rel"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	want := []string{"fetch", "origin", "refs/heads/rel:refs/heads/rel"}
+	if !reflect.DeepEqual(mock.requests[0].args, want) {
+		t.Fatalf("got args %v, want %v", mock.requests[0].args, want)
+	}
+	if err := g.FastForwardBranch(context.Background(), "/tmp/r", "-x", "rel"); err == nil {
+		t.Fatal("expected error for remote starting with '-'")
+	}
+	if err := g.FastForwardBranch(context.Background(), "/tmp/r", "origin", "-x"); err == nil {
+		t.Fatal("expected error for branch starting with '-'")
+	}
+}

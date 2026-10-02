@@ -167,20 +167,31 @@ func (t *tracker) record(r opResult) {
 	t.mu.Lock()
 	t.results = append(t.results, r)
 	done := len(t.results)
+	total := t.total
 	t.mu.Unlock()
 	if !quietMode && !jsonMode {
-		t.drawProgress(done, r.project)
+		t.drawProgress(done, total, r.project)
 	}
 }
 
-func (t *tracker) drawProgress(done int, name string) {
-	if !t.tty || t.total == 0 {
+// expect adds n results to the expected total (extra per-branch results).
+func (t *tracker) expect(n int) {
+	t.mu.Lock()
+	t.total += n
+	t.mu.Unlock()
+}
+
+func (t *tracker) drawProgress(done, total int, name string) {
+	if !t.tty || total == 0 {
 		return
 	}
-	filled := done * 20 / t.total
-	pct := done * 100 / t.total
+	if done > total {
+		total = done
+	}
+	filled := done * 20 / total
+	pct := done * 100 / total
 	bar := strings.Repeat("█", filled) + strings.Repeat("░", 20-filled)
-	line := fmt.Sprintf("[%s] %d/%d (%d%%) — %s", bar, done, t.total, pct, name)
+	line := fmt.Sprintf("[%s] %d/%d (%d%%) — %s", bar, done, total, pct, name)
 	cols := len([]rune(line))
 	t.outMu.Lock()
 	padding := t.lastProgressLen - cols

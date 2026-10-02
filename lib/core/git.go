@@ -382,3 +382,96 @@ func gitExecutablePath() (string, error) {
 	}
 	return gitExecutable, nil
 }
+
+// BranchInfo describes a local branch and its relation to its upstream.
+type BranchInfo struct {
+	Name       string
+	Exists     bool   // false when the branch is not present locally
+	Remote     string // remote name of the upstream, empty when none
+	Ahead      int
+	Behind     int
+	NoRemote   bool // no upstream configured, or upstream is gone
+	CheckedOut bool // the branch is HEAD of this worktree
+}
+
+func validRefArg(s string) bool {
+	return s != "" && !strings.HasPrefix(s, "-")
+}
+
+func parseTrack(track string) (ahead, behind int, gone bool) {
+	if strings.TrimSpace(track) == "gone" {
+		return 0, 0, true
+	}
+	for _, part := range strings.Split(track, ",") {
+		part = strings.TrimSpace(part)
+		fmt.Sscanf(part, "ahead %d", &ahead)
+		fmt.Sscanf(part, "behind %d", &behind)
+	}
+	return ahead, behind, false
+}
+
+// BranchInfos returns one entry per requested branch (same order), reading
+// local refs only: no network access, no change to the repository.
+func (g *GitCommands) BranchInfos(ctx context.Context, dirpath string, branches []string) ([]BranchInfo, error) {
+	if strings.HasPrefix(dirpath, "-") {
+		return nil, fmt.Errorf("invalid dirpath: cannot start with '-'")
+	}
+	args := []string{"for-each-ref", "--format=%(refname:short)%09%(upstream:short)%09%(upstream:remotename)%09%(upstream:track,nobracket)%09%(HEAD)"}
+	for _, b := range branches {
+		if !validRefArg(b) {
+			return nil, fmt.Errorf("invalid branch name %q", b)
+		}
+		args = append(args, "refs/heads/"+b)
+	}
+	if len(branches) == 0 {
+		return nil, nil
+	}
+	r := g.executor.exec(runcmdWrapperRequest{ctx: ctx, args: args, workingDir: dirpath})
+	if !r.Success() {
+		return nil, gitResultError(r)
+	}
+	found := make(map[string]BranchInfo)
+	for _, line := range strings.Split(r.Stdout().String(), "\n") {
+		f := strings.Split(strings.TrimRight(line, "\r"), "\t")
+		if len(f) < 5 {
+			continue
+		}
+		info := BranchInfo{Name: f[0], Exists: true, Remote: f[2], CheckedOut: f[4] == "*"}
+		var gone bool
+		info.Ahead, info.Behind, gone = parseTrack(f[3])
+		info.NoRemote = f[1] == "" || gone
+		found[info.Name] = info
+	}
+	out := make([]BranchInfo, 0, len(branches))
+	for _, b := range branches {
+		if info, ok := found[b]; ok {
+			out = append(out, info)
+		} else {
+			out = append(out, BranchInfo{Name: b})
+		}
+	}
+	return out, nil
+}
+
+// FastForwardBranch updates the local branch from remote with
+// "git fetch <remote> refs/heads/<branch>:refs/heads/<branch>". Git itself
+// refuses non fast-forward updates and branches checked out in a worktree, so
+// the operation never rewrites local commits.
+func (g *GitCommands) FastForwardBranch(ctx context.Context, dirpath, remote, branch string) error {
+	if strings.HasPrefix(dirpath, "-") {
+		return fmt.Errorf("invalid dirpath: cannot start with '-'")
+	}
+	if !validRefArg(remote) || !validRefArg(branch) {
+		return fmt.Errorf("invalid remote %q or branch %q", remote, branch)
+	}
+	ref := "refs/heads/" + branch
+	r := g.executor.exec(runcmdWrapperRequest{
+		ctx:        ctx,
+		args:       []string{"fetch", remote, ref + ":" + ref},
+		workingDir: dirpath,
+	})
+	if !r.Success() {
+		return gitResultError(r)
+	}
+	return nil
+}
