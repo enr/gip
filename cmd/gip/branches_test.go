@@ -100,3 +100,32 @@ func TestBranchesAbsentKeepsBehaviour(t *testing.T) {
 		t.Fatalf("got %v", got)
 	}
 }
+
+// The --behind/--ahead filters must be evaluated per extra branch, not on the
+// checked-out branch (which pull has just updated, or which is in sync).
+func TestBranchesPullBehindFilter(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not available")
+	}
+	root := t.TempDir()
+	repo := setupBranchRepo(t, root)
+	// hot tracks origin/rel: the upstream name differs from the local one.
+	runGit(t, repo, "branch", "hot", "rel")
+	runGit(t, repo, "branch", "-q", "-u", "origin/rel", "hot")
+	binPath := buildBinary(t, root)
+	cfg := filepath.Join(root, ".gip")
+	content := fmt.Sprintf("- name: with\n  local_path: %s\n  repository: \"https://example.com/a.git\"\n  branches: [rel, dev, hot]\n", repo)
+	if err := os.WriteFile(cfg, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+	out, err := exec.Command(binPath, "-f", cfg, "pull", "--behind").CombinedOutput()
+	if err != nil {
+		t.Fatalf("pull --behind failed: %v\n%s", err, out)
+	}
+	if got := runGit(t, repo, "rev-parse", "rel"); got != runGit(t, repo, "rev-parse", "origin/rel") {
+		t.Fatalf("rel (behind) was not fast-forwarded by pull --behind:\n%s", out)
+	}
+	if got := runGit(t, repo, "rev-parse", "hot"); got != runGit(t, repo, "rev-parse", "origin/rel") {
+		t.Fatalf("hot was not fast-forwarded from its upstream origin/rel:\n%s", out)
+	}
+}

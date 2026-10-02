@@ -37,6 +37,15 @@ func branchLabel(project gipProject, branch string) string {
 	return fmt.Sprintf("%s@%s", project.Name, branch)
 }
 
+// branchFilteredOut applies the --behind/--ahead filters to a single extra
+// branch, using its own tracking state (not the checked-out branch's).
+func branchFilteredOut(info core.BranchInfo, filterBehind, filterAhead bool) bool {
+	if !filterBehind && !filterAhead {
+		return false
+	}
+	return !(filterBehind && info.Behind > 0) && !(filterAhead && info.Ahead > 0)
+}
+
 // statusExtraBranches reports ahead/behind of the configured non-current
 // branches. It reads local refs only (run "gip fetch" to refresh upstreams).
 func statusExtraBranches(c *cli.Context, git *core.GitCommands, t *tracker, project gipProject, filterDirty, filterBehind, filterAhead bool) {
@@ -63,7 +72,7 @@ func statusExtraBranches(c *cli.Context, git *core.GitCommands, t *tracker, proj
 			res.status, res.reason = opSkipped, "branch not found locally"
 		case !info.NoRemote && info.Ahead == 0 && info.Behind == 0:
 			res.status, res.reason = opSkipped, "in sync"
-		case (filterBehind || filterAhead) && !(filterBehind && info.Behind > 0) && !(filterAhead && info.Ahead > 0):
+		case branchFilteredOut(info, filterBehind, filterAhead):
 			res.status, res.reason = opSkipped, "not ahead or behind"
 		default:
 			res.status = opOK
@@ -98,7 +107,9 @@ func pullExtraBranches(c *cli.Context, git *core.GitCommands, t *tracker, projec
 	}
 	ctx, cancel := opContext(c)
 	defer cancel()
-	if skip, _, _ := filterByGitState(ctx, git, line, filterDirty, filterBehind, filterAhead); skip {
+	// --dirty refers to the worktree; --behind/--ahead are checked per branch
+	// below (the checked-out branch may just have been pulled).
+	if skip, _, _ := filterByGitState(ctx, git, line, filterDirty, false, false); skip {
 		return
 	}
 	infos, err := git.BranchInfos(ctx, line, extras)
@@ -115,10 +126,12 @@ func pullExtraBranches(c *cli.Context, git *core.GitCommands, t *tracker, projec
 			res.status, res.reason = opSkipped, "branch not found locally"
 		case info.NoRemote || info.Remote == "":
 			res.status, res.reason = opSkipped, "no upstream configured"
+		case branchFilteredOut(info, filterBehind, filterAhead):
+			res.status, res.reason = opSkipped, "not ahead or behind"
 		case info.Ahead > 0 && info.Behind == 0:
 			res.status, res.reason = opSkipped, "ahead of upstream (nothing to pull)"
 		default:
-			if err := git.FastForwardBranch(ctx, line, info.Remote, info.Name); err != nil {
+			if err := git.FastForwardBranch(ctx, line, info.Remote, info.RemoteRef, info.Name); err != nil {
 				res.status, res.err = opError, err
 			} else {
 				res.status = opOK

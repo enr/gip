@@ -388,6 +388,7 @@ type BranchInfo struct {
 	Name       string
 	Exists     bool   // false when the branch is not present locally
 	Remote     string // remote name of the upstream, empty when none
+	RemoteRef  string // upstream ref on the remote (e.g. refs/heads/main), empty when none
 	Ahead      int
 	Behind     int
 	NoRemote   bool // no upstream configured, or upstream is gone
@@ -410,13 +411,32 @@ func parseTrack(track string) (ahead, behind int, gone bool) {
 	return ahead, behind, false
 }
 
+const branchInfoFormat = "--format=%(refname:short)%09%(upstream:short)%09%(upstream:remotename)%09%(upstream:track,nobracket)%09%(HEAD)%09%(upstream:remoteref)"
+
+// parseBranchInfos parses the output of for-each-ref with branchInfoFormat.
+func parseBranchInfos(stdout string) map[string]BranchInfo {
+	found := make(map[string]BranchInfo)
+	for _, line := range strings.Split(stdout, "\n") {
+		f := strings.Split(strings.TrimRight(line, "\r"), "\t")
+		if len(f) < 6 {
+			continue
+		}
+		info := BranchInfo{Name: f[0], Exists: true, Remote: f[2], RemoteRef: f[5], CheckedOut: f[4] == "*"}
+		var gone bool
+		info.Ahead, info.Behind, gone = parseTrack(f[3])
+		info.NoRemote = f[1] == "" || gone
+		found[info.Name] = info
+	}
+	return found
+}
+
 // BranchInfos returns one entry per requested branch (same order), reading
 // local refs only: no network access, no change to the repository.
 func (g *GitCommands) BranchInfos(ctx context.Context, dirpath string, branches []string) ([]BranchInfo, error) {
 	if strings.HasPrefix(dirpath, "-") {
 		return nil, fmt.Errorf("invalid dirpath: cannot start with '-'")
 	}
-	args := []string{"for-each-ref", "--format=%(refname:short)%09%(upstream:short)%09%(upstream:remotename)%09%(upstream:track,nobracket)%09%(HEAD)"}
+	args := []string{"for-each-ref", branchInfoFormat}
 	for _, b := range branches {
 		if !validRefArg(b) {
 			return nil, fmt.Errorf("invalid branch name %q", b)
@@ -430,18 +450,7 @@ func (g *GitCommands) BranchInfos(ctx context.Context, dirpath string, branches 
 	if !r.Success() {
 		return nil, gitResultError(r)
 	}
-	found := make(map[string]BranchInfo)
-	for _, line := range strings.Split(r.Stdout().String(), "\n") {
-		f := strings.Split(strings.TrimRight(line, "\r"), "\t")
-		if len(f) < 5 {
-			continue
-		}
-		info := BranchInfo{Name: f[0], Exists: true, Remote: f[2], CheckedOut: f[4] == "*"}
-		var gone bool
-		info.Ahead, info.Behind, gone = parseTrack(f[3])
-		info.NoRemote = f[1] == "" || gone
-		found[info.Name] = info
-	}
+	found := parseBranchInfos(r.Stdout().String())
 	out := make([]BranchInfo, 0, len(branches))
 	for _, b := range branches {
 		if info, ok := found[b]; ok {
@@ -453,21 +462,26 @@ func (g *GitCommands) BranchInfos(ctx context.Context, dirpath string, branches 
 	return out, nil
 }
 
-// FastForwardBranch updates the local branch from remote with
-// "git fetch <remote> refs/heads/<branch>:refs/heads/<branch>". Git itself
-// refuses non fast-forward updates and branches checked out in a worktree, so
-// the operation never rewrites local commits.
-func (g *GitCommands) FastForwardBranch(ctx context.Context, dirpath, remote, branch string) error {
+// FastForwardBranch updates the local branch from its upstream with
+// "git fetch <remote> <remoteRef>:refs/heads/<branch>". remoteRef is the
+// upstream ref on the remote (BranchInfo.RemoteRef); when empty the same name
+// as the local branch is assumed. Git itself refuses non fast-forward updates
+// and branches checked out in a worktree, so the operation never rewrites
+// local commits.
+func (g *GitCommands) FastForwardBranch(ctx context.Context, dirpath, remote, remoteRef, branch string) error {
 	if strings.HasPrefix(dirpath, "-") {
 		return fmt.Errorf("invalid dirpath: cannot start with '-'")
 	}
-	if !validRefArg(remote) || !validRefArg(branch) {
-		return fmt.Errorf("invalid remote %q or branch %q", remote, branch)
+	if !validRefArg(remote) || !validRefArg(branch) || strings.HasPrefix(remoteRef, "-") {
+		return fmt.Errorf("invalid remote %q, upstream %q or branch %q", remote, remoteRef, branch)
 	}
 	ref := "refs/heads/" + branch
+	if remoteRef == "" {
+		remoteRef = ref
+	}
 	r := g.executor.exec(runcmdWrapperRequest{
 		ctx:        ctx,
-		args:       []string{"fetch", remote, ref + ":" + ref},
+		args:       []string{"fetch", remote, remoteRef + ":" + ref},
 		workingDir: dirpath,
 	})
 	if !r.Success() {

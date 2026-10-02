@@ -45,11 +45,12 @@ hash golint 2>/dev/null || {
 }
 
 hash goimports 2>/dev/null || {
-  go install golang.org/x/tools/cmd/goimports@latest
+  # pinned: newer x/tools releases require a newer Go than the CI toolchain
+  go install golang.org/x/tools/cmd/goimports@v0.49.0
 }
 
 hash gocyclo 2>/dev/null || {
-  go install github.com/fzipp/gocyclo/cmd/gocyclo@latest
+  go install github.com/fzipp/gocyclo/cmd/gocyclo@v0.6.0
 }
 
 [[ -n "$SDLC_GO_VENDOR" ]] && {

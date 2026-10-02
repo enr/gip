@@ -69,7 +69,7 @@ By default gip only looks at the branch currently checked out in each repo. List
 ```
 
 - `gip status` / `statusfull` print one extra line per listed branch that is ahead, behind or without upstream (`repo [release/1.x]  ↓2`). It reads local refs only: run `gip fetch` first to refresh them. Results appear as `name@branch` in the summary and JSON output.
-- `gip pull` fast-forwards each listed branch that is not checked out (`git fetch <remote> b:b`). Branches that cannot fast-forward (diverged) are reported as errors; local-only or ahead-only branches, missing branches and branches without upstream are skipped. Nothing is ever rewritten and the checked-out branch is never switched.
+- `gip pull` fast-forwards each listed branch that is not checked out from its configured upstream (`git fetch <remote> <upstream>:b`). With `--behind`/`--ahead` the filter is evaluated on each listed branch's own tracking state. Branches that cannot fast-forward (diverged) are reported as errors; local-only or ahead-only branches, missing branches and branches without upstream are skipped. Nothing is ever rewritten and the checked-out branch is never switched.
 - `pull_policy: never` also disables branch updates. The checked-out branch keeps being handled by the normal pull.
 - Without `branches` nothing changes.
 
