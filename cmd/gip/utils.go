@@ -24,7 +24,11 @@ type gipProject struct {
 	LocalPath  string   `json:"local_path" yaml:"local_path"`
 	PullPolicy string   `json:"pull_policy" yaml:"pull_policy"`
 	Tags       []string `json:"tags,omitempty" yaml:"tags,omitempty"`
-	Disabled   bool     `json:"disabled,omitempty" yaml:"disabled,omitempty"`
+	// Branches lists extra local branches kept aligned with their upstream by
+	// status (report) and pull (fast-forward only). Empty: only the checked-out
+	// branch is considered, as before.
+	Branches []string `json:"branches,omitempty" yaml:"branches,omitempty"`
+	Disabled bool     `json:"disabled,omitempty" yaml:"disabled,omitempty"`
 }
 
 func (p *gipProject) pullNever() bool {
@@ -38,6 +42,22 @@ func (p *gipProject) pullAlways() bool {
 func (p *gipProject) isValidPullPolicy() bool {
 	v := strings.TrimSpace(p.PullPolicy)
 	return v == "" || strings.EqualFold(v, "never") || strings.EqualFold(v, "always")
+}
+
+// extraBranches returns the configured branches, trimmed and de-duplicated,
+// excluding the current one.
+func (p *gipProject) extraBranches(current string) []string {
+	var out []string
+	seen := map[string]bool{current: true}
+	for _, b := range p.Branches {
+		b = strings.TrimSpace(b)
+		if b == "" || strings.HasPrefix(b, "-") || seen[b] {
+			continue
+		}
+		seen[b] = true
+		out = append(out, b)
+	}
+	return out
 }
 
 func (p *gipProject) repoProvider() string {
@@ -133,6 +153,11 @@ func projectsList(configurationPath string) ([]gipProject, []string, error) {
 		}
 		if !p.isValidPullPolicy() {
 			warn("project %q has unknown pull_policy %q (valid values: never, always)", p.Name, p.PullPolicy)
+		}
+		for _, b := range p.Branches {
+			if v := strings.TrimSpace(b); v == "" || strings.HasPrefix(v, "-") {
+				warn("project %q has invalid branch %q in branches (ignored)", p.Name, b)
+			}
 		}
 		if p.Repository == "" {
 			warn("no repository URL for project %s", p.Name)

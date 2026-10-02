@@ -363,6 +363,7 @@ func gitStatus(c *cli.Context, untracked bool) error {
 			defer wg.Done()
 			defer func() { <-sem }()
 			doStatusProject(c, git, t, project, untracked, untrackedFlag, filterDirty, filterBehind, filterAhead)
+			statusExtraBranches(c, git, t, project, filterDirty, filterBehind, filterAhead)
 		}()
 	}
 	wg.Wait()
@@ -807,6 +808,7 @@ func doPull(c *cli.Context) error {
 			defer wg.Done()
 			defer func() { <-sem }()
 			pullOne(c, git, project, all, t, filterDirty, filterBehind, filterAhead)
+			pullExtraBranches(c, git, t, project, filterDirty, filterBehind, filterAhead)
 		}()
 	}
 	wg.Wait()
