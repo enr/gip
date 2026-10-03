@@ -74,7 +74,10 @@ func TestBranchesStatusAndPull(t *testing.T) {
 		t.Fatalf("expected per-branch sync lines:\n%s", out)
 	}
 
-	out, err = exec.Command(binPath, "-f", cfg, "pull").CombinedOutput()
+	// -j 1: both projects share the same repo, and concurrent "git pull" runs
+	// race on FETCH_HEAD (fatal with pull.rebase=true: "Cannot rebase onto
+	// multiple branches").
+	out, err = exec.Command(binPath, "-f", cfg, "pull", "-j", "1").CombinedOutput()
 	if err != nil {
 		t.Fatalf("pull failed: %v\n%s", err, out)
 	}
