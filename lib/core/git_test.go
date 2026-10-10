@@ -282,39 +282,45 @@ func TestGitCommands_StatusInfo(t *testing.T) {
 		{
 			name:         "synced no changes",
 			statusOutput: porcelainSynced,
-			wantSync:     BranchSyncStatus{Ahead: 0, Behind: 0, NoRemote: false},
+			wantSync:     BranchSyncStatus{Branch: "main", Ahead: 0, Behind: 0, NoRemote: false},
 			wantDirty:    DirtyStatus{},
 		},
 		{
 			name:         "ahead with staged file",
 			statusOutput: porcelainAhead,
-			wantSync:     BranchSyncStatus{Ahead: 2, Behind: 0, NoRemote: false},
+			wantSync:     BranchSyncStatus{Branch: "feature", Ahead: 2, Behind: 0, NoRemote: false},
 			wantDirty:    DirtyStatus{Staged: true},
 		},
 		{
 			name:         "behind no changes",
 			statusOutput: porcelainBehind,
-			wantSync:     BranchSyncStatus{Ahead: 0, Behind: 3, NoRemote: false},
+			wantSync:     BranchSyncStatus{Branch: "main", Ahead: 0, Behind: 3, NoRemote: false},
 			wantDirty:    DirtyStatus{},
 		},
 		{
 			name:         "diverged with untracked",
 			statusOutput: porcelainDiverged,
-			wantSync:     BranchSyncStatus{Ahead: 1, Behind: 2, NoRemote: false},
+			wantSync:     BranchSyncStatus{Branch: "main", Ahead: 1, Behind: 2, NoRemote: false},
 			wantDirty:    DirtyStatus{Untracked: true},
 		},
 		{
 			name:         "no remote",
 			statusOutput: porcelainNoRemote,
-			wantSync:     BranchSyncStatus{NoRemote: true},
+			wantSync:     BranchSyncStatus{Branch: "local-only", NoRemote: true},
 			wantDirty:    DirtyStatus{},
 		},
 		{
 			name:         "stash present",
 			statusOutput: porcelainSynced,
 			stashOutput:  "stash@{0}: WIP on main: abc fix\n",
-			wantSync:     BranchSyncStatus{},
+			wantSync:     BranchSyncStatus{Branch: "main"},
 			wantDirty:    DirtyStatus{Stashed: true},
+		},
+		{
+			name:         "detached head",
+			statusOutput: "# branch.oid abc\n# branch.head (detached)\n",
+			wantSync:     BranchSyncStatus{Branch: "(detached)", NoRemote: true},
+			wantDirty:    DirtyStatus{},
 		},
 	}
 

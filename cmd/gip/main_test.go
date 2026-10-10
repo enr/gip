@@ -2,11 +2,13 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 )
@@ -274,6 +276,29 @@ func TestAutoConfigDetection(t *testing.T) {
 	}
 	if !bytes.Contains(out, []byte("repo1")) {
 		t.Fatalf("expected 'repo1' from auto-detected config:\n%s", out)
+	}
+
+	// The auto-detected file is announced on stderr, never on stdout.
+	cmd = exec.Command(binPath, "list")
+	cmd.Dir = workDir
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("list without -f failed: %v", err)
+	}
+	if !strings.Contains(stderr.String(), "using configuration "+configPath) {
+		t.Fatalf("expected the configuration path on stderr, got:\n%s", stderr.String())
+	}
+	if strings.Contains(stdout.String(), "using configuration") {
+		t.Fatalf("configuration path must not go to stdout:\n%s", stdout.String())
+	}
+
+	// --quiet suppresses it.
+	cmd = exec.Command(binPath, "--quiet", "list")
+	cmd.Dir = workDir
+	out, _ = cmd.CombinedOutput()
+	if bytes.Contains(out, []byte("using configuration")) {
+		t.Fatalf("--quiet should suppress the configuration path:\n%s", out)
 	}
 }
 
@@ -893,5 +918,30 @@ func TestExecFilterErrorDoesNotRun(t *testing.T) {
 	}
 	if !bytes.Contains(out, []byte("checking repository state for filters")) {
 		t.Fatalf("expected filter-check error in output:\n%s", out)
+	}
+}
+
+// TestListJSONResolvedLocalPath verifies that list --json reports the resolved
+// local_path (here relative to the config file), like the other commands.
+func TestListJSONResolvedLocalPath(t *testing.T) {
+	tmpDir := t.TempDir()
+	binPath := buildBinary(t, tmpDir)
+	makeGitRepo(t, filepath.Join(tmpDir, "repo1"))
+	configPath := filepath.Join(tmpDir, "cfg.yml")
+	cfg := "- name: repo1\n  repository: https://example.com/r.git\n  local_path: repo1\n"
+	if err := os.WriteFile(configPath, []byte(cfg), 0644); err != nil {
+		t.Fatal(err)
+	}
+	out, err := exec.Command(binPath, "-f", configPath, "--json", "list").Output()
+	if err != nil {
+		t.Fatalf("list --json failed: %v\n%s", err, out)
+	}
+	var got listOutputJSON
+	if err := json.Unmarshal(out, &got); err != nil {
+		t.Fatalf("invalid JSON: %v\n%s", err, out)
+	}
+	want := filepath.Join(tmpDir, "repo1")
+	if len(got.Projects) != 1 || got.Projects[0].LocalPath != want {
+		t.Fatalf("local_path: got %+v, want %q", got.Projects, want)
 	}
 }

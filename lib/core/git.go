@@ -228,6 +228,8 @@ func (g *GitCommands) CurrentBranch(ctx context.Context, dirpath string) (string
 
 // BranchSyncStatus holds the upstream delta for the checked-out branch.
 type BranchSyncStatus struct {
+	// Branch is the checked-out branch, "(detached)" for a detached HEAD.
+	Branch   string
 	Ahead    int
 	Behind   int
 	NoRemote bool // true when no upstream tracking branch is configured
@@ -286,6 +288,8 @@ func (d DirtyStatus) IsDirty() bool {
 
 func parseStatusLine(line string, sync *BranchSyncStatus, dirty *DirtyStatus) {
 	switch {
+	case strings.HasPrefix(line, "# branch.head "):
+		sync.Branch = strings.TrimPrefix(line, "# branch.head ")
 	case strings.HasPrefix(line, "# branch.ab "):
 		sync.NoRemote = false
 		fmt.Sscanf(strings.TrimPrefix(line, "# branch.ab "), "+%d -%d", &sync.Ahead, &sync.Behind)

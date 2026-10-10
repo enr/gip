@@ -542,11 +542,12 @@ func enrichRowsWithGit(c *cli.Context, git *core.GitCommands, rows []listRow, jo
 			// to the whole batch (which would starve repos queued behind the pool).
 			ctx, cancel := opContext(c)
 			defer cancel()
-			r.branch, _ = git.CurrentBranch(ctx, r.rawPath)
+			// StatusInfo also reports the branch: no separate rev-parse per repo.
 			syncSt, dirtySt, siErr := git.StatusInfo(ctx, r.rawPath)
 			if siErr != nil {
 				return
 			}
+			r.branch = syncSt.Branch
 			r.syncAhead = syncSt.Ahead
 			r.syncBehind = syncSt.Behind
 			r.syncNoRemote = syncSt.NoRemote
@@ -734,9 +735,15 @@ func printListJSON(rows []listRow, projects []gipProject, warnings []string) err
 		if tags == nil {
 			tags = []string{}
 		}
+		// Report the resolved path, as the other commands do; fall back to the
+		// configured value when it could not be resolved.
+		localPath := r.rawPath
+		if localPath == "" {
+			localPath = p.LocalPath
+		}
 		entry := listProjectJSON{
 			Name:       p.Name,
-			LocalPath:  p.LocalPath,
+			LocalPath:  localPath,
 			Repository: r.repository,
 			Policy:     r.policy,
 			Provider:   r.provider,
@@ -1461,13 +1468,25 @@ func exitError(exitCode int, message string) error {
 	return cli.Exit(message, exitCode)
 }
 
+// configurationFilePath returns the configuration file to use. When it was not
+// given explicitly with -f, its path is printed on stderr: a .gip in the
+// current directory takes precedence over ~/.gip, so the user must be able to
+// see which file (and therefore which repositories and paths) is in effect.
 func configurationFilePath(c *cli.Context) (string, error) {
 	if c.String("f") != "" {
-		abs, err := filepath.Abs(c.String("f"))
-		if err != nil {
-			return "", err
-		}
-		return filepath.FromSlash(filepath.Clean(abs)), nil
+		return explicitConfigurationFilePath(c)
 	}
-	return defaultConfigurationFilePath()
+	path, err := defaultConfigurationFilePath()
+	if err == nil && !quietMode {
+		fmt.Fprintf(os.Stderr, "gip: using configuration %s\n", path)
+	}
+	return path, err
+}
+
+func explicitConfigurationFilePath(c *cli.Context) (string, error) {
+	abs, err := filepath.Abs(c.String("f"))
+	if err != nil {
+		return "", err
+	}
+	return filepath.FromSlash(filepath.Clean(abs)), nil
 }

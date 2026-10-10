@@ -126,7 +126,7 @@ gip searches for the config file in this order:
 3. `.gip` in the current working directory
 4. `~/.gip` (home directory)
 
-The first match wins. Run with `--debug` to see which file is being used.
+The first match wins. When the file was not given with `-f`, gip prints the one it uses on stderr (`gip: using configuration <path>`; suppressed by `--quiet`), so a `.gip` picked up from the current directory never goes unnoticed.
 
 ```bash
 # explicit path

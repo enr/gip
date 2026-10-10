@@ -94,7 +94,7 @@ With `--json` and `--extended`, each project entry gains additional fields:
   "projects": [
     {
       "name": "frontend",
-      "local_path": "~/projects/frontend",
+      "local_path": "/home/user/projects/frontend",
       "repository": "https://github.com/org/frontend.git",
       "policy": "default",
       "provider": "github.com",
@@ -205,7 +205,7 @@ With `--json` and `--extended`, each project entry gains sync, dirty, and commit
   "projects": [
     {
       "name": "backend",
-      "local_path": "~/projects/backend",
+      "local_path": "/home/user/projects/backend",
       "status": "ok",
       "branch": "dev",
       "ahead": 2,
