@@ -1,7 +1,10 @@
 package main
 
 import (
+	"bytes"
+	"errors"
 	"fmt"
+	"io"
 	"net/url"
 	"os"
 	"os/user"
@@ -29,6 +32,23 @@ type gipProject struct {
 	// branch is considered, as before.
 	Branches []string `json:"branches,omitempty" yaml:"branches,omitempty"`
 	Disabled bool     `json:"disabled,omitempty" yaml:"disabled,omitempty"`
+	// baseDir is the directory of the configuration file the project was read
+	// from: relative local_path values are resolved against it.
+	baseDir string
+}
+
+// resolvedPath returns the project directory: "~" and environment variables
+// are expanded and a relative local_path is taken from the configuration
+// file's directory, so the result does not depend on where gip is run from.
+func (p *gipProject) resolvedPath() (string, error) {
+	resolved, err := projectPath(p.LocalPath)
+	if err != nil {
+		return "", err
+	}
+	if p.baseDir != "" && !filepath.IsAbs(resolved) {
+		resolved = filepath.Join(p.baseDir, resolved)
+	}
+	return resolved, nil
 }
 
 func (p *gipProject) pullNever() bool {
@@ -136,11 +156,22 @@ func projectsList(configurationPath string) ([]gipProject, []string, error) {
 		ui.Errorf("Error reading %s: %v", configurationPath, err)
 		return projects, warnings, err
 	}
-	err = yaml.Unmarshal(data, &projects)
-	if err != nil {
+	// Unknown keys are rejected: a typo such as "pull-policy" would otherwise be
+	// dropped silently and the project would run with the default behaviour.
+	dec := yaml.NewDecoder(bytes.NewReader(data))
+	dec.KnownFields(true)
+	if err = dec.Decode(&projects); err != nil && !errors.Is(err, io.EOF) {
 		ui.Errorf("Error reading configuration: %v", err)
 		ui.Lifecyclef("Check the format of %s: it should be Yaml or Json", configurationPath)
 		return projects, warnings, err
+	}
+
+	baseDir := filepath.Dir(configurationPath)
+	if abs, absErr := filepath.Abs(baseDir); absErr == nil {
+		baseDir = abs
+	}
+	for i := range projects {
+		projects[i].baseDir = baseDir
 	}
 
 	nameIndex := make(map[string]int) // tracks first occurrence index of each name
@@ -190,7 +221,19 @@ func projectPath(ppath string) (string, error) {
 		relpath := strings.TrimPrefix(ppath, "~")
 		retpath = filepath.FromSlash(path.Join(dir, relpath))
 	}
-	return os.ExpandEnv(retpath), nil
+	// An unset variable must not expand to "": "$UNSET/x" would become "/x".
+	var missing []string
+	expanded := os.Expand(retpath, func(name string) string {
+		v, ok := os.LookupEnv(name)
+		if !ok || v == "" {
+			missing = append(missing, name)
+		}
+		return v
+	})
+	if len(missing) > 0 {
+		return "", fmt.Errorf("environment variable %s not set or empty in path %q", strings.Join(missing, ", "), ppath)
+	}
+	return expanded, nil
 }
 
 // filterDisabled removes projects that have Disabled set to true.

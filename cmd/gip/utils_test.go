@@ -18,6 +18,8 @@ func TestProjectPath(t *testing.T) {
 		t.Fatalf("cannot get current user: %v", err)
 	}
 	home := usr.HomeDir
+	t.Setenv("GIP_TEST_SET", "/base")
+	os.Unsetenv("GIP_TEST_UNSET")
 
 	cases := []struct {
 		input   string
@@ -36,6 +38,10 @@ func TestProjectPath(t *testing.T) {
 		{"/tmp/bar", "/tmp/bar", false},
 		// empty path must not silently resolve to the current directory
 		{"", "", true},
+		// a set variable is expanded
+		{"$GIP_TEST_SET/x", "/base/x", false},
+		// an unset variable must not expand to "" ("/x")
+		{"$GIP_TEST_UNSET/x", "", true},
 		{"  ", "", true},
 	}
 	for _, tc := range cases {
@@ -335,5 +341,65 @@ func TestConfigurationFilePathMissing(t *testing.T) {
 	_, err := configurationFilePath(c)
 	if err == nil {
 		t.Errorf("Expected an error when configuration file is missing, got nil")
+	}
+}
+
+func TestProjectsListRejectsUnknownKeys(t *testing.T) {
+	setupTestUI(t)
+	fp := filepath.Join(t.TempDir(), "cfg.yml")
+	cfg := "- name: a\n  repository: https://example.com/a.git\n  local_path: /tmp/a\n  pull-policy: never\n"
+	if err := os.WriteFile(fp, []byte(cfg), 0644); err != nil {
+		t.Fatal(err)
+	}
+	_, _, err := projectsList(fp)
+	if err == nil || !strings.Contains(err.Error(), "pull-policy") {
+		t.Fatalf("expected error naming the unknown key, got %v", err)
+	}
+}
+
+func TestProjectsListEmptyFile(t *testing.T) {
+	setupTestUI(t)
+	fp := filepath.Join(t.TempDir(), "cfg.yml")
+	if err := os.WriteFile(fp, nil, 0644); err != nil {
+		t.Fatal(err)
+	}
+	projects, _, err := projectsList(fp)
+	if err != nil || len(projects) != 0 {
+		t.Fatalf("empty config: got %d projects, err %v", len(projects), err)
+	}
+}
+
+func TestResolvedPathRelativeToConfig(t *testing.T) {
+	setupTestUI(t)
+	dir := t.TempDir()
+	fp := filepath.Join(dir, "cfg.yml")
+	cfg := "- name: rel\n  repository: https://example.com/a.git\n  local_path: sub/repo\n" +
+		"- name: abs\n  repository: https://example.com/b.git\n  local_path: /tmp/abs\n"
+	if err := os.WriteFile(fp, []byte(cfg), 0644); err != nil {
+		t.Fatal(err)
+	}
+	// Run from elsewhere: the result must not depend on the working directory.
+	t.Chdir(t.TempDir())
+	projects, _, err := projectsList(fp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]string{"rel": filepath.Join(dir, "sub", "repo"), "abs": filepath.FromSlash("/tmp/abs")}
+	for _, p := range projects {
+		got, err := p.resolvedPath()
+		if err != nil {
+			t.Fatalf("%s: %v", p.Name, err)
+		}
+		if got != want[p.Name] {
+			t.Errorf("%s: resolvedPath = %q, want %q", p.Name, got, want[p.Name])
+		}
+	}
+}
+
+// setupTestUI initialises the package-level ui when a test runs on its own.
+func setupTestUI(t *testing.T) {
+	t.Helper()
+	if ui == nil {
+		ui, _ = clui.NewClui(func(u *clui.Clui) { u.VerbosityLevel = clui.VerbosityLevelLow })
 	}
 }

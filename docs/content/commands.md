@@ -115,6 +115,7 @@ Run `git pull` on managed projects.
 
 - Projects whose `local_path` does not exist are **skipped** unless `pull_policy: always` is set, in which case a `git clone` is performed.
 - Projects with `pull_policy: never` are always skipped.
+- Projects with uncommitted changes are skipped unless `--force` is given; if the check itself fails the project is reported as an error and not pulled. For the same reason `--dirty` requires `--force`.
 
 ```bash
 gip pull

@@ -19,7 +19,7 @@ func branchTarget(c *cli.Context, git *core.GitCommands, project gipProject) (li
 	if len(project.Branches) == 0 {
 		return "", nil, false
 	}
-	line, err := projectPath(project.LocalPath)
+	line, err := project.resolvedPath()
 	if err != nil || !isProjectDir(line) {
 		return "", nil, false
 	}
@@ -109,7 +109,9 @@ func pullExtraBranches(c *cli.Context, git *core.GitCommands, t *tracker, projec
 	defer cancel()
 	// --dirty refers to the worktree; --behind/--ahead are checked per branch
 	// below (the checked-out branch may just have been pulled).
-	if skip, _, _ := filterByGitState(ctx, git, line, filterDirty, false, false); skip {
+	// On error pullOne has already reported the same failed check: leave the
+	// branches untouched.
+	if skip, _, err := filterByGitState(ctx, git, line, filterDirty, false, false); skip || err != nil {
 		return
 	}
 	infos, err := git.BranchInfos(ctx, line, extras)

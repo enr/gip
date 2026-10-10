@@ -376,7 +376,7 @@ func gitStatus(c *cli.Context, untracked bool) error {
 }
 
 func doStatusProject(c *cli.Context, git *core.GitCommands, t *tracker, project gipProject, untracked bool, untrackedFlag string, filterDirty, filterBehind, filterAhead bool) {
-	line, err := projectPath(project.LocalPath)
+	line, err := project.resolvedPath()
 	if err != nil {
 		t.record(opResult{project: project.Name, status: opError, err: err})
 		return
@@ -398,7 +398,12 @@ func doStatusProject(c *cli.Context, git *core.GitCommands, t *tracker, project 
 		statusProjectFull(ctx, git, t, project, line)
 		return
 	}
-	if skip, reason, _ := filterByGitState(ctx, git, line, filterDirty, filterBehind, filterAhead); skip {
+	skip, reason, err := filterByGitState(ctx, git, line, filterDirty, filterBehind, filterAhead)
+	if err != nil {
+		t.record(opResult{project: project.Name, localPath: line, status: opError, err: err})
+		return
+	}
+	if skip {
 		t.record(opResult{project: project.Name, localPath: line, status: opSkipped, reason: reason})
 		return
 	}
@@ -495,7 +500,7 @@ func buildListRows(projects []gipProject) ([]listRow, bool, map[string]error) {
 		if project.Disabled {
 			displayName += " (disabled)"
 		}
-		localPath, err := projectPath(project.LocalPath)
+		localPath, err := project.resolvedPath()
 		if err != nil {
 			errs[project.Name] = err
 			rows = append(rows, listRow{
@@ -775,6 +780,9 @@ func doPull(c *cli.Context) error {
 	if len(args) > 0 {
 		return exitErrorf(1, "Pull command does not accept any argument, found: %v", args)
 	}
+	if c.Bool("dirty") && !c.Bool("force") {
+		return exitErrorf(1, "--dirty selects only repositories with uncommitted changes, which pull skips without --force: add --force or drop --dirty")
+	}
 	all := c.Bool("all")
 	ui.Confidentialf("%s PULL all? %t", configurationFile, all)
 	projects, warnings, err := projectsList(configurationFile)
@@ -830,7 +838,7 @@ func pullOne(c *cli.Context, git *core.GitCommands, project gipProject, all bool
 		return
 	}
 
-	line, err := projectPath(project.LocalPath)
+	line, err := project.resolvedPath()
 	if err != nil {
 		t.record(opResult{project: project.Name, status: opError, err: err})
 		return
@@ -846,7 +854,12 @@ func pullOne(c *cli.Context, git *core.GitCommands, project gipProject, all bool
 	}
 	ctx, cancel := opContext(c)
 	defer cancel()
-	if skip, reason, _ := filterByGitState(ctx, git, line, filterDirty, filterBehind, filterAhead); skip {
+	skip, reason, err := filterByGitState(ctx, git, line, filterDirty, filterBehind, filterAhead)
+	if err != nil {
+		t.record(opResult{project: project.Name, localPath: line, status: opError, err: err})
+		return
+	}
+	if skip {
 		t.record(opResult{project: project.Name, localPath: line, status: opSkipped, reason: reason})
 		return
 	}
@@ -937,7 +950,7 @@ func doFetch(c *cli.Context) error {
 				return
 			}
 
-			line, err := projectPath(project.LocalPath)
+			line, err := project.resolvedPath()
 			if err != nil {
 				t.record(opResult{project: project.Name, status: opError, err: err})
 				return
@@ -957,7 +970,12 @@ func doFetch(c *cli.Context) error {
 			}
 			ctx, cancel := opContext(c)
 			defer cancel()
-			if skip, reason, _ := filterByGitState(ctx, git, line, filterDirty, filterBehind, filterAhead); skip {
+			skip, reason, err := filterByGitState(ctx, git, line, filterDirty, filterBehind, filterAhead)
+			if err != nil {
+				t.record(opResult{project: project.Name, localPath: line, status: opError, err: err})
+				return
+			}
+			if skip {
 				t.record(opResult{project: project.Name, localPath: line, status: opSkipped, reason: reason})
 				return
 			}
@@ -992,14 +1010,15 @@ type branchEntry struct {
 }
 
 // filterByGitState checks dirty/behind filter flags against a repo's StatusInfo.
-// Returns (shouldSkip, skipReason, error). On error the repo is included (not skipped).
+// Returns (shouldSkip, skipReason, error). When the state cannot be read the
+// caller must not treat the repo as matching: it reports the error instead.
 func filterByGitState(ctx context.Context, git *core.GitCommands, dirpath string, filterDirty, filterBehind, filterAhead bool) (bool, string, error) {
 	if !filterDirty && !filterBehind && !filterAhead {
 		return false, "", nil
 	}
 	sync, dirty, err := git.StatusInfo(ctx, dirpath)
 	if err != nil {
-		return false, "", err
+		return false, "", fmt.Errorf("checking repository state for filters: %w", err)
 	}
 	if filterDirty && !dirty.IsDirty() {
 		return true, "not dirty", nil
@@ -1018,6 +1037,11 @@ func filterByGitState(ctx context.Context, git *core.GitCommands, dirpath string
 func enrichBranchEntry(ctx context.Context, git *core.GitCommands, entry *branchEntry, projectName, line string, filterDirty, filterBehind, filterAhead, extended bool, t *tracker) bool {
 	syncSt, dirtySt, siErr := git.StatusInfo(ctx, line)
 	if siErr != nil {
+		if filterDirty || filterBehind || filterAhead {
+			// Unknown state: do not list the repo as matching the filter.
+			t.record(opResult{project: projectName, localPath: line, status: opError, err: fmt.Errorf("checking repository state for filters: %w", siErr)})
+			return true
+		}
 		return false
 	}
 	entry.syncAhead = syncSt.Ahead
@@ -1049,7 +1073,7 @@ func enrichBranchEntry(ctx context.Context, git *core.GitCommands, entry *branch
 
 func processBranchProject(project gipProject, git *core.GitCommands, t *tracker, entries *[]branchEntry, mu *sync.Mutex, needsStatusInfo, filterDirty, filterBehind, filterAhead, extended bool, c *cli.Context) {
 	entry := branchEntry{name: project.Name}
-	line, err := projectPath(project.LocalPath)
+	line, err := project.resolvedPath()
 	if err != nil {
 		entry.err = err
 		t.record(opResult{project: project.Name, status: opError, err: err})
@@ -1200,7 +1224,7 @@ func doBranch(c *cli.Context) error {
 }
 
 func execProject(project gipProject, runner *core.CommandRunner, git *core.GitCommands, cmdName string, cmdArgs []string, filterDirty, filterBehind, filterAhead bool, t *tracker, c *cli.Context) {
-	line, err := projectPath(project.LocalPath)
+	line, err := project.resolvedPath()
 	if err != nil {
 		t.record(opResult{project: project.Name, status: opError, err: err})
 		return
@@ -1221,7 +1245,12 @@ func execProject(project gipProject, runner *core.CommandRunner, git *core.GitCo
 	ctx, cancel := opContext(c)
 	defer cancel()
 	if git != nil {
-		if skip, reason, _ := filterByGitState(ctx, git, line, filterDirty, filterBehind, filterAhead); skip {
+		skip, reason, err := filterByGitState(ctx, git, line, filterDirty, filterBehind, filterAhead)
+		if err != nil {
+			t.record(opResult{project: project.Name, localPath: line, status: opError, err: err})
+			return
+		}
+		if skip {
 			t.record(opResult{project: project.Name, localPath: line, status: opSkipped, reason: reason})
 			return
 		}

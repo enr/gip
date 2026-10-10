@@ -850,3 +850,48 @@ func TestInitCommand_DuplicateNames(t *testing.T) {
 		}
 	}
 }
+
+// TestPullDirtyRequiresForce verifies that pull --dirty without --force is
+// rejected instead of silently skipping every repository.
+func TestPullDirtyRequiresForce(t *testing.T) {
+	tmpDir := t.TempDir()
+	binPath := buildBinary(t, tmpDir)
+	repo1 := filepath.Join(tmpDir, "repo1")
+	makeGitRepo(t, repo1)
+	configPath := filepath.Join(tmpDir, ".gip")
+	makeConfig(t, configPath, []string{repo1})
+
+	out, err := exec.Command(binPath, "-f", configPath, "pull", "--dirty").CombinedOutput()
+	if err == nil {
+		t.Fatalf("expected pull --dirty without --force to fail; output:\n%s", out)
+	}
+	if !bytes.Contains(out, []byte("--force")) {
+		t.Fatalf("expected the error to mention --force:\n%s", out)
+	}
+}
+
+// TestExecFilterErrorDoesNotRun verifies that when a filter needs the repo
+// state and reading it fails, the command is not run and an error is reported.
+func TestExecFilterErrorDoesNotRun(t *testing.T) {
+	tmpDir := t.TempDir()
+	binPath := buildBinary(t, tmpDir)
+	// An empty .git directory: isProjectDir accepts it, git status fails.
+	repo1 := filepath.Join(tmpDir, "broken")
+	makeGitRepo(t, repo1)
+	configPath := filepath.Join(tmpDir, ".gip")
+	makeConfig(t, configPath, []string{repo1})
+	marker := filepath.Join(tmpDir, "ran")
+
+	cmd := exec.Command(binPath, "-f", configPath, "exec", "--dirty", "--", "touch", marker)
+	cmd.Env = append(os.Environ(), "GIT_CEILING_DIRECTORIES="+tmpDir)
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Fatalf("expected non-zero exit when the filter check fails; output:\n%s", out)
+	}
+	if _, statErr := os.Stat(marker); statErr == nil {
+		t.Fatalf("command ran although the repo state could not be read; output:\n%s", out)
+	}
+	if !bytes.Contains(out, []byte("checking repository state for filters")) {
+		t.Fatalf("expected filter-check error in output:\n%s", out)
+	}
+}

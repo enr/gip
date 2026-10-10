@@ -52,7 +52,7 @@ The config file is a list of project entries in YAML or JSON. Each entry describ
 |-------|----------|-------------|
 | `name` | yes | Descriptive name for the project. Must be unique across the file. |
 | `repository` | yes | Remote URL (HTTPS or SSH). Used by `pull_policy: always` to clone missing repos. |
-| `local_path` | yes | Local directory path. `~` and environment variables are expanded. |
+| `local_path` | yes | Local directory path. `~` and environment variables are expanded; an unset or empty variable is an error. A relative path is resolved against the directory of the configuration file, not the current directory. |
 | `pull_policy` | no | `never` — always skip this project for `pull` and `fetch`. `always` — clone via `git clone` if `local_path` does not exist. Omit for default behaviour: operate only on already-present directories. |
 | `branches` | no | Extra local branches reported by `status` and fast-forwarded by `pull` (see [Extra branches](#extra-branches)). |
 | `tags` | no | List of free-form labels. Used by `--tag` filtering (see [Tag filtering](#tag-filtering)). |
@@ -145,9 +145,14 @@ When the config file is loaded, gip validates every entry and prints a warning f
 
 - missing or empty `name`
 - missing or empty `local_path`
-- duplicate `name` values
 - unknown `pull_policy` (accepted values: `never`, `always`)
 - missing `repository` URL
 - repository URL from which the provider cannot be detected
 
 Warnings are printed in yellow and do not block execution. With `--quiet` they are suppressed; with `--json` they appear in the `warnings` array of the output envelope.
+
+Some problems are errors instead:
+
+- an unknown key (for example `pull-policy` instead of `pull_policy`) stops gip before any command runs, so a typo cannot silently fall back to the default behaviour
+- duplicate `name` values stop gip before any command runs
+- a project with an empty `local_path`, or one that uses an unset environment variable, is reported as an error for that project
