@@ -88,8 +88,9 @@ func (g *GitCommands) Clone(ctx context.Context, repourl string, dirpath string)
 		dirpath,
 	}
 	r := runcmdWrapperRequest{
-		ctx:  ctx,
-		args: args,
+		ctx:    ctx,
+		args:   args,
+		remote: true,
 	}
 	result := g.executor.exec(r)
 	if !result.Success() {
@@ -122,6 +123,7 @@ func (g *GitCommands) Pull(ctx context.Context, dirpath string) error {
 		ctx:        ctx,
 		args:       args,
 		workingDir: dirpath,
+		remote:     true,
 	}
 	result := g.executor.exec(r)
 	if !result.Success() {
@@ -184,6 +186,7 @@ func (g *GitCommands) Fetch(ctx context.Context, dirpath string) error {
 		ctx:        ctx,
 		args:       []string{"fetch", "--all", "--prune"},
 		workingDir: dirpath,
+		remote:     true,
 	}
 	result := g.executor.exec(r)
 	var err error
@@ -483,6 +486,7 @@ func (g *GitCommands) FastForwardBranch(ctx context.Context, dirpath, remote, re
 		ctx:        ctx,
 		args:       []string{"fetch", remote, remoteRef + ":" + ref},
 		workingDir: dirpath,
+		remote:     true,
 	})
 	if !r.Success() {
 		return gitResultError(r)

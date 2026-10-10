@@ -851,7 +851,14 @@ func pullOne(c *cli.Context, git *core.GitCommands, project gipProject, all bool
 		return
 	}
 	if !c.Bool("force") {
-		if _, dirty, siErr := git.StatusInfo(ctx, line); siErr == nil && dirty.IsDirty() {
+		// Without --force a pull happens only on a tree known to be clean: if the
+		// check itself fails, report it instead of pulling blind.
+		_, dirty, siErr := git.StatusInfo(ctx, line)
+		if siErr != nil {
+			t.record(opResult{project: project.Name, localPath: line, status: opError, err: fmt.Errorf("checking for uncommitted changes: %w", siErr)})
+			return
+		}
+		if dirty.IsDirty() {
 			t.record(opResult{project: project.Name, localPath: line, status: opSkipped, reason: "uncommitted changes (use --force)"})
 			return
 		}
@@ -1322,6 +1329,7 @@ func doInit(c *cli.Context) error {
 			LocalPath:  repoPath,
 		})
 	}
+	uniqueInitNames(entries, scanDir)
 
 	if len(entries) == 0 {
 		ui.Lifecyclef("No repositories with an origin remote found in %s", scanDir)
@@ -1353,6 +1361,26 @@ func doInit(c *cli.Context) error {
 
 	ui.Lifecyclef("Configuration written to %s (%d repositories)", outputPath, len(entries))
 	return nil
+}
+
+// uniqueInitNames renames entries whose directory name is shared with another
+// repository (e.g. work/a/api and work/b/api) to their path relative to root,
+// since projectsList rejects duplicate project names.
+func uniqueInitNames(entries []initEntry, root string) {
+	count := make(map[string]int, len(entries))
+	for _, e := range entries {
+		count[e.Name]++
+	}
+	for i, e := range entries {
+		if count[e.Name] < 2 {
+			continue
+		}
+		if rel, err := filepath.Rel(root, e.LocalPath); err == nil {
+			entries[i].Name = filepath.ToSlash(rel)
+		} else {
+			entries[i].Name = filepath.ToSlash(e.LocalPath)
+		}
+	}
 }
 
 // scanForRepos walks root up to maxDepth levels deep and returns the paths of

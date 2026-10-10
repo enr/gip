@@ -34,6 +34,9 @@ func TestProjectPath(t *testing.T) {
 		{"~stuff", "~stuff", false},
 		// absolute path passes through
 		{"/tmp/bar", "/tmp/bar", false},
+		// empty path must not silently resolve to the current directory
+		{"", "", true},
+		{"  ", "", true},
 	}
 	for _, tc := range cases {
 		got, err := projectPath(tc.input)

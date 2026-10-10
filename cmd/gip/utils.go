@@ -175,6 +175,11 @@ func projectsList(configurationPath string) ([]gipProject, []string, error) {
 }
 
 func projectPath(ppath string) (string, error) {
+	// An empty path would resolve to the current working directory and make
+	// gip operate on whatever repository it happens to be launched from.
+	if strings.TrimSpace(ppath) == "" {
+		return "", fmt.Errorf("empty local_path")
+	}
 	retpath := ppath
 	if ppath == "~" || strings.HasPrefix(ppath, "~/") {
 		usr, err := user.Current()
