@@ -88,8 +88,9 @@ func (g *GitCommands) Clone(ctx context.Context, repourl string, dirpath string)
 		dirpath,
 	}
 	r := runcmdWrapperRequest{
-		ctx:  ctx,
-		args: args,
+		ctx:    ctx,
+		args:   args,
+		remote: true,
 	}
 	result := g.executor.exec(r)
 	if !result.Success() {
@@ -122,6 +123,7 @@ func (g *GitCommands) Pull(ctx context.Context, dirpath string) error {
 		ctx:        ctx,
 		args:       args,
 		workingDir: dirpath,
+		remote:     true,
 	}
 	result := g.executor.exec(r)
 	if !result.Success() {
@@ -184,6 +186,7 @@ func (g *GitCommands) Fetch(ctx context.Context, dirpath string) error {
 		ctx:        ctx,
 		args:       []string{"fetch", "--all", "--prune"},
 		workingDir: dirpath,
+		remote:     true,
 	}
 	result := g.executor.exec(r)
 	var err error
@@ -225,6 +228,8 @@ func (g *GitCommands) CurrentBranch(ctx context.Context, dirpath string) (string
 
 // BranchSyncStatus holds the upstream delta for the checked-out branch.
 type BranchSyncStatus struct {
+	// Branch is the checked-out branch, "(detached)" for a detached HEAD.
+	Branch   string
 	Ahead    int
 	Behind   int
 	NoRemote bool // true when no upstream tracking branch is configured
@@ -283,6 +288,8 @@ func (d DirtyStatus) IsDirty() bool {
 
 func parseStatusLine(line string, sync *BranchSyncStatus, dirty *DirtyStatus) {
 	switch {
+	case strings.HasPrefix(line, "# branch.head "):
+		sync.Branch = strings.TrimPrefix(line, "# branch.head ")
 	case strings.HasPrefix(line, "# branch.ab "):
 		sync.NoRemote = false
 		fmt.Sscanf(strings.TrimPrefix(line, "# branch.ab "), "+%d -%d", &sync.Ahead, &sync.Behind)
@@ -483,6 +490,7 @@ func (g *GitCommands) FastForwardBranch(ctx context.Context, dirpath, remote, re
 		ctx:        ctx,
 		args:       []string{"fetch", remote, remoteRef + ":" + ref},
 		workingDir: dirpath,
+		remote:     true,
 	})
 	if !r.Success() {
 		return gitResultError(r)

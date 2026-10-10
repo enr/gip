@@ -94,7 +94,7 @@ With `--json` and `--extended`, each project entry gains additional fields:
   "projects": [
     {
       "name": "frontend",
-      "local_path": "~/projects/frontend",
+      "local_path": "/home/user/projects/frontend",
       "repository": "https://github.com/org/frontend.git",
       "policy": "default",
       "provider": "github.com",
@@ -115,6 +115,7 @@ Run `git pull` on managed projects.
 
 - Projects whose `local_path` does not exist are **skipped** unless `pull_policy: always` is set, in which case a `git clone` is performed.
 - Projects with `pull_policy: never` are always skipped.
+- Projects with uncommitted changes are skipped unless `--force` is given; if the check itself fails the project is reported as an error and not pulled. For the same reason `--dirty` requires `--force`.
 
 ```bash
 gip pull
@@ -204,7 +205,7 @@ With `--json` and `--extended`, each project entry gains sync, dirty, and commit
   "projects": [
     {
       "name": "backend",
-      "local_path": "~/projects/backend",
+      "local_path": "/home/user/projects/backend",
       "status": "ok",
       "branch": "dev",
       "ahead": 2,

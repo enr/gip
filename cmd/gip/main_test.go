@@ -2,11 +2,13 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 )
@@ -73,7 +75,9 @@ func makeSlowGit(t *testing.T, tmpDir string, sleepSecs int) {
 		}
 	} else {
 		name = "git"
-		script = fmt.Sprintf("#!/bin/sh\nexec sleep %d\n", sleepSecs)
+		// "config" (the core.sshCommand lookup before network commands) answers
+		// at once, "not set": only the real git operation is slow.
+		script = fmt.Sprintf("#!/bin/sh\n[ \"$1\" = config ] && exit 1\nexec sleep %d\n", sleepSecs)
 	}
 	fakeGitPath := filepath.Join(tmpDir, name)
 	if err := os.WriteFile(fakeGitPath, []byte(script), 0755); err != nil {
@@ -272,6 +276,29 @@ func TestAutoConfigDetection(t *testing.T) {
 	}
 	if !bytes.Contains(out, []byte("repo1")) {
 		t.Fatalf("expected 'repo1' from auto-detected config:\n%s", out)
+	}
+
+	// The auto-detected file is announced on stderr, never on stdout.
+	cmd = exec.Command(binPath, "list")
+	cmd.Dir = workDir
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("list without -f failed: %v", err)
+	}
+	if !strings.Contains(stderr.String(), "using configuration "+configPath) {
+		t.Fatalf("expected the configuration path on stderr, got:\n%s", stderr.String())
+	}
+	if strings.Contains(stdout.String(), "using configuration") {
+		t.Fatalf("configuration path must not go to stdout:\n%s", stdout.String())
+	}
+
+	// --quiet suppresses it.
+	cmd = exec.Command(binPath, "--quiet", "list")
+	cmd.Dir = workDir
+	out, _ = cmd.CombinedOutput()
+	if bytes.Contains(out, []byte("using configuration")) {
+		t.Fatalf("--quiet should suppress the configuration path:\n%s", out)
 	}
 }
 
@@ -722,7 +749,7 @@ func TestPullSkipsDirtyByDefault(t *testing.T) {
 	t.Setenv("PATH", tmpDir+string(os.PathListSeparator)+os.Getenv("PATH"))
 
 	// Default: dirty repo must be skipped, no pull attempted.
-	out, _ := exec.Command(binPath, "-f", configPath, "pull", "--json").CombinedOutput()
+	out, _ := exec.Command(binPath, "-f", configPath, "--json", "pull").CombinedOutput()
 	if _, err := os.Stat(logPath); err == nil {
 		t.Fatalf("pull ran on a dirty repo without --force; output:\n%s", out)
 	}
@@ -736,5 +763,185 @@ func TestPullSkipsDirtyByDefault(t *testing.T) {
 	}
 	if _, err := os.Stat(logPath); err != nil {
 		t.Fatalf("pull --force did not run git pull on the dirty repo: %v", err)
+	}
+}
+
+// TestPullErrorsWhenDirtyCheckFails verifies that without --force a repo whose
+// working-tree check fails is reported as an error and not pulled blind.
+func TestPullErrorsWhenDirtyCheckFails(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("fake git not implemented for windows")
+	}
+	tmpDir := t.TempDir()
+	binPath := buildBinary(t, tmpDir)
+	logPath := filepath.Join(tmpDir, "pull.log")
+	script := fmt.Sprintf(`#!/bin/sh
+case "$1" in
+  status)
+    echo "fatal: index file corrupt" >&2
+    exit 128
+    ;;
+  pull)
+    echo "pulled $(pwd)" >> %q
+    ;;
+esac
+exit 0
+`, logPath)
+	if err := os.WriteFile(filepath.Join(tmpDir, "git"), []byte(script), 0755); err != nil {
+		t.Fatalf("Failed to create fake git: %v", err)
+	}
+
+	repo1 := filepath.Join(tmpDir, "repo1")
+	makeGitRepo(t, repo1)
+	configPath := filepath.Join(tmpDir, ".gip")
+	makeConfig(t, configPath, []string{repo1})
+
+	t.Setenv("PATH", tmpDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	out, err := exec.Command(binPath, "-f", configPath, "--json", "pull").CombinedOutput()
+	if err == nil {
+		t.Fatalf("expected non-zero exit when the dirty check fails; output:\n%s", out)
+	}
+	if _, statErr := os.Stat(logPath); statErr == nil {
+		t.Fatalf("pull ran although the dirty check failed; output:\n%s", out)
+	}
+	if !bytes.Contains(out, []byte("checking for uncommitted changes")) {
+		t.Fatalf("expected dirty-check error in output:\n%s", out)
+	}
+}
+
+// TestEmptyLocalPathIsError verifies that a project with an empty local_path is
+// reported as an error instead of resolving to the current directory.
+func TestEmptyLocalPathIsError(t *testing.T) {
+	tmpDir := t.TempDir()
+	binPath := buildBinary(t, tmpDir)
+
+	// Run from inside a repo: before the fix the empty path resolved to it.
+	cwdRepo := filepath.Join(tmpDir, "cwdrepo")
+	makeGitRepo(t, cwdRepo)
+	configPath := filepath.Join(tmpDir, "cfg.yml")
+	cfg := "- name: x\n  repository: https://github.com/a/b.git\n  local_path: \"\"\n"
+	if err := os.WriteFile(configPath, []byte(cfg), 0644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	cmd := exec.Command(binPath, "-f", configPath, "--json", "exec", "--", "pwd")
+	cmd.Dir = cwdRepo
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Fatalf("expected non-zero exit for empty local_path; output:\n%s", out)
+	}
+	if !bytes.Contains(out, []byte("empty local_path")) {
+		t.Fatalf("expected 'empty local_path' error in output:\n%s", out)
+	}
+}
+
+// TestInitCommand_DuplicateNames verifies that repos sharing a directory name
+// get distinct project names, so the generated config is loadable.
+func TestInitCommand_DuplicateNames(t *testing.T) {
+	tmpDir := t.TempDir()
+	binPath := buildBinary(t, tmpDir)
+
+	scanDir := filepath.Join(tmpDir, "work")
+	for _, sub := range []string{"a", "b"} {
+		repoDir := filepath.Join(scanDir, sub, "api")
+		if err := os.MkdirAll(repoDir, 0755); err != nil {
+			t.Fatalf("mkdir: %v", err)
+		}
+		for _, gitCmd := range [][]string{
+			{"init", repoDir},
+			{"-C", repoDir, "remote", "add", "origin", "https://example.com/" + sub + "/api.git"},
+		} {
+			if out, err := exec.Command("git", gitCmd...).CombinedOutput(); err != nil {
+				t.Fatalf("git %v: %v\n%s", gitCmd, err, out)
+			}
+		}
+	}
+
+	outputPath := filepath.Join(tmpDir, "out.yaml")
+	if out, err := exec.Command(binPath, "init", "--output", outputPath, "--force", scanDir).CombinedOutput(); err != nil {
+		t.Fatalf("init command failed: %v\nOutput: %s", err, out)
+	}
+	if out, err := exec.Command(binPath, "-f", outputPath, "list").CombinedOutput(); err != nil {
+		t.Fatalf("generated config rejected: %v\nOutput: %s", err, out)
+	}
+	data, err := os.ReadFile(outputPath)
+	if err != nil {
+		t.Fatalf("read output: %v", err)
+	}
+	for _, want := range []string{"name: a/api", "name: b/api"} {
+		if !bytes.Contains(data, []byte(want)) {
+			t.Fatalf("expected %q in generated config:\n%s", want, data)
+		}
+	}
+}
+
+// TestPullDirtyRequiresForce verifies that pull --dirty without --force is
+// rejected instead of silently skipping every repository.
+func TestPullDirtyRequiresForce(t *testing.T) {
+	tmpDir := t.TempDir()
+	binPath := buildBinary(t, tmpDir)
+	repo1 := filepath.Join(tmpDir, "repo1")
+	makeGitRepo(t, repo1)
+	configPath := filepath.Join(tmpDir, ".gip")
+	makeConfig(t, configPath, []string{repo1})
+
+	out, err := exec.Command(binPath, "-f", configPath, "pull", "--dirty").CombinedOutput()
+	if err == nil {
+		t.Fatalf("expected pull --dirty without --force to fail; output:\n%s", out)
+	}
+	if !bytes.Contains(out, []byte("--force")) {
+		t.Fatalf("expected the error to mention --force:\n%s", out)
+	}
+}
+
+// TestExecFilterErrorDoesNotRun verifies that when a filter needs the repo
+// state and reading it fails, the command is not run and an error is reported.
+func TestExecFilterErrorDoesNotRun(t *testing.T) {
+	tmpDir := t.TempDir()
+	binPath := buildBinary(t, tmpDir)
+	// An empty .git directory: isProjectDir accepts it, git status fails.
+	repo1 := filepath.Join(tmpDir, "broken")
+	makeGitRepo(t, repo1)
+	configPath := filepath.Join(tmpDir, ".gip")
+	makeConfig(t, configPath, []string{repo1})
+	marker := filepath.Join(tmpDir, "ran")
+
+	cmd := exec.Command(binPath, "-f", configPath, "exec", "--dirty", "--", "touch", marker)
+	cmd.Env = append(os.Environ(), "GIT_CEILING_DIRECTORIES="+tmpDir)
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Fatalf("expected non-zero exit when the filter check fails; output:\n%s", out)
+	}
+	if _, statErr := os.Stat(marker); statErr == nil {
+		t.Fatalf("command ran although the repo state could not be read; output:\n%s", out)
+	}
+	if !bytes.Contains(out, []byte("checking repository state for filters")) {
+		t.Fatalf("expected filter-check error in output:\n%s", out)
+	}
+}
+
+// TestListJSONResolvedLocalPath verifies that list --json reports the resolved
+// local_path (here relative to the config file), like the other commands.
+func TestListJSONResolvedLocalPath(t *testing.T) {
+	tmpDir := t.TempDir()
+	binPath := buildBinary(t, tmpDir)
+	makeGitRepo(t, filepath.Join(tmpDir, "repo1"))
+	configPath := filepath.Join(tmpDir, "cfg.yml")
+	cfg := "- name: repo1\n  repository: https://example.com/r.git\n  local_path: repo1\n"
+	if err := os.WriteFile(configPath, []byte(cfg), 0644); err != nil {
+		t.Fatal(err)
+	}
+	out, err := exec.Command(binPath, "-f", configPath, "--json", "list").Output()
+	if err != nil {
+		t.Fatalf("list --json failed: %v\n%s", err, out)
+	}
+	var got listOutputJSON
+	if err := json.Unmarshal(out, &got); err != nil {
+		t.Fatalf("invalid JSON: %v\n%s", err, out)
+	}
+	want := filepath.Join(tmpDir, "repo1")
+	if len(got.Projects) != 1 || got.Projects[0].LocalPath != want {
+		t.Fatalf("local_path: got %+v, want %q", got.Projects, want)
 	}
 }

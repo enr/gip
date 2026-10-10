@@ -162,7 +162,7 @@ When `--extended` is used with `branch`, each project entry may include:
   "projects": [
     {
       "name": "backend",
-      "local_path": "~/projects/backend",
+      "local_path": "/home/user/projects/backend",
       "status": "ok",
       "branch": "dev",
       "ahead": 2,
