@@ -45,10 +45,21 @@ func (p *gipProject) resolvedPath() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if p.baseDir != "" && !filepath.IsAbs(resolved) {
+	resolved = filepath.FromSlash(resolved)
+	if p.baseDir != "" && !isRootedPath(resolved) {
 		resolved = filepath.Join(p.baseDir, resolved)
 	}
 	return resolved, nil
+}
+
+// isRootedPath reports whether path must not be joined to a base directory.
+// On Windows filepath.IsAbs is false for "\tmp\x" (no drive) and "C:x"
+// (drive-relative), but neither is relative to the configuration file.
+func isRootedPath(path string) bool {
+	if filepath.IsAbs(path) || filepath.VolumeName(path) != "" {
+		return true
+	}
+	return path != "" && os.IsPathSeparator(path[0])
 }
 
 func (p *gipProject) pullNever() bool {
