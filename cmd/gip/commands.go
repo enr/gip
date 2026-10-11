@@ -947,50 +947,7 @@ func doFetch(c *cli.Context) error {
 		go func() {
 			defer wg.Done()
 			defer func() { <-sem }()
-
-			if project.pullNever() {
-				ui.Confidentialf("Skip %s : pull policy never", project.Name)
-				if noopMode {
-					t.printNoop("%s → SKIPPED  (pull_policy: never)", project.Name)
-				}
-				t.record(opResult{project: project.Name, status: opSkipped, reason: "pull_policy: never"})
-				return
-			}
-
-			line, err := project.resolvedPath()
-			if err != nil {
-				t.record(opResult{project: project.Name, status: opError, err: err})
-				return
-			}
-			if !isProjectDir(line) {
-				t.withOutput(func() { warnMissingDir(line) })
-				if noopMode {
-					t.printNoop("%s → SKIPPED  (directory missing)", project.Name)
-				}
-				t.record(opResult{project: project.Name, localPath: line, status: opSkipped, reason: "local dir missing"})
-				return
-			}
-			if noopMode {
-				t.printNoop("%s → git fetch --all --prune  (in %s)", project.Name, line)
-				t.record(opResult{project: project.Name, localPath: line, status: opOK})
-				return
-			}
-			ctx, cancel := opContext(c)
-			defer cancel()
-			skip, reason, err := filterByGitState(ctx, git, line, filterDirty, filterBehind, filterAhead)
-			if err != nil {
-				t.record(opResult{project: project.Name, localPath: line, status: opError, err: err})
-				return
-			}
-			if skip {
-				t.record(opResult{project: project.Name, localPath: line, status: opSkipped, reason: reason})
-				return
-			}
-			if err = git.Fetch(ctx, line); err != nil {
-				t.record(opResult{project: project.Name, localPath: line, status: opError, err: err})
-			} else {
-				t.record(opResult{project: project.Name, localPath: line, status: opOK})
-			}
+			fetchOne(c, git, project, t, filterDirty, filterBehind, filterAhead)
 		}()
 	}
 	wg.Wait()
@@ -1000,6 +957,54 @@ func doFetch(c *cli.Context) error {
 		t.printSummary(c.Bool("errors-last"))
 	}
 	return buildError(t.errors())
+}
+
+// fetchOne fetches a single project, honouring pull_policy and the git state
+// filters.
+func fetchOne(c *cli.Context, git *core.GitCommands, project gipProject, t *tracker, filterDirty, filterBehind, filterAhead bool) {
+	if project.pullNever() {
+		ui.Confidentialf("Skip %s : pull policy never", project.Name)
+		if noopMode {
+			t.printNoop("%s → SKIPPED  (pull_policy: never)", project.Name)
+		}
+		t.record(opResult{project: project.Name, status: opSkipped, reason: "pull_policy: never"})
+		return
+	}
+
+	line, err := project.resolvedPath()
+	if err != nil {
+		t.record(opResult{project: project.Name, status: opError, err: err})
+		return
+	}
+	if !isProjectDir(line) {
+		t.withOutput(func() { warnMissingDir(line) })
+		if noopMode {
+			t.printNoop("%s → SKIPPED  (directory missing)", project.Name)
+		}
+		t.record(opResult{project: project.Name, localPath: line, status: opSkipped, reason: "local dir missing"})
+		return
+	}
+	if noopMode {
+		t.printNoop("%s → git fetch --all --prune  (in %s)", project.Name, line)
+		t.record(opResult{project: project.Name, localPath: line, status: opOK})
+		return
+	}
+	ctx, cancel := opContext(c)
+	defer cancel()
+	skip, reason, err := filterByGitState(ctx, git, line, filterDirty, filterBehind, filterAhead)
+	if err != nil {
+		t.record(opResult{project: project.Name, localPath: line, status: opError, err: err})
+		return
+	}
+	if skip {
+		t.record(opResult{project: project.Name, localPath: line, status: opSkipped, reason: reason})
+		return
+	}
+	if err = git.Fetch(ctx, line); err != nil {
+		t.record(opResult{project: project.Name, localPath: line, status: opError, err: err})
+	} else {
+		t.record(opResult{project: project.Name, localPath: line, status: opOK})
+	}
 }
 
 type branchEntry struct {

@@ -187,25 +187,7 @@ func projectsList(configurationPath string) ([]gipProject, []string, error) {
 
 	nameIndex := make(map[string]int) // tracks first occurrence index of each name
 	for i, p := range projects {
-		if strings.TrimSpace(p.Name) == "" {
-			warn("project #%d has empty name", i+1)
-		}
-		if strings.TrimSpace(p.LocalPath) == "" {
-			warn("project %q (#%d) has empty local_path", p.Name, i+1)
-		}
-		if !p.isValidPullPolicy() {
-			warn("project %q has unknown pull_policy %q (valid values: never, always)", p.Name, p.PullPolicy)
-		}
-		for _, b := range p.Branches {
-			if v := strings.TrimSpace(b); v == "" || strings.HasPrefix(v, "-") {
-				warn("project %q has invalid branch %q in branches (ignored)", p.Name, b)
-			}
-		}
-		if p.Repository == "" {
-			warn("no repository URL for project %s", p.Name)
-		} else if p.repoProvider() == "" {
-			warn("unable to detect provider for project %s using repository URL %s", p.Name, p.Repository)
-		}
+		validateProject(i, p, warn)
 		if name := strings.TrimSpace(p.Name); name != "" {
 			if prevIdx, already := nameIndex[name]; already {
 				return nil, warnings, fmt.Errorf("%s: duplicate project name %q (entries #%d and #%d)", configurationPath, name, prevIdx+1, i+1)
@@ -214,6 +196,30 @@ func projectsList(configurationPath string) ([]gipProject, []string, error) {
 		}
 	}
 	return projects, warnings, nil
+}
+
+// validateProject reports, through warn, the non-fatal problems of the i-th
+// configured project.
+func validateProject(i int, p gipProject, warn func(format string, args ...interface{})) {
+	if strings.TrimSpace(p.Name) == "" {
+		warn("project #%d has empty name", i+1)
+	}
+	if strings.TrimSpace(p.LocalPath) == "" {
+		warn("project %q (#%d) has empty local_path", p.Name, i+1)
+	}
+	if !p.isValidPullPolicy() {
+		warn("project %q has unknown pull_policy %q (valid values: never, always)", p.Name, p.PullPolicy)
+	}
+	for _, b := range p.Branches {
+		if v := strings.TrimSpace(b); v == "" || strings.HasPrefix(v, "-") {
+			warn("project %q has invalid branch %q in branches (ignored)", p.Name, b)
+		}
+	}
+	if p.Repository == "" {
+		warn("no repository URL for project %s", p.Name)
+	} else if p.repoProvider() == "" {
+		warn("unable to detect provider for project %s using repository URL %s", p.Name, p.Repository)
+	}
 }
 
 func projectPath(ppath string) (string, error) {

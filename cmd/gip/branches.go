@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/urfave/cli/v2"
@@ -122,25 +123,30 @@ func pullExtraBranches(c *cli.Context, git *core.GitCommands, t *tracker, projec
 	}
 	for _, info := range infos {
 		t.expect(1)
-		res := opResult{project: branchLabel(project, info.Name), localPath: line, branch: info.Name}
-		switch {
-		case !info.Exists:
-			res.status, res.reason = opSkipped, "branch not found locally"
-		case info.NoRemote || info.Remote == "":
-			res.status, res.reason = opSkipped, "no upstream configured"
-		case branchFilteredOut(info, filterBehind, filterAhead):
-			res.status, res.reason = opSkipped, "not ahead or behind"
-		case info.Ahead > 0 && info.Behind == 0:
-			res.status, res.reason = opSkipped, "ahead of upstream (nothing to pull)"
-		default:
-			if err := git.FastForwardBranch(ctx, line, info.Remote, info.RemoteRef, info.Name); err != nil {
-				res.status, res.err = opError, err
-			} else {
-				res.status = opOK
-				info := info
-				t.withOutput(func() { ui.Lifecyclef("%s [%s]  up to date with %s", line, info.Name, info.Remote) })
-			}
-		}
-		t.record(res)
+		t.record(pullExtraBranch(ctx, git, t, project, line, info, filterBehind, filterAhead))
 	}
+}
+
+// pullExtraBranch fast-forwards a single extra branch, or reports why it was
+// skipped.
+func pullExtraBranch(ctx context.Context, git *core.GitCommands, t *tracker, project gipProject, line string, info core.BranchInfo, filterBehind, filterAhead bool) opResult {
+	res := opResult{project: branchLabel(project, info.Name), localPath: line, branch: info.Name}
+	switch {
+	case !info.Exists:
+		res.status, res.reason = opSkipped, "branch not found locally"
+	case info.NoRemote || info.Remote == "":
+		res.status, res.reason = opSkipped, "no upstream configured"
+	case branchFilteredOut(info, filterBehind, filterAhead):
+		res.status, res.reason = opSkipped, "not ahead or behind"
+	case info.Ahead > 0 && info.Behind == 0:
+		res.status, res.reason = opSkipped, "ahead of upstream (nothing to pull)"
+	default:
+		if err := git.FastForwardBranch(ctx, line, info.Remote, info.RemoteRef, info.Name); err != nil {
+			res.status, res.err = opError, err
+		} else {
+			res.status = opOK
+			t.withOutput(func() { ui.Lifecyclef("%s [%s]  up to date with %s", line, info.Name, info.Remote) })
+		}
+	}
+	return res
 }
