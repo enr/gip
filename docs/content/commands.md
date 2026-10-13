@@ -220,6 +220,49 @@ With `--json` and `--extended`, each project entry gains sync, dirty, and commit
 }
 ```
 
+## releases
+
+Show, for every project, the latest tag reachable from the checked-out branch and how many commits were made after it. Projects with commits after their latest tag are candidates for a new release.
+
+```bash
+gip releases
+gip releases --pending          # only projects with unreleased commits
+gip releases --match 'v*'       # only consider tags matching a glob
+gip releases --pending --tag work
+gip --json releases --pending
+```
+
+Example output:
+
+```text
+NAME        TAG           COMMITS  TAG DATE      BRANCH  PATH
+backend     v1.4.0        7        3 weeks ago   main    ~/projects/backend
+dotfiles    (none)        42       —             main    ~/dotfiles
+frontend    v2.0.1        0        2 days ago    main    ~/projects/frontend
+scratch     (no commits)  —        —             —       ~/projects/scratch
+```
+
+- Both annotated and lightweight tags are considered (`git describe --tags`). The tag is looked up from `HEAD`, so the result depends on the checked-out branch, shown in the BRANCH column.
+- `COMMITS` is the number of commits after the tag; for a project that was never tagged (`(none)`) it is the total number of commits.
+- `--pending` keeps only projects with commits after the latest tag, or never tagged; the others are reported as skipped.
+- Only local refs are read: run `gip fetch` first to see tags created elsewhere.
+- The usual `--dirty`, `--behind`, `--ahead` and `--unsynced` filters are supported.
+
+With `--json`, each project entry gains tag fields (`commits_since_tag` is always present, `0` included, when the repository has commits):
+
+```json
+{
+  "name": "backend",
+  "local_path": "/home/user/projects/backend",
+  "status": "ok",
+  "branch": "main",
+  "last_tag": "v1.4.0",
+  "commits_since_tag": 7,
+  "tag_date": "3 weeks ago",
+  "unreleased": true
+}
+```
+
 ## exec
 
 Execute an arbitrary command inside every project directory. Use `--` to separate gip flags from the command and its arguments.

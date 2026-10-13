@@ -497,3 +497,103 @@ func (g *GitCommands) FastForwardBranch(ctx context.Context, dirpath, remote, re
 	}
 	return nil
 }
+
+// TagInfo describes the latest tag reachable from HEAD and how far HEAD has
+// moved since then.
+type TagInfo struct {
+	// Tag is the latest reachable tag, empty when no tag is reachable from HEAD.
+	Tag string
+	// CommitsSince counts the commits between Tag and HEAD; when Tag is empty
+	// it is the total number of commits reachable from HEAD.
+	CommitsSince int
+	// TagDate is the relative creation date of Tag (tagger date for annotated
+	// tags, commit date for lightweight ones).
+	TagDate string
+	// NoCommits is true for a repository without commits (unborn HEAD).
+	NoCommits bool
+}
+
+// Unreleased reports whether HEAD carries commits not covered by a tag: either
+// commits after the latest tag, or commits in a repository never tagged.
+func (t TagInfo) Unreleased() bool {
+	return !t.NoCommits && (t.Tag == "" || t.CommitsSince > 0)
+}
+
+// parseDescribeLong splits "git describe --long" output ("<tag>-<n>-g<sha>")
+// into tag and commit count. Tags may contain dashes, so it splits from the right.
+func parseDescribeLong(out string) (tag string, count int, err error) {
+	out = strings.TrimSpace(out)
+	shaSep := strings.LastIndex(out, "-")
+	if shaSep <= 0 {
+		return "", 0, fmt.Errorf("unexpected git describe output %q", out)
+	}
+	countSep := strings.LastIndex(out[:shaSep], "-")
+	if countSep <= 0 {
+		return "", 0, fmt.Errorf("unexpected git describe output %q", out)
+	}
+	if _, err := fmt.Sscanf(out[countSep+1:shaSep], "%d", &count); err != nil {
+		return "", 0, fmt.Errorf("unexpected git describe output %q", out)
+	}
+	return out[:countSep], count, nil
+}
+
+// isNoTagError reports whether git describe failed only because no tag is
+// reachable (as opposed to a broken repository).
+func isNoTagError(stderr string) bool {
+	return strings.Contains(stderr, "No names found") || strings.Contains(stderr, "No tags can describe")
+}
+
+// LatestTag returns the latest tag reachable from HEAD and the number of
+// commits made after it. match, when not empty, is a glob restricting the
+// tags considered (git describe --match). It reads local refs only.
+func (g *GitCommands) LatestTag(ctx context.Context, dirpath, match string) (TagInfo, error) {
+	if strings.HasPrefix(dirpath, "-") {
+		return TagInfo{}, fmt.Errorf("invalid dirpath: cannot start with '-'")
+	}
+	args := []string{"describe", "--tags", "--long"}
+	if match != "" {
+		args = append(args, "--match="+match)
+	}
+	r := g.executor.exec(runcmdWrapperRequest{ctx: ctx, args: args, workingDir: dirpath})
+	if r.Success() {
+		tag, count, err := parseDescribeLong(r.Stdout().String())
+		if err != nil {
+			return TagInfo{}, err
+		}
+		info := TagInfo{Tag: tag, CommitsSince: count}
+		date := g.executor.exec(runcmdWrapperRequest{
+			ctx:        ctx,
+			args:       []string{"for-each-ref", "--format=%(creatordate:relative)", "refs/tags/" + tag},
+			workingDir: dirpath,
+		})
+		if date.Success() {
+			info.TagDate = strings.TrimSpace(date.Stdout().String())
+		}
+		return info, nil
+	}
+	if !isNoTagError(r.Stderr().String()) {
+		return TagInfo{}, gitResultError(r)
+	}
+	// No reachable tag: count every commit, or flag an empty repository.
+	total := g.executor.exec(runcmdWrapperRequest{
+		ctx:        ctx,
+		args:       []string{"rev-list", "--count", "HEAD", "--"},
+		workingDir: dirpath,
+	})
+	if !total.Success() {
+		head := g.executor.exec(runcmdWrapperRequest{
+			ctx:        ctx,
+			args:       []string{"rev-parse", "--verify", "-q", "HEAD"},
+			workingDir: dirpath,
+		})
+		if !head.Success() {
+			return TagInfo{NoCommits: true}, nil
+		}
+		return TagInfo{}, gitResultError(total)
+	}
+	var info TagInfo
+	if _, err := fmt.Sscanf(strings.TrimSpace(total.Stdout().String()), "%d", &info.CommitsSince); err != nil {
+		return TagInfo{}, fmt.Errorf("unexpected git rev-list output %q", total.Stdout().String())
+	}
+	return info, nil
+}

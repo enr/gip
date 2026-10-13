@@ -99,7 +99,7 @@ type gipProject struct {
 
 ### Tracker / JSON output
 
-`tracker` accumulates `opResult` values (one per project). Fields: `project`, `localPath`, `status` (opOK/opError/opSkipped), `err`, `reason`, `branch`. At the end:
+`tracker` accumulates `opResult` values (one per project). Fields: `project`, `localPath`, `status` (opOK/opError/opSkipped), `err`, `reason`, `branch`, plus tag fields (`tagSet`, `lastTag`, `commitsSinceTag`, `tagDate`, `unreleased`) set by `releases` (`cmd/gip/releases.go`, backed by `GitCommands.LatestTag`). At the end:
 - `printSummary(errorsLast bool)` — text table with ANSI color (TTY only).
 - `printJSON(command, warnings)` — single JSON object: `command`, `timestamp`, `projects[]`, `summary{total,ok,errors,skipped,duration_ms}`, `warnings[]`.
 

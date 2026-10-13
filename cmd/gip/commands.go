@@ -122,6 +122,7 @@ var commands = []*cli.Command{
 	&commandPull,
 	&commandFetch,
 	&commandBranch,
+	&commandReleases,
 	&commandExec,
 	&commandInit,
 	&commandCompletion,
