@@ -6,3 +6,7 @@
 *.bak
 
 .issues/*
+
+# Hugo output: the site is built and deployed by .github/workflows/website.yml
+/docs/public/
+/docs/.hugo_build.lock
