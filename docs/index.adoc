@@ -170,7 +170,7 @@ Warnings are printed in yellow and do not block execution. With `--quiet` they a
 
 ## Command flags
 
-The following flags are available on all commands that operate in parallel (`status`, `statusfull`, `pull`, `fetch`, `branch`, `exec`):
+The following flags are available on all commands that operate in parallel (`status`, `statusfull`, `pull`, `fetch`, `branch`, `releases`, `exec`):
 
 [cols="1,3"]
 |===
@@ -298,6 +298,29 @@ infra       (detached)     ~/work/infra
 
 Repositories in detached HEAD state show `(detached)` as the branch name.
 
+### releases
+
+Show, for every project, the latest tag reachable from the checked-out branch and how many commits were made after it: projects with commits after their latest tag are candidates for a new release.
+
+[source,bash]
+----
+gip releases
+gip releases --pending          # only projects with unreleased commits
+gip releases --match 'v*'       # only consider tags matching a glob
+gip --json releases --pending
+----
+
+Example output:
+
+----
+NAME        TAG           COMMITS  TAG DATE      BRANCH  PATH
+backend     v1.4.0        7        3 weeks ago   main    ~/projects/backend
+dotfiles    (none)        42       —             main    ~/dotfiles
+frontend    v2.0.1        0        2 days ago    main    ~/projects/frontend
+----
+
+The latest tag is the closest tag in the history of `HEAD` (`git describe --tags --long`), not the newest by date or the highest version: tags on branches not merged into the checked-out one are ignored, and when several tags point to the same commit annotated tags win over lightweight ones. `COMMITS` counts the commits after the tag (total commits when never tagged). Only local refs are read: run `gip fetch` first.
+
 ### exec
 
 Execute an arbitrary command inside every project directory. Use `--` to separate gip flags from the command and its arguments.
@@ -406,7 +429,7 @@ A single JSON envelope is written to stdout after all projects have been process
 }
 ----
 
-`status` values: `ok`, `error`, `skipped`. The `branch` command adds a `branch` field to each project entry. No ANSI codes appear in JSON output.
+`status` values: `ok`, `error`, `skipped`. The `branch` command adds a `branch` field to each project entry; `releases` adds `branch`, `last_tag`, `commits_since_tag`, `tag_date` and `unreleased`. No ANSI codes appear in JSON output.
 
 ### Dry-run (`--noop`)
 

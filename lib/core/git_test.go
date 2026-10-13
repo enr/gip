@@ -2,8 +2,10 @@ package core
 
 import (
 	"context"
+	"errors"
 	"os"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/enr/clui"
@@ -478,5 +480,98 @@ func TestGitCommands_FastForwardBranch(t *testing.T) {
 	}
 	if err := g.FastForwardBranch(context.Background(), "/tmp/r", "origin", "", "-x"); err == nil {
 		t.Fatal("expected error for branch starting with '-'")
+	}
+}
+
+func TestParseDescribeLong(t *testing.T) {
+	cases := []struct {
+		in    string
+		tag   string
+		count int
+		ok    bool
+	}{
+		{"v1.2.0-5-gabc1234\n", "v1.2.0", 5, true},
+		{"v1.0-rc-1-0-g9635036", "v1.0-rc-1", 0, true},
+		{"release-2024-12-3-gdeadbee", "release-2024-12", 3, true},
+		{"garbage", "", 0, false},
+		{"v1-x-gabc", "", 0, false},
+	}
+	for _, c := range cases {
+		tag, count, err := parseDescribeLong(c.in)
+		if (err == nil) != c.ok {
+			t.Errorf("%q: err=%v, want ok=%v", c.in, err, c.ok)
+			continue
+		}
+		if c.ok && (tag != c.tag || count != c.count) {
+			t.Errorf("%q: got (%q, %d), want (%q, %d)", c.in, tag, count, c.tag, c.count)
+		}
+	}
+}
+
+var latestTagNoTag = &runcmdStubResult{success: false, err: errors.New("exit status 128"), exitStatus: 128, stderr: "fatal: No names found, cannot describe anything."}
+
+func latestTag(t *testing.T, mock *mockGitWrapper, match string) TagInfo {
+	t.Helper()
+	info, err := (&GitCommands{ui: clui.DefaultClui(), executor: mock}).LatestTag(context.Background(), "/tmp/repo", match)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	return info
+}
+
+func TestGitCommands_LatestTag_CommitsAfterTag(t *testing.T) {
+	mock := &mockGitWrapper{results: []runcmdResult{
+		&runcmdStubResult{success: true, stdout: "v1.2.0-5-gabc1234\n"},
+		&runcmdStubResult{success: true, stdout: "3 weeks ago\n"},
+	}}
+	info := latestTag(t, mock, "v*")
+	want := TagInfo{Tag: "v1.2.0", CommitsSince: 5, TagDate: "3 weeks ago"}
+	if info != want || !info.Unreleased() {
+		t.Errorf("got %+v (unreleased=%v), want %+v", info, info.Unreleased(), want)
+	}
+	if got := mock.requests[0].args; !reflect.DeepEqual(got, []string{"describe", "--tags", "--long", "--match=v*"}) {
+		t.Errorf("describe args: %v", got)
+	}
+	if got := mock.requests[1].args; !reflect.DeepEqual(got, []string{"for-each-ref", "--format=%(creatordate:relative)", "refs/tags/v1.2.0"}) {
+		t.Errorf("date args: %v", got)
+	}
+}
+
+func TestGitCommands_LatestTag_HeadOnTag(t *testing.T) {
+	mock := &mockGitWrapper{results: []runcmdResult{&runcmdStubResult{success: true, stdout: "v2.0.0-0-gabc1234\n"}}}
+	info := latestTag(t, mock, "")
+	if info.Tag != "v2.0.0" || info.CommitsSince != 0 || info.Unreleased() {
+		t.Errorf("got %+v", info)
+	}
+	if got := mock.requests[0].args; !reflect.DeepEqual(got, []string{"describe", "--tags", "--long"}) {
+		t.Errorf("describe args: %v", got)
+	}
+}
+
+func TestGitCommands_LatestTag_NoTag(t *testing.T) {
+	mock := &mockGitWrapper{results: []runcmdResult{latestTagNoTag, &runcmdStubResult{success: true, stdout: "42\n"}}}
+	info := latestTag(t, mock, "")
+	if info.Tag != "" || info.CommitsSince != 42 || !info.Unreleased() {
+		t.Errorf("got %+v", info)
+	}
+}
+
+func TestGitCommands_LatestTag_EmptyRepository(t *testing.T) {
+	fail := &runcmdStubResult{success: false, err: errors.New("exit status 128"), exitStatus: 128}
+	info := latestTag(t, &mockGitWrapper{results: []runcmdResult{latestTagNoTag, fail, fail}}, "")
+	if !info.NoCommits || info.Unreleased() {
+		t.Errorf("got %+v", info)
+	}
+}
+
+func TestGitCommands_LatestTag_Errors(t *testing.T) {
+	ui := clui.DefaultClui()
+	mock := &mockGitWrapper{result: &runcmdStubResult{success: false, err: errors.New("exit status 128"), stderr: "fatal: not a git repository"}}
+	_, err := (&GitCommands{ui: ui, executor: mock}).LatestTag(context.Background(), "/tmp/repo", "")
+	if err == nil || !strings.Contains(err.Error(), "not a git repository") {
+		t.Errorf("expected git error, got %v", err)
+	}
+	if _, err := (&GitCommands{ui: ui, executor: &mockGitWrapper{}}).LatestTag(context.Background(), "--repo", ""); err == nil {
+		t.Error("expected error for dirpath starting with '-'")
 	}
 }

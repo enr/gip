@@ -21,7 +21,7 @@ These flags are available on every command.
 
 ### Parallel command flags
 
-The following flags are available on all parallel commands (`status`, `statusfull`, `pull`, `fetch`, `branch`, `exec`):
+The following flags are available on all parallel commands (`status`, `statusfull`, `pull`, `fetch`, `branch`, `releases`, `exec`):
 
 | Flag | Description |
 |------|-------------|
@@ -33,6 +33,15 @@ The following flags are available on all parallel commands (`status`, `statusful
 | `--behind` | Only include repos behind their upstream; requires up-to-date remote refs — run `gip fetch` first |
 | `--ahead` | Only include repos ahead of their upstream; requires up-to-date remote refs — run `gip fetch` first |
 | `--unsynced` | Only include repos out of sync with upstream (ahead or behind); alias for `--behind --ahead` |
+
+### Releases flags
+
+Available on `releases`, in addition to the parallel command flags.
+
+| Flag | Description |
+|------|-------------|
+| `-p, --pending` | Only include projects with commits after the latest tag, or never tagged |
+| `--match <glob>` | Only consider tags matching the glob (`git describe --match`), e.g. `'v*'` |
 
 ### Extended view (`--extended`)
 
@@ -175,6 +184,18 @@ When `--extended` is used with `branch`, each project entry may include:
   "warnings": []
 }
 ```
+
+#### Tag JSON fields (`releases`)
+
+The `releases` command adds to each project entry with at least one commit:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `branch` | string | Checked-out branch the tag is looked up from |
+| `last_tag` | string | Latest tag reachable from `HEAD`; omitted when the project was never tagged |
+| `commits_since_tag` | int | Commits after `last_tag` (total commits when never tagged); always present, `0` included |
+| `tag_date` | string | Relative creation date of the tag (e.g. `"3 weeks ago"`) |
+| `unreleased` | bool | `true` when there are commits after the tag, or the project was never tagged; omitted when `false` |
 
 #### Extended JSON fields (`list --extended`)
 

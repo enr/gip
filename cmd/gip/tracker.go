@@ -43,6 +43,12 @@ type opResult struct {
 	dirtySymbols string // "+*?$" indicators, empty string when not collected or clean
 	commitMsg    string
 	commitDate   string
+	// latest tag info (set by doReleases)
+	tagSet          bool
+	lastTag         string
+	commitsSinceTag int
+	tagDate         string
+	unreleased      bool
 }
 
 func (r opResult) statusString() string {
@@ -73,6 +79,12 @@ type projectJSON struct {
 	Dirty      string `json:"dirty,omitempty"`
 	CommitMsg  string `json:"commit_msg,omitempty"`
 	CommitDate string `json:"commit_date,omitempty"`
+	// releases command: CommitsSinceTag is a pointer so that 0 (HEAD on the
+	// tag) is still emitted.
+	LastTag         string `json:"last_tag,omitempty"`
+	CommitsSinceTag *int   `json:"commits_since_tag,omitempty"`
+	TagDate         string `json:"tag_date,omitempty"`
+	Unreleased      bool   `json:"unreleased,omitempty"`
 }
 
 type summaryJSON struct {
@@ -279,6 +291,13 @@ func (t *tracker) printJSON(command string, warnings []string) {
 		}
 		if r.dirtySymbols != "" {
 			p.Dirty = r.dirtySymbols
+		}
+		if r.tagSet {
+			commits := r.commitsSinceTag
+			p.LastTag = r.lastTag
+			p.CommitsSinceTag = &commits
+			p.TagDate = r.tagDate
+			p.Unreleased = r.unreleased
 		}
 		projects = append(projects, p)
 		switch r.status {
