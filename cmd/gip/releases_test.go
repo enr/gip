@@ -123,3 +123,43 @@ func TestReleases(t *testing.T) {
 		}
 	})
 }
+
+// TestReleasesTagSelection pins the documented rules for picking the latest
+// tag: closest in HEAD's history (not highest version), tags on unmerged
+// branches ignored, annotated preferred over lightweight on the same commit.
+func TestReleasesTagSelection(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not available")
+	}
+	root := t.TempDir()
+	repo := filepath.Join(root, "repo")
+	runGit(t, root, "init", "-q", "-b", "main", repo)
+	runGit(t, repo, "commit", "-q", "--allow-empty", "-m", "c1")
+	runGit(t, repo, "tag", "v9.0.0")
+	runGit(t, repo, "commit", "-q", "--allow-empty", "-m", "c2")
+	runGit(t, repo, "tag", "a-light")
+	runGit(t, repo, "tag", "-a", "v1.0.0", "-m", "annotated")
+	runGit(t, repo, "checkout", "-q", "-b", "maint")
+	runGit(t, repo, "commit", "-q", "--allow-empty", "-m", "m1")
+	runGit(t, repo, "tag", "v1.0.1")
+	runGit(t, repo, "checkout", "-q", "main")
+	runGit(t, repo, "commit", "-q", "--allow-empty", "-m", "c3")
+
+	binPath := buildBinary(t, root)
+	cfg := filepath.Join(root, ".gip")
+	content := fmt.Sprintf("- name: repo\n  local_path: %s\n  repository: \"https://example.com/r.git\"\n", repo)
+	if err := os.WriteFile(cfg, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+	var parsed struct {
+		Projects []releaseProjectJSON `json:"projects"`
+	}
+	out := runReleases(t, binPath, cfg, "--json", "releases")
+	if err := json.Unmarshal([]byte(out), &parsed); err != nil || len(parsed.Projects) != 1 {
+		t.Fatalf("invalid JSON (%v):\n%s", err, out)
+	}
+	p := parsed.Projects[0]
+	if p.LastTag != "v1.0.0" || derefInt(p.CommitsSinceTag) != "1" {
+		t.Errorf("got tag=%q commits=%s, want v1.0.0 and 1 (closest annotated tag, maint's v1.0.1 unmerged)", p.LastTag, derefInt(p.CommitsSinceTag))
+	}
+}

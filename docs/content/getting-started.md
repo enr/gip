@@ -107,6 +107,22 @@ gip branch --dirty --extended
 gip fetch && gip pull --behind
 ```
 
+## Find projects to release
+
+List the projects with commits after their latest tag (or never tagged):
+
+```bash
+gip fetch && gip releases --pending
+```
+
+```text
+NAME      TAG     COMMITS  TAG DATE     BRANCH  PATH
+backend   v1.4.0  7        3 weeks ago  main    ~/projects/backend
+dotfiles  (none)  42       —            main    ~/dotfiles
+```
+
+See [releases](/gip/commands/#releases) for how the latest tag is chosen.
+
 ## Filter by tag
 
 Run any command against a tagged subset:

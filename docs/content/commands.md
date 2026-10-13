@@ -242,11 +242,21 @@ frontend    v2.0.1        0        2 days ago    main    ~/projects/frontend
 scratch     (no commits)  —        —             —       ~/projects/scratch
 ```
 
-- Both annotated and lightweight tags are considered (`git describe --tags`). The tag is looked up from `HEAD`, so the result depends on the checked-out branch, shown in the BRANCH column.
+- Both annotated and lightweight tags are considered. The tag is looked up from `HEAD`, so the result depends on the checked-out branch, shown in the BRANCH column.
 - `COMMITS` is the number of commits after the tag; for a project that was never tagged (`(none)`) it is the total number of commits.
 - `--pending` keeps only projects with commits after the latest tag, or never tagged; the others are reported as skipped.
 - Only local refs are read: run `gip fetch` first to see tags created elsewhere.
 - The usual `--dirty`, `--behind`, `--ahead` and `--unsynced` filters are supported.
+
+### How the latest tag is chosen
+
+gip relies on `git describe --tags --long`: the "latest" tag is the **closest tag in the history of `HEAD`**, not the most recent by date or the highest version number.
+
+- Only tags reachable from `HEAD` count. A tag created on a branch not merged into the checked-out one (e.g. `v1.0.1` on a maintenance branch) is ignored until that branch is merged.
+- Among reachable tags, the one with the fewest commits between it and `HEAD` wins. Version numbers are not compared: if `v9.0.0` is further back in history than `v1.0.0`, `v1.0.0` is reported.
+- When several tags point to the same commit, annotated tags win over lightweight ones, and the most recent annotated tag (by tagger date) wins among them.
+- `COMMITS` is the number of commits in `HEAD` not reachable from the tag (`git rev-list --count <tag>..HEAD`), merge commits included.
+- `--match <glob>` restricts the candidates, e.g. `--match 'v*'` to ignore non-release tags such as `nightly` or `deploy-*`.
 
 With `--json`, each project entry gains tag fields (`commits_since_tag` is always present, `0` included, when the repository has commits):
 

@@ -39,9 +39,14 @@ Repositories can be registered in a YAML or JSON file, eg:
 
 Available commands:
 
-- status
-- pull
+- status / statusfull
 - list
+- pull
+- fetch
+- branch
+- releases: latest tag and commits made after it, to spot projects to release
+- exec
+- init
 
 See [website](https://enr.github.io/gip/) for more.
 
