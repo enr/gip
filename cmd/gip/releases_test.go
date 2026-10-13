@@ -114,6 +114,12 @@ func TestReleases(t *testing.T) {
 		}
 	})
 
+	t.Run("alias", func(t *testing.T) {
+		if out := runReleases(t, binPath, cfg, "-q", "r", "--pending"); !strings.Contains(out, repos["ahead"]) {
+			t.Errorf("gip r --pending: expected ahead in output:\n%s", out)
+		}
+	})
+
 	t.Run("match", func(t *testing.T) {
 		out := runReleases(t, binPath, cfg, "-q", "releases", "--match", "v2*")
 		for _, l := range strings.Split(out, "\n") {

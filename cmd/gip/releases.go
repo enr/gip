@@ -21,7 +21,7 @@ var releasesFlags = append(parallelFlags,
 
 var commandReleases = cli.Command{
 	Name:    "releases",
-	Aliases: []string{"rel"},
+	Aliases: []string{"r", "rel"},
 	Usage:   "show the latest tag and the commits made after it for each project",
 	Description: `Prints, for every project, the latest tag reachable from the checked-out
 branch (HEAD) and the number of commits made after it: projects with

@@ -227,6 +227,7 @@ Show, for every project, the latest tag reachable from the checked-out branch an
 ```bash
 gip releases
 gip releases --pending          # only projects with unreleased commits
+gip r --pending                 # same, using the short alias (also: rel)
 gip releases --match 'v*'       # only consider tags matching a glob
 gip releases --pending --tag work
 gip --json releases --pending
