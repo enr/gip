@@ -16,6 +16,7 @@ import (
 
 var releasesFlags = append(parallelFlags,
 	&cli.BoolFlag{Name: "pending", Aliases: []string{"p"}, Usage: "only include projects with commits after the latest tag (or never tagged)"},
+	&cli.BoolFlag{Name: "tagged", Usage: "only include projects with at least one tag (hide \"(none)\" and \"(no commits)\")"},
 	&cli.StringFlag{Name: "match", Usage: "only consider tags matching this glob (git describe --match), e.g. 'v*'"},
 )
 
@@ -32,6 +33,7 @@ read: run "gip fetch" first to see tags created elsewhere.
 
    gip releases
    gip releases --pending
+   gip releases --tagged --pending
    gip releases --match 'v*'`,
 	Action:       doReleases,
 	Flags:        releasesFlags,
@@ -49,12 +51,26 @@ type releaseEntry struct {
 
 type releasesOptions struct {
 	match                                  string
-	pending                                bool
+	pending, tagged                        bool
 	filterDirty, filterBehind, filterAhead bool
 }
 
 func (o releasesOptions) gitStateFilters() bool {
 	return o.filterDirty || o.filterBehind || o.filterAhead
+}
+
+// skipReason returns why a project with the given tag info is filtered out
+// by --tagged/--pending, or "" when it must be listed.
+func (o releasesOptions) skipReason(info core.TagInfo) string {
+	switch {
+	case (o.tagged || o.pending) && info.NoCommits:
+		return "no commits"
+	case o.tagged && info.Tag == "":
+		return "no tags"
+	case o.pending && !info.Unreleased():
+		return "no commits after latest tag"
+	}
+	return ""
 }
 
 func doReleases(c *cli.Context) error {
@@ -77,7 +93,7 @@ func doReleases(c *cli.Context) error {
 	if err != nil {
 		return exitErrorf(1, "%v", err)
 	}
-	opts := releasesOptions{match: c.String("match"), pending: c.Bool("pending"), filterDirty: c.Bool("dirty")}
+	opts := releasesOptions{match: c.String("match"), pending: c.Bool("pending"), tagged: c.Bool("tagged"), filterDirty: c.Bool("dirty")}
 	opts.filterBehind, opts.filterAhead = syncFilters(c)
 
 	var entriesMu sync.Mutex
@@ -129,7 +145,7 @@ func releaseProject(c *cli.Context, git *core.GitCommands, t *tracker, project g
 			t.printNoop("%s → SKIPPED  (directory missing)", project.Name)
 		}
 		t.record(opResult{project: project.Name, localPath: line, status: opSkipped, reason: "local dir missing"})
-		return entry, !opts.pending && !opts.gitStateFilters()
+		return entry, !opts.pending && !opts.tagged && !opts.gitStateFilters()
 	}
 	if noopMode {
 		t.printNoop("%s → git describe --tags --long  (in %s)", project.Name, line)
@@ -152,11 +168,7 @@ func releaseProject(c *cli.Context, git *core.GitCommands, t *tracker, project g
 		t.record(opResult{project: project.Name, localPath: line, status: opError, err: err})
 		return entry, true
 	}
-	if opts.pending && !entry.info.Unreleased() {
-		reason := "no commits after latest tag"
-		if entry.info.NoCommits {
-			reason = "no commits"
-		}
+	if reason := opts.skipReason(entry.info); reason != "" {
 		t.record(opResult{project: project.Name, localPath: line, status: opSkipped, reason: reason})
 		return entry, false
 	}

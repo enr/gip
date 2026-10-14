@@ -228,6 +228,8 @@ Show, for every project, the latest tag reachable from the checked-out branch an
 gip releases
 gip releases --pending          # only projects with unreleased commits
 gip r --pending                 # same, using the short alias (also: rel)
+gip releases --tagged           # hide projects never tagged
+gip releases --tagged --pending # tagged projects with unreleased commits
 gip releases --match 'v*'       # only consider tags matching a glob
 gip releases --pending --tag work
 gip --json releases --pending
@@ -246,6 +248,7 @@ scratch     (no commits)  —        —             —       ~/projects/scratc
 - Both annotated and lightweight tags are considered. The tag is looked up from `HEAD`, so the result depends on the checked-out branch, shown in the BRANCH column.
 - `COMMITS` is the number of commits after the tag; for a project that was never tagged (`(none)`) it is the total number of commits.
 - `--pending` keeps only projects with commits after the latest tag, or never tagged; the others are reported as skipped.
+- `--tagged` keeps only projects with at least one tag (hides `(none)` and `(no commits)`); combined with `--pending` it lists the tagged projects with commits after their latest tag.
 - Only local refs are read: run `gip fetch` first to see tags created elsewhere.
 - The usual `--dirty`, `--behind`, `--ahead` and `--unsynced` filters are supported.
 

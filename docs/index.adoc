@@ -306,6 +306,7 @@ Show, for every project, the latest tag reachable from the checked-out branch an
 ----
 gip releases
 gip releases --pending          # only projects with unreleased commits
+gip releases --tagged           # hide projects never tagged
 gip releases --match 'v*'       # only consider tags matching a glob
 gip --json releases --pending
 ----

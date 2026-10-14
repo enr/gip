@@ -114,6 +114,20 @@ func TestReleases(t *testing.T) {
 		}
 	})
 
+	t.Run("tagged", func(t *testing.T) {
+		for args, want := range map[string]map[string]bool{
+			"--tagged":           {"ahead": true, "ontag": true, "notag": false, "empty": false},
+			"--tagged --pending": {"ahead": true, "ontag": false, "notag": false, "empty": false},
+		} {
+			out := runReleases(t, binPath, cfg, append([]string{"-q", "releases"}, strings.Fields(args)...)...)
+			for name, listed := range want {
+				if strings.Contains(out, repos[name]) != listed {
+					t.Errorf("%s: %s listed=%v, want %v:\n%s", args, name, !listed, listed, out)
+				}
+			}
+		}
+	})
+
 	t.Run("alias", func(t *testing.T) {
 		if out := runReleases(t, binPath, cfg, "-q", "r", "--pending"); !strings.Contains(out, repos["ahead"]) {
 			t.Errorf("gip r --pending: expected ahead in output:\n%s", out)

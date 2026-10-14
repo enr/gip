@@ -41,6 +41,7 @@ Available on `releases`, in addition to the parallel command flags.
 | Flag | Description |
 |------|-------------|
 | `-p, --pending` | Only include projects with commits after the latest tag, or never tagged |
+| `--tagged` | Only include projects with at least one tag (hides `(none)` and `(no commits)`) |
 | `--match <glob>` | Only consider tags matching the glob (`git describe --match`), e.g. `'v*'` |
 
 ### Extended view (`--extended`)
