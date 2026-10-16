@@ -4,9 +4,28 @@ description: Full reference for all gip commands with flags and examples
 weight: 3
 ---
 
+| Command | Aliases | Description |
+|---------|---------|-------------|
+| [`status`](#status--statusfull) | `s` | Modified files in each project |
+| [`statusfull`](#status--statusfull) | `sf` | Modified and untracked files, plus repos out of sync |
+| [`list`](#list) | `ls` | Registered projects with branch and sync status |
+| [`pull`](#pull) | | `git pull` (or `git clone` for missing repos) |
+| [`fetch`](#fetch) | | `git fetch --all --prune` |
+| [`branch`](#branch) | `br` | Current branch of each project |
+| [`releases`](#releases) | `r`, `rel` | Latest tag and commits made after it |
+| [`exec`](#exec) | | Arbitrary command in each project directory |
+| [`init`](#init) | | Generate a configuration file from existing clones |
+| [`completion`](#completion) | | Shell completion script |
+
+Projects with `disabled: true` are excluded from every command (`list --all` shows them). See [Flags & Output](/gip/flags/) for the flags shared by all commands.
+
 ## status / statusfull
 
-Run `git status --porcelain` on all managed projects. `statusfull` also shows untracked files.
+`status` runs `git status --porcelain --untracked-files=no` on all managed projects and prints the modified files of each one.
+
+`statusfull` also shows untracked files and reports the repositories that are out of sync with their upstream: a project that is clean but ahead, behind or without upstream gets a line with its sync state (`<path>  ↑2`), and a project that is clean and in sync is counted as skipped. When a git-state filter (`--dirty`, `--behind`, `--ahead`, `--unsynced`) is given, `statusfull` behaves like `status` plus untracked files.
+
+Both commands also report the extra `branches` configured for a project (see [Extra branches](/gip/configuration/#extra-branches)).
 
 ```bash
 gip status
@@ -24,26 +43,37 @@ gip -m status
 
 ## list
 
-List all registered projects in an aligned table showing name, local path, pull policy, detected provider, and tags.
+List all registered projects in an aligned table showing name, current branch, sync status, local path, pull policy, detected provider and, when at least one project has tags, tags. Branch and sync status are read with one `git status` call per repository (in parallel, `-j`/`-t` apply).
 
 ```bash
 gip list
 gip list --tag personal
+gip list --all        # include projects with disabled: true
 gip --json list
 ```
 
 Example output:
 
 ```text
-NAME        PATH                    POLICY    PROVIDER
-frontend    ~/projects/frontend     default   github.com
-dotfiles    ~/dotfiles              default   github.com
-legacy      ~/projects/legacy       never     github.com
+NAME      BRANCH  STATUS   PATH                         POLICY   PROVIDER    TAGS
+frontend  main    synced   ~/projects/frontend          default  github.com  work, js
+dotfiles  main    synced*  ~/dotfiles                   default  github.com  personal
+legacy    —       —        ~/projects/legacy (missing)  never    github.com  —
 ```
+
+- `synced*` means in sync with upstream but with uncommitted changes.
+- Missing directories are marked `(missing)`, paths that cannot be resolved `(ERROR)`, disabled projects `(disabled)`.
+- `list` has no summary line and does not accept `--errors-last`.
+
+| Flag | Description |
+|------|-------------|
+| `-a, --all` | Include projects with `disabled: true` |
+| `--extended` | Add the DIRTY column |
+| `--tag`, `--dirty`, `--behind`, `--ahead`, `--unsynced`, `-j`, `-t` | As for the [parallel commands](/gip/flags/#parallel-command-flags) |
 
 ### Extended list (`--extended`)
 
-Add `--extended` to include the current branch, sync status, and dirty indicators for every repository. This runs extra git calls per repo.
+Add `--extended` to include the working-tree dirty indicators as well.
 
 ```bash
 gip list --extended
@@ -60,7 +90,7 @@ dotfiles    main      ↓1        —      ~/dotfiles              default   git
 infra       main      ↑1↓3      *      ~/work/infra            default   github.com
 ```
 
-**STATUS** colour coding:
+**STATUS** colour coding (TTY only):
 
 | Value | Meaning | Colour |
 |-------|---------|--------|
@@ -69,6 +99,8 @@ infra       main      ↑1↓3      *      ~/work/infra            default   git
 | `↓N` | N commits behind upstream | Yellow |
 | `↑N↓M` | Diverged — N ahead, M behind | Red |
 | `no-remote` | No upstream tracking branch configured | White |
+
+In `list`, `synced*` marks a repo in sync with its upstream but with uncommitted changes.
 
 **DIRTY** symbols: `+` staged · `*` unstaged · `?` untracked · `$` stash present · `—` clean
 
@@ -85,7 +117,9 @@ gip list --behind
 gip list --dirty --extended
 ```
 
-With `--json` and `--extended`, each project entry gains additional fields:
+When a filter is active, missing directories and repositories whose state cannot be read are left out.
+
+With `--json` the output has no `summary`. Each entry has `name`, `local_path` (resolved), `repository`, `policy`, `provider` and `tags`; `missing` and `disabled` appear when `true`; `branch`, `ahead`, `behind`, `no_remote` and `dirty` appear when known and non-zero/non-empty, with or without `--extended`:
 
 ```json
 {
@@ -100,8 +134,7 @@ With `--json` and `--extended`, each project entry gains additional fields:
       "provider": "github.com",
       "tags": ["work", "js"],
       "branch": "main",
-      "ahead": 0,
-      "behind": 0,
+      "ahead": 2,
       "dirty": "+*"
     }
   ],
@@ -113,14 +146,21 @@ With `--json` and `--extended`, each project entry gains additional fields:
 
 Run `git pull` on managed projects.
 
-- Projects whose `local_path` does not exist are **skipped** unless `pull_policy: always` is set, in which case a `git clone` is performed.
-- Projects with `pull_policy: never` are always skipped.
+- Projects whose `local_path` does not exist are **skipped**, unless `pull_policy: always` is set or `-a/--all` is given, in which case `git clone <repository> <local_path>` is performed.
+- Projects with `pull_policy: never` are always skipped, even with `--all`.
 - Projects with uncommitted changes are skipped unless `--force` is given; if the check itself fails the project is reported as an error and not pulled. For the same reason `--dirty` requires `--force`.
+- Extra `branches` are fast-forwarded too (see [Extra branches](/gip/configuration/#extra-branches)).
+- `pull` takes no positional arguments.
+
+| Flag | Description |
+|------|-------------|
+| `-a, --all` | Also clone the projects whose directory is missing (except `pull_policy: never`) |
+| `--force` | Pull even when the working tree has uncommitted changes |
 
 ```bash
 gip pull
 gip pull --tag work -j 8
-gip pull -a           # pull all; clone missing repos with pull_policy: always
+gip pull -a           # also clone every missing repo
 gip --noop pull       # preview what would be done
 
 # only pull repos that are behind their upstream
@@ -129,7 +169,7 @@ gip pull --behind
 
 ## fetch
 
-Run `git fetch --all --prune` on all managed projects without merging into the working tree. Projects with `pull_policy: never` are skipped.
+Run `git fetch --all --prune` on all managed projects without merging into the working tree. Projects with `pull_policy: never` and missing directories are skipped; missing repositories are never cloned.
 
 ```bash
 gip fetch
@@ -159,7 +199,7 @@ backend     feature/auth   ~/projects/backend
 infra       (detached)     ~/work/infra
 ```
 
-Repositories in detached HEAD state show `(detached)` as the branch name. Repositories whose directory does not exist show `(missing)`.
+Repositories in detached HEAD state show `(detached)` as the branch name. Repositories whose directory does not exist show `(missing)` (omitted when a git-state filter is active). The table is followed by the usual summary line.
 
 ### Extended branch view (`--extended`)
 
@@ -196,7 +236,7 @@ gip branch --dirty --extended
 gip branch --behind --extended
 ```
 
-With `--json` and `--extended`, each project entry gains sync, dirty, and commit fields:
+With `--json`, each entry has a `branch` field; with `--extended` (or a git-state filter) it gains sync and dirty fields, and with `--extended` the commit fields. Zero, `false` and empty values are omitted:
 
 ```json
 {
@@ -209,7 +249,6 @@ With `--json` and `--extended`, each project entry gains sync, dirty, and commit
       "status": "ok",
       "branch": "dev",
       "ahead": 2,
-      "behind": 0,
       "dirty": "+*",
       "commit_msg": "feat: add auth endpoint",
       "commit_date": "2 hours ago"
@@ -247,10 +286,11 @@ scratch     (no commits)  —        —             —       ~/projects/scratc
 
 - Both annotated and lightweight tags are considered. The tag is looked up from `HEAD`, so the result depends on the checked-out branch, shown in the BRANCH column.
 - `COMMITS` is the number of commits after the tag; for a project that was never tagged (`(none)`) it is the total number of commits.
+- `(no commits)` marks a repository without any commit; `(missing)` a missing directory.
 - `--pending` keeps only projects with commits after the latest tag, or never tagged; the others are reported as skipped.
 - `--tagged` keeps only projects with at least one tag (hides `(none)` and `(no commits)`); combined with `--pending` it lists the tagged projects with commits after their latest tag.
 - Only local refs are read: run `gip fetch` first to see tags created elsewhere.
-- The usual `--dirty`, `--behind`, `--ahead` and `--unsynced` filters are supported.
+- The usual `--dirty`, `--behind`, `--ahead` and `--unsynced` filters are supported. With any filter (including `--pending`/`--tagged`) missing directories are left out of the table.
 
 ### How the latest tag is chosen
 
@@ -279,7 +319,7 @@ With `--json`, each project entry gains tag fields (`commits_since_tag` is alway
 
 ## exec
 
-Execute an arbitrary command inside every project directory. Use `--` to separate gip flags from the command and its arguments.
+Execute an arbitrary command inside every project directory. Use `--` to separate gip flags from the command and its arguments. The command is executed directly, not through a shell: to use pipes, redirections or variables wrap it, e.g. `gip exec -- sh -c 'git log -1 | cat'`.
 
 ```bash
 gip exec -- git fetch --prune
@@ -292,15 +332,18 @@ gip --noop exec -- git reset --hard origin/main
 gip exec --dirty -- git stash
 ```
 
-The command is run in the `local_path` of each project. stdout and stderr of every invocation are collected and printed in a synchronised block so output from different projects does not interleave.
+The command is run in the `local_path` of each project (missing directories are skipped). stdout and stderr of every invocation are collected and printed in a synchronised block so output from different projects does not interleave. A non-zero exit status is reported as an error for that project, and gip exits with status 1.
 
 ## init
 
 Scan a directory recursively for Git repositories and generate a gip configuration file.
 
 ```bash
-# scan ~/projects and write to ~/.gip (asks for confirmation if it exists)
+# scan ~/projects and write .gip in the current directory (asks for confirmation if it exists)
 gip init ~/projects
+
+# write the global configuration
+gip init ~/projects --output ~/.gip
 
 # write to a specific output file
 gip init ~/projects --output ~/work/.gip
@@ -309,16 +352,28 @@ gip init ~/projects --output ~/work/.gip
 gip init . --force --depth 3
 ```
 
-For each `.git/` directory found, gip detects:
+The directory to scan defaults to the current one. For each directory containing a `.git` entry (directory or file, so worktrees and submodules are found too), gip detects:
 
-- the directory name as `name`
+- the directory name as `name` (when two repositories share it, their path relative to the scanned directory is used instead, since names must be unique)
 - the `origin` remote URL as `repository` (via `git remote get-url origin`)
 - the absolute path as `local_path`
 
-Repositories without a configured `origin` remote are skipped with a warning. The generated file is in YAML format.
+gip does not descend into a repository it found, so nested repositories are not listed. Repositories without a configured `origin` remote are skipped with a warning. The generated file is in YAML format, written with `0600` permissions; edit it to add `tags`, `pull_policy` and the other [fields](/gip/configuration/#fields). Nothing is written when no repository is found.
 
 | Flag | Description |
 |------|-------------|
-| `-o, --output <path>` | Output file path (default: `~/.gip`) |
+| `-o, --output <path>` | Output file path (default: `.gip` in the current directory) |
 | `--force` | Overwrite existing file without prompting |
 | `--depth <n>` | Maximum directory scan depth (default: 5) |
+
+## completion
+
+Print a shell completion script for `bash`, `zsh` or `fish`.
+
+```bash
+source <(gip completion bash)
+source <(gip completion zsh)
+gip completion fish > ~/.config/fish/completions/gip.fish
+```
+
+Add the `source` line to `~/.bashrc` / `~/.zshrc` to enable it permanently.

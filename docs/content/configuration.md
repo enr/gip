@@ -51,11 +51,14 @@ The config file is a list of project entries in YAML or JSON. Each entry describ
 | Field | Required | Description |
 |-------|----------|-------------|
 | `name` | yes | Descriptive name for the project. Must be unique across the file. |
-| `repository` | yes | Remote URL (HTTPS or SSH). Used by `pull_policy: always` to clone missing repos. |
+| `repository` | yes | Remote URL (HTTPS or SSH). Used to clone missing repos (`pull_policy: always` or `gip pull --all`) and to detect the provider shown by `list`. |
 | `local_path` | yes | Local directory path. `~` and environment variables are expanded; an unset or empty variable is an error. A relative path is resolved against the directory of the configuration file, not the current directory. |
-| `pull_policy` | no | `never` — always skip this project for `pull` and `fetch`. `always` — clone via `git clone` if `local_path` does not exist. Omit for default behaviour: operate only on already-present directories. |
+| `pull_policy` | no | `never` — always skip this project for `pull` and `fetch`. `always` — clone via `git clone` if `local_path` does not exist. Omit for default behaviour: operate only on already-present directories. Values are case-insensitive. |
 | `branches` | no | Extra local branches reported by `status` and fast-forwarded by `pull` (see [Extra branches](#extra-branches)). |
 | `tags` | no | List of free-form labels. Used by `--tag` filtering (see [Tag filtering](#tag-filtering)). |
+| `disabled` | no | `true` excludes the project from every command; `gip list --all` still shows it, marked `(disabled)`. Default `false`. |
+
+A project's directory counts as present when it contains a `.git` entry; otherwise it is reported as missing (`(missing)` in tables, skipped by commands).
 
 ## Extra branches
 
@@ -68,9 +71,10 @@ By default gip only looks at the branch currently checked out in each repo. List
   branches: [main, release/1.x]
 ```
 
-- `gip status` / `statusfull` print one extra line per listed branch that is ahead, behind or without upstream (`repo [release/1.x]  ↓2`). It reads local refs only: run `gip fetch` first to refresh them. Results appear as `name@branch` in the summary and JSON output.
+- `gip status` / `statusfull` print one extra line per listed branch that is ahead, behind or without upstream (`<path> [release/1.x]  ↓2`); branches in sync or not found locally are counted as skipped. It reads local refs only: run `gip fetch` first to refresh them. Results appear as `name@branch` in the summary and JSON output. With `--dirty` extra branches are not reported.
 - `gip pull` fast-forwards each listed branch that is not checked out from its configured upstream (`git fetch <remote> <upstream>:b`). With `--behind`/`--ahead` the filter is evaluated on each listed branch's own tracking state. Branches that cannot fast-forward (diverged) are reported as errors; local-only or ahead-only branches, missing branches and branches without upstream are skipped. Nothing is ever rewritten and the checked-out branch is never switched.
 - `pull_policy: never` also disables branch updates. The checked-out branch keeps being handled by the normal pull.
+- The checked-out branch, empty names and names starting with `-` are ignored (the latter two with a warning).
 - Without `branches` nothing changes.
 
 ## Tag filtering
@@ -102,7 +106,7 @@ Both YAML list syntaxes are accepted:
 
 A project with no `tags` key is **never matched** when `--tag` is active.
 
-Use `--tag` with a comma-separated list for OR logic:
+Use `--tag` with a comma-separated list, or repeat the flag, for OR logic:
 
 ```bash
 # only repos tagged "work"
@@ -110,12 +114,13 @@ gip status --tag work
 
 # OR: repos tagged "js" or "personal"
 gip pull --tag js,personal
+gip pull --tag js --tag personal   # same
 
 # combine with other flags
 gip exec --tag work -j 8 -- make build
 ```
 
-Matching is case-sensitive.
+Matching is case-sensitive. `--tag` is available on every command except `init` and `completion`.
 
 ## Config file lookup
 
@@ -126,7 +131,9 @@ gip searches for the config file in this order:
 3. `.gip` in the current working directory
 4. `~/.gip` (home directory)
 
-The first match wins. When the file was not given with `-f`, gip prints the one it uses on stderr (`gip: using configuration <path>`; suppressed by `--quiet`), so a `.gip` picked up from the current directory never goes unnoticed.
+The first match wins. If `GIP_FILE` is set but points to a missing file gip stops with an error instead of falling back to the next location; if no file is found at all, gip stops with an error.
+
+When the file was not given with `-f`, gip prints the one it uses on stderr (`gip: using configuration <path>`; suppressed by `--quiet`), so a `.gip` picked up from the current directory never goes unnoticed.
 
 ```bash
 # explicit path
@@ -146,10 +153,11 @@ When the config file is loaded, gip validates every entry and prints a warning f
 - missing or empty `name`
 - missing or empty `local_path`
 - unknown `pull_policy` (accepted values: `never`, `always`)
+- invalid entry in `branches` (empty or starting with `-`; it is ignored)
 - missing `repository` URL
 - repository URL from which the provider cannot be detected
 
-Warnings are printed in yellow and do not block execution. With `--quiet` they are suppressed; with `--json` they appear in the `warnings` array of the output envelope.
+Warnings are printed on stderr in yellow and do not block execution. They are printed in `--quiet` and `--json` mode too; with `--json` they also appear in the `warnings` array of the output envelope.
 
 Some problems are errors instead:
 

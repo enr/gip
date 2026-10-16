@@ -6,16 +6,18 @@ weight: 4
 
 ## Global flags
 
-These flags are available on every command.
+These flags are available on every command and go **before** the command name (`gip --json status`, not `gip status --json`).
 
 | Flag | Description |
 |------|-------------|
 | `-f, --file <path>` | Path to the configuration file (overrides all other lookup methods) |
 | `-d, --debug` | Verbose output: logs every git command executed and the config file path |
-| `-q, --quiet` | Suppress all output except the final summary line |
+| `-q, --quiet` | Suppress per-project output and the progress bar; tables, warnings (on stderr) and the summary line are still printed |
 | `--json` | Emit a single JSON envelope to stdout instead of text output; takes precedence over `--quiet` |
 | `--noop` | Dry-run: print what would be done without executing any git command |
-| `-m, --ignore-missing` | Silently skip projects whose `local_path` does not exist; without this flag a warning is printed |
+| `-m, --ignore-missing` | Do not print the warning for projects whose `local_path` does not exist (they are skipped either way) |
+| `-v, --version` | Print version, revision and build date |
+| `-h, --help` | Show help; `gip <command> --help` shows the command's flags |
 
 ## Command flags
 
@@ -25,14 +27,16 @@ The following flags are available on all parallel commands (`status`, `statusful
 
 | Flag | Description |
 |------|-------------|
-| `-j, --jobs <n>` | Maximum number of repositories to process concurrently (default: 4) |
+| `-j, --jobs <n>` | Maximum number of repositories to process concurrently, 1–32 (default: 4) |
 | `-t, --timeout <seconds>` | Per-operation timeout in seconds; 0 means no timeout (default: 0) |
-| `--tag <tags>` | Filter projects by tag — comma-separated list with OR logic (e.g. `--tag work,js`) |
-| `--errors-last` | Print a grouped error section after the summary instead of inline |
-| `--dirty` | Only include repos with uncommitted changes (staged, unstaged, or untracked files) |
-| `--behind` | Only include repos behind their upstream; requires up-to-date remote refs — run `gip fetch` first |
-| `--ahead` | Only include repos ahead of their upstream; requires up-to-date remote refs — run `gip fetch` first |
+| `--tag <tags>` | Filter projects by tag — comma-separated and/or repeated, OR logic (e.g. `--tag work,js` or `--tag work --tag js`) |
+| `--errors-last` | Also print a grouped error section after the summary (errors are still shown inline) |
+| `--dirty` | Only include repos with uncommitted changes (staged, unstaged or untracked files; a stash alone does not count) |
+| `--behind` | Only include repos behind their upstream (diverged included); requires up-to-date remote refs — run `gip fetch` first |
+| `--ahead` | Only include repos ahead of their upstream (diverged included); requires up-to-date remote refs — run `gip fetch` first |
 | `--unsynced` | Only include repos out of sync with upstream (ahead or behind); alias for `--behind --ahead` |
+
+`list` accepts `--tag`, `-j`, `-t` and the git-state filters, but not `--errors-last` (see [list](/gip/commands/#list)). `pull` adds `-a/--all` and `--force` (see [pull](/gip/commands/#pull)).
 
 ### Releases flags
 
@@ -46,11 +50,12 @@ Available on `releases`, in addition to the parallel command flags.
 
 ### Extended view (`--extended`)
 
-Available on `branch` and `list`. Runs additional git calls per repo to collect upstream sync state, working-tree indicators, and (for `branch`) last commit info.
+Available on `branch` and `list`. On `branch` it runs additional git calls per repo to collect upstream sync state, working-tree indicators and last commit info; `list` always shows branch and sync status, and `--extended` only adds the DIRTY column.
 
 | Flag | Available on | Description |
 |------|-------------|-------------|
-| `--extended` | `branch`, `list` | Show BRANCH, STATUS, DIRTY columns and (branch only) COMMIT and DATE |
+| `--extended` | `branch` | Add STATUS, DIRTY, COMMIT and DATE columns |
+| `--extended` | `list` | Add the DIRTY column |
 
 **STATUS values and colours (TTY only):**
 
@@ -61,6 +66,8 @@ Available on `branch` and `list`. Runs additional git calls per repo to collect 
 | `↓N` | N commits behind upstream | Yellow |
 | `↑N↓M` | Diverged — N ahead, M behind | Red |
 | `no-remote` | No upstream tracking branch | White |
+
+`list` shows `synced*` for a repo in sync with its upstream but with uncommitted changes.
 
 **DIRTY symbols:**
 
@@ -74,7 +81,7 @@ Available on `branch` and `list`. Runs additional git calls per repo to collect 
 
 ### Git-state filter flags (`--dirty` / `--behind` / `--ahead` / `--unsynced`)
 
-These flags skip repos that do not match the requested state before running the main operation. An extra `git status --porcelain=v2 --branch` call is made per repo to evaluate the condition. `--unsynced` is shorthand for `--behind --ahead` and matches any repo that is ahead of or behind its upstream.
+These flags skip repos that do not match the requested state before running the main operation. An extra `git status --porcelain=v2 --branch` call (plus `git stash list`) is made per repo to evaluate the condition. When several are given, `--dirty` must match **and** at least one of the sync filters must match. `--unsynced` is shorthand for `--behind --ahead` and matches any repo that is ahead of or behind its upstream. A repo without upstream never matches the sync filters. If the state of a repo cannot be read, it is reported as an error instead of being treated as matching.
 
 ```bash
 # show status only for repos with uncommitted changes
@@ -100,7 +107,7 @@ gip branch --behind --extended
 
 ### Text (default)
 
-Each project prints its git output inline as it completes. A progress bar is shown on stderr while processing (TTY only, suppressed in `--quiet` and `--json` modes). At the end a summary line is printed:
+Each project prints its git output inline as it completes. A progress bar is shown on stderr while processing (TTY only, suppressed in `--quiet` and `--json` modes). `branch` and `releases` print their table after all projects are processed. At the end a summary line is printed (not by `list`):
 
 ```text
 ─────────────────────────────────────────
@@ -109,11 +116,11 @@ OK: 5   Errors: 1   Skipped: 2   Duration: 3.4s
 
 ### Quiet (`--quiet`)
 
-All per-project output is suppressed; only the final summary line is printed.
+Per-project output and the progress bar are suppressed, as is the `gip: using configuration` line. Tables (`list`, `branch`, `releases`), the final summary line and warnings and errors (on stderr) are still printed.
 
 ### JSON (`--json`)
 
-A single JSON envelope is written to stdout after all projects have been processed:
+A single JSON envelope is written to stdout after all projects have been processed; warnings and the `gip: using configuration` line go to stderr, so stdout can be piped to `jq`. The shape below is shared by `status`, `statusfull`, `pull`, `fetch`, `branch`, `releases` and `exec`; `list` uses its own shape without `summary` (see [list](/gip/commands/#list)). Extra branches appear as separate entries named `name@branch`.
 
 ```json
 {
@@ -149,11 +156,21 @@ A single JSON envelope is written to stdout after all projects have been process
 }
 ```
 
-`status` values: `ok`, `error`, `skipped`. The `reason` field is set for skipped entries (e.g. `"pull_policy: never"`, `"not dirty"`, `"not behind"`).
+`status` values: `ok`, `error`, `skipped`. `error` holds the error message of failed entries; `reason` is set for skipped entries, for example:
+
+| Reason | When |
+|--------|------|
+| `pull_policy: never` | `pull` / `fetch` on a project with `pull_policy: never` |
+| `local dir missing`, `not a project dir` | the directory does not exist or has no `.git` |
+| `uncommitted changes (use --force)` | `pull` on a dirty repo |
+| `not dirty`, `not ahead or behind`, `not behind`, `not ahead` | excluded by a git-state filter |
+| `clean and in sync` | `statusfull` on a repo with nothing to report |
+| `no commits`, `no tags`, `no commits after latest tag` | excluded by `releases --tagged` / `--pending` |
+| `in sync`, `branch not found locally`, `no upstream configured`, `ahead of upstream (nothing to pull)` | extra `branches` entries |
 
 #### Extended JSON fields (`branch --extended`)
 
-When `--extended` is used with `branch`, each project entry may include:
+`branch` always sets `branch`. When `--extended` (or a git-state filter) is used, each project entry may also include:
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -162,8 +179,8 @@ When `--extended` is used with `branch`, each project entry may include:
 | `behind` | int | Commits behind upstream (omitted when 0) |
 | `no_remote` | bool | `true` when no upstream tracking branch is configured |
 | `dirty` | string | Dirty symbols (e.g. `"+*"`); omitted when clean |
-| `commit_msg` | string | Last commit subject line |
-| `commit_date` | string | Relative date of last commit (e.g. `"2 hours ago"`) |
+| `commit_msg` | string | Last commit subject line (`--extended` only) |
+| `commit_date` | string | Relative date of last commit (e.g. `"2 hours ago"`; `--extended` only) |
 
 ```json
 {
@@ -198,18 +215,25 @@ The `releases` command adds to each project entry with at least one commit:
 | `tag_date` | string | Relative creation date of the tag (e.g. `"3 weeks ago"`) |
 | `unreleased` | bool | `true` when there are commits after the tag, or the project was never tagged; omitted when `false` |
 
-#### Extended JSON fields (`list --extended`)
+#### Git fields in `list` JSON
 
-When `--extended` is used with `list`, each project entry may include `branch`, `ahead`, `behind`, `no_remote`, and `dirty` (same meaning as above; no commit fields).
+`list` entries include `branch`, `ahead`, `behind`, `no_remote` and `dirty` whenever they are known and non-empty, with or without `--extended` (same meaning as above; no commit fields).
 
 No ANSI codes appear in any JSON output.
 
 ### Dry-run (`--noop`)
 
-No git command is executed. Each project prints a `[DRY-RUN]` line describing what would happen. Exit code is always 0.
+No git command (or `exec` command) is executed. Each project prints a `[DRY-RUN]` line describing what would happen, and the summary is followed by a reminder. Projects that would run count as OK. The exit status is 0 unless a `local_path` cannot be resolved (e.g. unset environment variable). Git-state filters are not evaluated in dry-run mode. `--noop` has no effect on `list`, `init` and `completion`.
 
 ```bash
 $ gip --noop pull
-[DRY-RUN] frontend → git pull  (in ~/projects/frontend)
-[DRY-RUN] legacy   → SKIPPED  (pull_policy: never)
+[DRY-RUN] frontend → git pull  (in /home/user/projects/frontend)
+[DRY-RUN] legacy → SKIPPED  (pull_policy: never)
+─────────────────────────────────────────
+OK: 1   Errors: 0   Skipped: 1   Duration: 0.0s
+DRY-RUN — no operations performed. Remove --noop to proceed.
 ```
+
+## Exit status
+
+gip exits with status `0` when every project succeeded or was skipped, and `1` when at least one project failed or the command could not start (configuration not found or invalid, bad flag values such as `--jobs 0`). The failed projects are listed on stderr.

@@ -70,7 +70,7 @@ return buildError(t.errors())
 
 ### Output modes
 
-- **Normal**: `clui` calls (Title/Lifecycle/Warnf/Errorf) go to stdout; progress bar overwrites stderr.
+- **Normal**: `clui` Title/Lifecycle go to stdout, Warnf/Errorf to stderr (warnings stay visible in `--quiet`/`--json`); progress bar overwrites stderr.
 - **`--quiet`**: clui verbosity → Low; only the summary line is printed.
 - **`--json`**: clui verbosity → Low (suppresses inline output); `tracker.printJSON` emits a single JSON envelope after `wg.Wait()`.
 - **`--noop`**: skips all git calls; `tracker.printNoop` writes `[DRY-RUN]` lines.
@@ -92,6 +92,7 @@ type gipProject struct {
     PullPolicy string   // "", "never", "always"
     Tags       []string // optional; used by --tag filter (OR logic, comma-separated)
     Branches   []string // optional; extra branches reported by status and fast-forwarded by pull (cmd/gip/branches.go)
+    Disabled   bool     // optional; excluded by filterDisabled from every command (list --all shows it)
 }
 ```
 
