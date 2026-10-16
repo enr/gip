@@ -7,7 +7,7 @@ Manage your Git projects.
 [![Go Report Card](https://goreportcard.com/badge/github.com/enr/gip)](https://goreportcard.com/report/github.com/enr/gip)
 [![Documentation](https://img.shields.io/badge/Website-Documentation-orange)](https://enr.github.io/gip/)
 
-Gip run Git commands on a set of repositories.
+Gip runs Git commands, in parallel, on a set of repositories.
 
 Repositories can be registered in a YAML or JSON file, eg:
 
@@ -39,20 +39,21 @@ Repositories can be registered in a YAML or JSON file, eg:
 
 Available commands:
 
-- status / statusfull
-- list
-- pull
-- fetch
-- branch
+- status / statusfull: modified (and untracked) files
+- list: registered projects with branch and sync status
+- pull: pull, or clone missing repositories
+- fetch: `git fetch --all --prune`
+- branch: current branch of each project
 - releases: latest tag and commits made after it, to spot projects to release
-- exec
-- init
+- exec: arbitrary command in each project directory
+- init: generate a configuration file from existing clones
+- completion: shell completion script (bash, zsh, fish)
 
 See [website](https://enr.github.io/gip/) for more.
 
 ## Development
 
-Download or clone repository.
+Download or clone repository (requires Go 1.25+).
 
 Build (binaries will be created in `bin/`):
 

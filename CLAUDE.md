@@ -42,6 +42,7 @@ The binary lives in `cmd/gip/` (package `main`). The library lives in `lib/core/
 | `commands.go` | Command definitions and `doX` handler functions |
 | `utils.go` | Config file cascade, YAML/JSON parsing, project model, `filterByTag` |
 | `tracker.go` | `tracker` struct, JSON types, progress bar, summary/JSON output |
+| `filters.go` | `gitStateFilter` (`--dirty/--behind/--ahead/--unsynced`, the only place the match rule lives) and `repoState` (`readRepoState` wraps `GitCommands.StatusInfo`) |
 
 **Package-level globals** (`main.go`): `ui *clui.Clui`, `ignoreMissingDirs`, `quietMode`, `noopMode`, `jsonMode`. All goroutines read these after `app.Before` sets them; they are never written after that.
 
@@ -70,7 +71,7 @@ return buildError(t.errors())
 
 ### Output modes
 
-- **Normal**: `clui` calls (Title/Lifecycle/Warnf/Errorf) go to stdout; progress bar overwrites stderr.
+- **Normal**: `clui` Title/Lifecycle go to stdout, Warnf/Errorf to stderr (warnings stay visible in `--quiet`/`--json`); progress bar overwrites stderr.
 - **`--quiet`**: clui verbosity → Low; only the summary line is printed.
 - **`--json`**: clui verbosity → Low (suppresses inline output); `tracker.printJSON` emits a single JSON envelope after `wg.Wait()`.
 - **`--noop`**: skips all git calls; `tracker.printNoop` writes `[DRY-RUN]` lines.
@@ -92,6 +93,7 @@ type gipProject struct {
     PullPolicy string   // "", "never", "always"
     Tags       []string // optional; used by --tag filter (OR logic, comma-separated)
     Branches   []string // optional; extra branches reported by status and fast-forwarded by pull (cmd/gip/branches.go)
+    Disabled   bool     // optional; excluded by filterDisabled from every command (list --all shows it)
 }
 ```
 
@@ -99,11 +101,11 @@ type gipProject struct {
 
 ### Tracker / JSON output
 
-`tracker` accumulates `opResult` values (one per project). Fields: `project`, `localPath`, `status` (opOK/opError/opSkipped), `err`, `reason`, `branch`, plus tag fields (`tagSet`, `lastTag`, `commitsSinceTag`, `tagDate`, `unreleased`) set by `releases` (`cmd/gip/releases.go`, backed by `GitCommands.LatestTag`). At the end:
+`tracker` accumulates `opResult` values (one per project). Fields: `project`, `localPath`, `status` (opOK/opError/opSkipped), `err`, `reason`, `branch`, `state *repoState` (sync/dirty, nil when not read), `commitMsg`/`commitDate`, plus tag fields (`tagSet`, `lastTag`, `commitsSinceTag`, `tagDate`, `unreleased`) set by `releases` (`cmd/gip/releases.go`, backed by `GitCommands.LatestTag`). At the end:
 - `printSummary(errorsLast bool)` — text table with ANSI color (TTY only).
 - `printJSON(command, warnings)` — single JSON object: `command`, `timestamp`, `projects[]`, `summary{total,ok,errors,skipped,duration_ms}`, `warnings[]`.
 
-`list` uses a separate `listOutputJSON` / `listProjectJSON` shape (includes repository, policy, provider, tags, missing).
+`list` uses a separate `listOutputJSON` / `listProjectJSON` shape (includes repository, policy, provider, tags, missing, disabled, error).
 
 ## Testing
 

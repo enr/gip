@@ -6,18 +6,19 @@ weight: 1
 
 ## Installation
 
-Download the latest binary from [GitHub Releases](https://github.com/enr/gip/releases/latest) and place it on your `$PATH`.
+Download the archive for your platform (`gip-<version>_<os>_<arch>.zip`) from [GitHub Releases](https://github.com/enr/gip/releases/latest), extract it and place the `gip` binary (`gip.exe` on Windows) on your `$PATH`.
 
 ```bash
-# Linux / macOS — make it executable
-chmod +x gip
-sudo mv gip /usr/local/bin/gip
+# Linux / macOS
+unzip gip-*_linux_amd64.zip
+chmod +x gip-*/gip
+sudo mv gip-*/gip /usr/local/bin/gip
 
 # Verify
 gip --version
 ```
 
-Or build from source (requires Go 1.21+):
+Or build from source (requires Go 1.25+):
 
 ```bash
 git clone https://github.com/enr/gip
@@ -69,7 +70,7 @@ See which branch each repo is on:
 gip branch
 ```
 
-List all registered projects:
+List all registered projects with their branch and sync status:
 
 ```bash
 gip list
@@ -77,7 +78,7 @@ gip list
 
 ## Get a richer overview
 
-Add `--extended` to `branch` or `list` for a dashboard view with sync status, dirty indicators, and last commit info:
+Add `--extended` to `branch` for a dashboard view with sync status, dirty indicators and last commit info (on `list`, `--extended` adds the DIRTY column):
 
 ```bash
 gip branch --extended
@@ -91,12 +92,12 @@ backend     dev       ↑2        +*     feat: add auth endpoint   2 hours ago ~
 dotfiles    main      ↓1        —      docs: update README       1 week ago  ~/dotfiles
 ```
 
-STATUS colour: green = synced · magenta = ahead · yellow = behind · red = diverged · white = no remote  
+STATUS colour (TTY only): green = synced · magenta = ahead · yellow = behind · red = diverged · white = no remote  
 DIRTY symbols: `+` staged · `*` unstaged · `?` untracked · `$` stash
 
 ## Focus on repos that need attention
 
-Use `--dirty` or `--behind` to limit any command to repos that match:
+Use `--dirty`, `--behind`, `--ahead` or `--unsynced` to limit a command to the repos that match:
 
 ```bash
 # only repos with uncommitted changes
@@ -106,6 +107,8 @@ gip branch --dirty --extended
 # only repos behind their upstream (run fetch first)
 gip fetch && gip pull --behind
 ```
+
+`pull` skips repos with uncommitted changes unless `--force` is given, so `gip pull --dirty` requires `--force`.
 
 ## Find projects to release
 
@@ -133,6 +136,7 @@ gip status --tag work
 
 # OR logic — repos tagged "js" or "personal"
 gip pull --tag js,personal
+gip pull --tag js --tag personal   # same
 ```
 
 ## Scan existing repos
@@ -141,5 +145,15 @@ If you already have repos cloned and want to generate a config file from them:
 
 ```bash
 gip init ~/projects
-# writes to ~/.gip by default
+# writes .gip in the current directory by default
+gip init ~/projects --output ~/.gip
+```
+
+See [init](/gip/commands/#init) for details.
+
+## Shell completion
+
+```bash
+source <(gip completion bash)   # or: zsh
+gip completion fish > ~/.config/fish/completions/gip.fish
 ```

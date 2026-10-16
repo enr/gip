@@ -11,7 +11,7 @@
     </h1>
     <p class="lede">
       <code>gip</code> runs <strong>git operations in parallel</strong> across every repository
-      in a YAML or JSON config file — pull, fetch, status, branch, and arbitrary commands —
+      in a YAML or JSON config file — pull, fetch, status, branch, releases and arbitrary commands —
       with tag filtering, JSON output, and dry-run mode.
     </p>
     <div class="cta">
@@ -97,7 +97,7 @@ OK: 8   Errors: 0   Skipped: 0   3.4s</pre>
         <span class="pillar-tag" style="color: var(--violet); border-color: var(--violet)">04</span>
         <span class="pillar-title">Arbitrary exec</span>
       </div>
-      <p>Run any shell command inside every project directory. Output is synchronized so lines from different repos don't interleave.</p>
+      <p>Run any command inside every project directory. Output is synchronized so lines from different repos don't interleave.</p>
       <code class="pillar-mono">gip exec -- make test</code>
     </div>
   </div>

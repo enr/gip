@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"charm.land/lipgloss/v2"
+
+	"github.com/enr/gip/lib/core"
 )
 
 var (
@@ -29,20 +31,15 @@ const (
 )
 
 type opResult struct {
-	project   string
-	localPath string // resolved path; empty if resolution failed
-	status    opStatus
-	err       error
-	reason    string // human-readable reason for opSkipped
-	branch    string // set by doBranch
-	// extended sync/dirty/commit info (set when --extended/--dirty/--behind is used)
-	syncAhead    int
-	syncBehind   int
-	syncNoRemote bool
-	syncSet      bool   // whether sync info was collected
-	dirtySymbols string // "+*?$" indicators, empty string when not collected or clean
-	commitMsg    string
-	commitDate   string
+	project    string
+	localPath  string // resolved path; empty if resolution failed
+	status     opStatus
+	err        error
+	reason     string     // human-readable reason for opSkipped
+	branch     string     // set by doBranch
+	state      *repoState // nil when the repository state was not read
+	commitMsg  string
+	commitDate string
 	// latest tag info (set by doReleases)
 	tagSet          bool
 	lastTag         string
@@ -112,6 +109,7 @@ type listProjectJSON struct {
 	Tags       []string `json:"tags"`
 	Missing    bool     `json:"missing,omitempty"`
 	Disabled   bool     `json:"disabled,omitempty"`
+	Error      string   `json:"error,omitempty"`
 	Branch     string   `json:"branch,omitempty"`
 	Ahead      int      `json:"ahead,omitempty"`
 	Behind     int      `json:"behind,omitempty"`
@@ -284,13 +282,11 @@ func (t *tracker) printJSON(command string, warnings []string) {
 		if r.err != nil {
 			p.Error = r.err.Error()
 		}
-		if r.syncSet {
-			p.Ahead = r.syncAhead
-			p.Behind = r.syncBehind
-			p.NoRemote = r.syncNoRemote
-		}
-		if r.dirtySymbols != "" {
-			p.Dirty = r.dirtySymbols
+		if r.state != nil {
+			p.Ahead = r.state.sync.Ahead
+			p.Behind = r.state.sync.Behind
+			p.NoRemote = r.state.sync.NoRemote
+			p.Dirty = r.state.dirty.Symbols()
 		}
 		if r.tagSet {
 			commits := r.commitsSinceTag
@@ -356,26 +352,25 @@ func (t *tracker) styleIf(cond bool, s lipgloss.Style, text string) string {
 	return t.applyStyle(s, text)
 }
 
-// colorSync returns the sync label styled by state (TTY only, no-op in JSON mode).
-// ahead=0 behind=0 → green; ahead>0 behind=0 → magenta; behind>0 ahead=0 → yellow;
-// both>0 (diverged) → red; noRemote → white. When dirty is true and the repo is
-// otherwise in sync, the label is suffixed with "*" so "synced" doesn't imply
-// "nothing to do" for a repo with uncommitted local changes.
-func (t *tracker) colorSync(ahead, behind int, noRemote, dirty bool) string {
+// colorSync styles the sync label by state (TTY only): green synced, magenta
+// ahead, yellow behind, red diverged, white no upstream. dirty marks a synced
+// label with "*": "synced" must not suggest nothing to do on a dirty tree.
+func (t *tracker) colorSync(s core.BranchSyncStatus, dirty bool) string {
+	label := s.SyncLabel()
 	switch {
-	case noRemote:
-		return t.applyStyle(styleWhite, "no-remote")
-	case ahead == 0 && behind == 0:
+	case s.NoRemote:
+		return t.applyStyle(styleWhite, label)
+	case s.Ahead == 0 && s.Behind == 0:
 		if dirty {
-			return t.applyStyle(styleOK, "synced*")
+			label += "*"
 		}
-		return t.applyStyle(styleOK, "synced")
-	case ahead > 0 && behind > 0:
-		return t.applyStyle(styleErr, fmt.Sprintf("↑%d↓%d", ahead, behind))
-	case ahead > 0:
-		return t.applyStyle(styleMag, fmt.Sprintf("↑%d", ahead))
+		return t.applyStyle(styleOK, label)
+	case s.Ahead > 0 && s.Behind > 0:
+		return t.applyStyle(styleErr, label)
+	case s.Ahead > 0:
+		return t.applyStyle(styleMag, label)
 	default:
-		return t.applyStyle(styleSkip, fmt.Sprintf("↓%d", behind))
+		return t.applyStyle(styleSkip, label)
 	}
 }
 

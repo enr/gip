@@ -184,8 +184,9 @@ func TestListTabular(t *testing.T) {
 	tmpDir := t.TempDir()
 	binPath := buildBinary(t, tmpDir)
 
+	// list reads the state of every repository: it needs a real one.
 	repo1 := filepath.Join(tmpDir, "alpha")
-	makeGitRepo(t, repo1)
+	runGit(t, tmpDir, "init", "-q", repo1)
 
 	configPath := filepath.Join(tmpDir, ".gip")
 	makeConfig(t, configPath, []string{repo1})
@@ -805,7 +806,7 @@ exit 0
 	if _, statErr := os.Stat(logPath); statErr == nil {
 		t.Fatalf("pull ran although the dirty check failed; output:\n%s", out)
 	}
-	if !bytes.Contains(out, []byte("checking for uncommitted changes")) {
+	if !bytes.Contains(out, []byte("checking repository state")) {
 		t.Fatalf("expected dirty-check error in output:\n%s", out)
 	}
 }
@@ -916,7 +917,7 @@ func TestExecFilterErrorDoesNotRun(t *testing.T) {
 	if _, statErr := os.Stat(marker); statErr == nil {
 		t.Fatalf("command ran although the repo state could not be read; output:\n%s", out)
 	}
-	if !bytes.Contains(out, []byte("checking repository state for filters")) {
+	if !bytes.Contains(out, []byte("checking repository state")) {
 		t.Fatalf("expected filter-check error in output:\n%s", out)
 	}
 }
@@ -926,7 +927,7 @@ func TestExecFilterErrorDoesNotRun(t *testing.T) {
 func TestListJSONResolvedLocalPath(t *testing.T) {
 	tmpDir := t.TempDir()
 	binPath := buildBinary(t, tmpDir)
-	makeGitRepo(t, filepath.Join(tmpDir, "repo1"))
+	runGit(t, tmpDir, "init", "-q", filepath.Join(tmpDir, "repo1"))
 	configPath := filepath.Join(tmpDir, "cfg.yml")
 	cfg := "- name: repo1\n  repository: https://example.com/r.git\n  local_path: repo1\n"
 	if err := os.WriteFile(configPath, []byte(cfg), 0644); err != nil {
