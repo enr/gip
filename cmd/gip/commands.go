@@ -476,6 +476,7 @@ type listRow struct {
 	syncBehind   int
 	syncNoRemote bool
 	dirtySymbols string // "+*?$" or "" when clean/not collected
+	dirty        bool   // staged, unstaged or untracked changes (a stash alone does not count)
 	hasExtended  bool
 }
 
@@ -556,6 +557,7 @@ func enrichRowsWithGit(c *cli.Context, git *core.GitCommands, rows []listRow, jo
 			if syms != "—" {
 				r.dirtySymbols = syms
 			}
+			r.dirty = dirtySt.IsDirty()
 			r.hasExtended = true
 		}()
 	}
@@ -568,7 +570,8 @@ func filterListRows(rows []listRow, filterDirty, filterBehind, filterAhead bool)
 		if r.missingDir || r.pathErr != nil || !r.hasExtended {
 			continue
 		}
-		if filterDirty && r.dirtySymbols == "" {
+		// Same notion of "dirty" as filterByGitState: a stash alone does not count.
+		if filterDirty && !r.dirty {
 			continue
 		}
 		if filterBehind || filterAhead {
@@ -704,7 +707,7 @@ func listSync(t *tracker, r listRow) string {
 	if !r.hasExtended {
 		return "—"
 	}
-	return t.colorSync(r.syncAhead, r.syncBehind, r.syncNoRemote, r.dirtySymbols != "")
+	return t.colorSync(r.syncAhead, r.syncBehind, r.syncNoRemote, r.dirty)
 }
 
 func listDirty(r listRow) string {
@@ -1046,6 +1049,24 @@ func filterByGitState(ctx context.Context, git *core.GitCommands, dirpath string
 	return false, "", nil
 }
 
+// syncFilterSkipReason returns why a repo with the given sync state does not
+// match the --behind/--ahead filters (either one matching is enough), or ""
+// when it matches or no sync filter is set.
+func syncFilterSkipReason(st core.BranchSyncStatus, filterBehind, filterAhead bool) string {
+	if (filterBehind && st.Behind > 0) || (filterAhead && st.Ahead > 0) {
+		return ""
+	}
+	switch {
+	case filterBehind && filterAhead:
+		return "not ahead or behind"
+	case filterBehind:
+		return "not behind"
+	case filterAhead:
+		return "not ahead"
+	}
+	return ""
+}
+
 // enrichBranchEntry populates extended fields on entry from git status. Returns true if the project should be skipped.
 func enrichBranchEntry(ctx context.Context, git *core.GitCommands, entry *branchEntry, projectName, line string, filterDirty, filterBehind, filterAhead, extended bool, t *tracker) bool {
 	syncSt, dirtySt, siErr := git.StatusInfo(ctx, line)
@@ -1068,12 +1089,10 @@ func enrichBranchEntry(ctx context.Context, git *core.GitCommands, entry *branch
 		t.record(opResult{project: projectName, localPath: line, status: opSkipped, reason: "not dirty"})
 		return true
 	}
-	if filterBehind && syncSt.Behind == 0 {
-		t.record(opResult{project: projectName, localPath: line, status: opSkipped, reason: "not behind"})
-		return true
-	}
-	if filterAhead && syncSt.Ahead == 0 {
-		t.record(opResult{project: projectName, localPath: line, status: opSkipped, reason: "not ahead"})
+	// OR logic, as in filterByGitState: --unsynced (--behind --ahead) matches a
+	// repo that is ahead or behind, not only a diverged one.
+	if reason := syncFilterSkipReason(syncSt, filterBehind, filterAhead); reason != "" {
+		t.record(opResult{project: projectName, localPath: line, status: opSkipped, reason: reason})
 		return true
 	}
 	if extended {
