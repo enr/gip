@@ -260,7 +260,7 @@ type DirtyStatus struct {
 	Stashed   bool
 }
 
-// Symbols returns compact status indicators (+*?$), or "—" when clean.
+// Symbols returns compact status indicators (+*?$), empty when clean.
 func (d DirtyStatus) Symbols() string {
 	var b strings.Builder
 	if d.Staged {
@@ -274,9 +274,6 @@ func (d DirtyStatus) Symbols() string {
 	}
 	if d.Stashed {
 		b.WriteByte('$')
-	}
-	if b.Len() == 0 {
-		return "—"
 	}
 	return b.String()
 }

@@ -63,6 +63,7 @@ legacy    —       —        ~/projects/legacy (missing)  never    github.com 
 
 - `synced*` means in sync with upstream but with uncommitted changes.
 - Missing directories are marked `(missing)`, paths that cannot be resolved `(ERROR)`, disabled projects `(disabled)`.
+- A repository whose state cannot be read shows `ERROR` in STATUS; the error is printed on stderr and gip exits with status 1.
 - `list` has no summary line and does not accept `--errors-last`.
 
 | Flag | Description |
@@ -117,9 +118,9 @@ gip list --behind
 gip list --dirty --extended
 ```
 
-When a filter is active, missing directories and repositories whose state cannot be read are left out.
+When a filter is active, missing directories and repositories whose state cannot be read are left out of the table; the latter are still reported as errors.
 
-With `--json` the output has no `summary`. Each entry has `name`, `local_path` (resolved), `repository`, `policy`, `provider` and `tags`; `missing` and `disabled` appear when `true`; `branch`, `ahead`, `behind`, `no_remote` and `dirty` appear when known and non-zero/non-empty, with or without `--extended`:
+With `--json` the output has no `summary`. Each entry has `name`, `local_path` (resolved), `repository`, `policy`, `provider` and `tags`; `missing` and `disabled` appear when `true`, `error` when the path or the repository state cannot be read; `provider` is empty when it cannot be detected; `branch`, `ahead`, `behind`, `no_remote` and `dirty` appear when known and non-zero/non-empty, with or without `--extended`:
 
 ```json
 {

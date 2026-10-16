@@ -50,13 +50,9 @@ type releaseEntry struct {
 }
 
 type releasesOptions struct {
-	match                                  string
-	pending, tagged                        bool
-	filterDirty, filterBehind, filterAhead bool
-}
-
-func (o releasesOptions) gitStateFilters() bool {
-	return o.filterDirty || o.filterBehind || o.filterAhead
+	match           string
+	pending, tagged bool
+	filter          gitStateFilter
 }
 
 // skipReason returns why a project with the given tag info is filtered out
@@ -93,8 +89,7 @@ func doReleases(c *cli.Context) error {
 	if err != nil {
 		return exitErrorf(1, "%v", err)
 	}
-	opts := releasesOptions{match: c.String("match"), pending: c.Bool("pending"), tagged: c.Bool("tagged"), filterDirty: c.Bool("dirty")}
-	opts.filterBehind, opts.filterAhead = syncFilters(c)
+	opts := releasesOptions{match: c.String("match"), pending: c.Bool("pending"), tagged: c.Bool("tagged"), filter: newGitStateFilter(c)}
 
 	var entriesMu sync.Mutex
 	entries := make([]releaseEntry, 0, len(projects))
@@ -145,7 +140,7 @@ func releaseProject(c *cli.Context, git *core.GitCommands, t *tracker, project g
 			t.printNoop("%s → SKIPPED  (directory missing)", project.Name)
 		}
 		t.record(opResult{project: project.Name, localPath: line, status: opSkipped, reason: "local dir missing"})
-		return entry, !opts.pending && !opts.tagged && !opts.gitStateFilters()
+		return entry, !opts.pending && !opts.tagged && !opts.filter.active()
 	}
 	if noopMode {
 		t.printNoop("%s → git describe --tags --long  (in %s)", project.Name, line)
@@ -155,18 +150,21 @@ func releaseProject(c *cli.Context, git *core.GitCommands, t *tracker, project g
 	}
 	ctx, cancel := opContext(c)
 	defer cancel()
-	skip, reason, err := filterByGitState(ctx, git, line, opts.filterDirty, opts.filterBehind, opts.filterAhead)
-	if err == nil && skip {
-		t.record(opResult{project: project.Name, localPath: line, status: opSkipped, reason: reason})
-		return entry, false
-	}
-	if err == nil {
-		entry.info, err = git.LatestTag(ctx, line, opts.match)
-	}
-	if err != nil {
+	fail := func(err error) (releaseEntry, bool) {
 		entry.err = err
 		t.record(opResult{project: project.Name, localPath: line, status: opError, err: err})
 		return entry, true
+	}
+	reason, err := opts.filter.check(ctx, git, line)
+	if err != nil {
+		return fail(err)
+	}
+	if reason != "" {
+		t.record(opResult{project: project.Name, localPath: line, status: opSkipped, reason: reason})
+		return entry, false
+	}
+	if entry.info, err = git.LatestTag(ctx, line, opts.match); err != nil {
+		return fail(err)
 	}
 	if reason := opts.skipReason(entry.info); reason != "" {
 		t.record(opResult{project: project.Name, localPath: line, status: opSkipped, reason: reason})

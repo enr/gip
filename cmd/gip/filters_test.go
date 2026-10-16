@@ -7,6 +7,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"testing"
+
+	"github.com/enr/gip/lib/core"
 )
 
 // setupFilterRepos creates three clones of the same origin: "ahead" (one local
@@ -122,5 +124,66 @@ func TestListDirtyIgnoresStashOnly(t *testing.T) {
 	got = byName(runJSON(t, binPath, cfg, "branch", "--dirty"))
 	if got["stash"]["status"] != "skipped" || got["untracked"]["status"] != "ok" {
 		t.Fatalf("branch --dirty: unexpected results %v", got)
+	}
+}
+
+func TestGitStateFilterSkipReason(t *testing.T) {
+	clean := repoState{}
+	stashOnly := repoState{dirty: core.DirtyStatus{Stashed: true}}
+	untracked := repoState{dirty: core.DirtyStatus{Untracked: true}}
+	ahead := repoState{sync: core.BranchSyncStatus{Ahead: 1}}
+	behind := repoState{sync: core.BranchSyncStatus{Behind: 2}}
+	diverged := repoState{sync: core.BranchSyncStatus{Ahead: 1, Behind: 2}}
+	noRemote := repoState{sync: core.BranchSyncStatus{NoRemote: true}}
+	unsynced := gitStateFilter{behind: true, ahead: true}
+
+	cases := []struct {
+		name   string
+		filter gitStateFilter
+		state  repoState
+		want   string
+	}{
+		{"no filter", gitStateFilter{}, clean, ""},
+		{"dirty: stash alone", gitStateFilter{dirty: true}, stashOnly, "not dirty"},
+		{"dirty: untracked", gitStateFilter{dirty: true}, untracked, ""},
+		{"behind: ahead only", gitStateFilter{behind: true}, ahead, "not behind"},
+		{"ahead: behind only", gitStateFilter{ahead: true}, behind, "not ahead"},
+		{"unsynced: ahead only", unsynced, ahead, ""},
+		{"unsynced: behind only", unsynced, behind, ""},
+		{"unsynced: diverged", unsynced, diverged, ""},
+		{"unsynced: in sync", unsynced, clean, "not ahead or behind"},
+		{"unsynced: no upstream", unsynced, noRemote, "not ahead or behind"},
+		{"dirty and behind: clean", gitStateFilter{dirty: true, behind: true}, behind, "not dirty"},
+	}
+	for _, tc := range cases {
+		if got := tc.filter.skipReason(tc.state); got != tc.want {
+			t.Errorf("%s: got %q, want %q", tc.name, got, tc.want)
+		}
+	}
+}
+
+// TestListReportsUnreadableRepo verifies that list reports a repository whose
+// state cannot be read instead of showing it as if nothing was wrong.
+func TestListReportsUnreadableRepo(t *testing.T) {
+	root := t.TempDir()
+	binPath := buildBinary(t, root)
+	// An empty .git directory: isProjectDir accepts it, git status fails.
+	broken := filepath.Join(root, "broken")
+	makeGitRepo(t, broken)
+	cfg := filepath.Join(root, ".gip")
+	makeConfig(t, cfg, []string{broken})
+
+	cmd := exec.Command(binPath, "-f", cfg, "--json", "list")
+	cmd.Env = append(os.Environ(), "GIT_CEILING_DIRECTORIES="+root)
+	out, err := cmd.Output()
+	if err == nil {
+		t.Fatalf("expected non-zero exit for an unreadable repository:\n%s", out)
+	}
+	var env listOutputJSON
+	if jerr := json.Unmarshal(out, &env); jerr != nil {
+		t.Fatalf("invalid JSON: %v\n%s", jerr, out)
+	}
+	if len(env.Projects) != 1 || env.Projects[0].Error == "" {
+		t.Fatalf("expected the error in the project entry, got %+v", env.Projects)
 	}
 }
