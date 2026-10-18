@@ -117,7 +117,7 @@ func doReleases(c *cli.Context) error {
 		t.printJSON("releases", warnings)
 	} else {
 		printReleasesTable(entries, t)
-		t.printSummary(c.Bool("errors-last"))
+		t.printSummary(c.Bool("errors-last"), c.Bool("show-skipped"))
 	}
 	return buildError(t.errors())
 }

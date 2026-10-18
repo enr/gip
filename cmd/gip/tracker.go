@@ -229,11 +229,11 @@ func (t *tracker) clearProgress() {
 }
 
 // printSummary prints the text summary. Always writes to stdout regardless of quiet mode.
-func (t *tracker) printSummary(errorsLast bool) {
+func (t *tracker) printSummary(errorsLast, showSkipped bool) {
 	t.clearProgress()
 
 	var okCount, errCount, skipCount int
-	var errEntries []opResult
+	var errEntries, skipEntries []opResult
 	for _, r := range t.results {
 		switch r.status {
 		case opOK:
@@ -243,6 +243,7 @@ func (t *tracker) printSummary(errorsLast bool) {
 			errEntries = append(errEntries, r)
 		case opSkipped:
 			skipCount++
+			skipEntries = append(skipEntries, r)
 		}
 	}
 
@@ -259,6 +260,12 @@ func (t *tracker) printSummary(errorsLast bool) {
 		fmt.Fprintf(os.Stdout, "\n%s\n", t.applyStyle(styleDivider, "── Errors ────────────────────────────────"))
 		for _, r := range errEntries {
 			fmt.Fprintf(os.Stdout, "%s %s — %v\n", t.applyStyle(styleErr, "[ERR]"), r.project, r.err)
+		}
+	}
+	if showSkipped && len(skipEntries) > 0 {
+		fmt.Fprintf(os.Stdout, "\n%s\n", t.applyStyle(styleDivider, "── Skipped ───────────────────────────────"))
+		for _, r := range skipEntries {
+			fmt.Fprintf(os.Stdout, "%s %s — %s\n", t.applyStyle(styleSkip, "[SKIP]"), r.project, r.reason)
 		}
 	}
 }

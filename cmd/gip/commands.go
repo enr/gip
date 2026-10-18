@@ -39,6 +39,11 @@ var errorsLastFlag = &cli.BoolFlag{
 	Usage: "print a grouped error section after the summary",
 }
 
+var showSkippedFlag = &cli.BoolFlag{
+	Name:  "show-skipped",
+	Usage: "print the skipped projects, with the reason, after the summary",
+}
+
 var extendedFlag = &cli.BoolFlag{
 	Name:  "extended",
 	Usage: "show dirty indicators in addition to branch and sync status",
@@ -71,6 +76,7 @@ var parallelFlags = []cli.Flag{
 	&cli.IntFlag{Name: "timeout", Aliases: []string{"t"}, Value: 0, Usage: "per-operation timeout in seconds (0 = no timeout)"},
 	tagFlag,
 	errorsLastFlag,
+	showSkippedFlag,
 	dirtyFilterFlag,
 	behindFilterFlag,
 	aheadFilterFlag,
@@ -363,7 +369,7 @@ func gitStatus(c *cli.Context, untracked bool) error {
 	if jsonMode {
 		t.printJSON("status", warnings)
 	} else {
-		t.printSummary(c.Bool("errors-last"))
+		t.printSummary(c.Bool("errors-last"), c.Bool("show-skipped"))
 	}
 	return buildError(t.errors())
 }
@@ -747,7 +753,7 @@ func doPull(c *cli.Context) error {
 	if jsonMode {
 		t.printJSON("pull", warnings)
 	} else {
-		t.printSummary(c.Bool("errors-last"))
+		t.printSummary(c.Bool("errors-last"), c.Bool("show-skipped"))
 	}
 	return buildError(t.errors())
 }
@@ -866,7 +872,7 @@ func doFetch(c *cli.Context) error {
 	if jsonMode {
 		t.printJSON("fetch", warnings)
 	} else {
-		t.printSummary(c.Bool("errors-last"))
+		t.printSummary(c.Bool("errors-last"), c.Bool("show-skipped"))
 	}
 	return buildError(t.errors())
 }
@@ -1064,7 +1070,7 @@ func doBranch(c *cli.Context) error {
 		t.printJSON("branch", warnings)
 	} else {
 		printBranchTable(entries, extended, t)
-		t.printSummary(c.Bool("errors-last"))
+		t.printSummary(c.Bool("errors-last"), c.Bool("show-skipped"))
 	}
 	return buildError(t.errors())
 }
@@ -1154,7 +1160,7 @@ func doExec(c *cli.Context) error {
 	if jsonMode {
 		t.printJSON("exec", warnings)
 	} else {
-		t.printSummary(c.Bool("errors-last"))
+		t.printSummary(c.Bool("errors-last"), c.Bool("show-skipped"))
 	}
 	return buildError(t.errors())
 }

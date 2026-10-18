@@ -31,12 +31,13 @@ The following flags are available on all parallel commands (`status`, `statusful
 | `-t, --timeout <seconds>` | Per-operation timeout in seconds; 0 means no timeout (default: 0) |
 | `--tag <tags>` | Filter projects by tag — comma-separated and/or repeated, OR logic (e.g. `--tag work,js` or `--tag work --tag js`) |
 | `--errors-last` | Also print a grouped error section after the summary (errors are still shown inline) |
+| `--show-skipped` | Also print the skipped projects, each with the reason it was skipped, after the summary |
 | `--dirty` | Only include repos with uncommitted changes (staged, unstaged or untracked files; a stash alone does not count) |
 | `--behind` | Only include repos behind their upstream (diverged included); requires up-to-date remote refs — run `gip fetch` first |
 | `--ahead` | Only include repos ahead of their upstream (diverged included); requires up-to-date remote refs — run `gip fetch` first |
 | `--unsynced` | Only include repos out of sync with upstream (ahead or behind); alias for `--behind --ahead` |
 
-`list` accepts `--tag`, `-j`, `-t` and the git-state filters, but not `--errors-last` (see [list](/gip/commands/#list)). `pull` adds `-a/--all` and `--force` (see [pull](/gip/commands/#pull)).
+`list` accepts `--tag`, `-j`, `-t` and the git-state filters, but not `--errors-last` or `--show-skipped` (see [list](/gip/commands/#list)). `pull` adds `-a/--all` and `--force` (see [pull](/gip/commands/#pull)).
 
 ### Releases flags
 

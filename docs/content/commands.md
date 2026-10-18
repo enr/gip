@@ -64,7 +64,7 @@ legacy    —       —        ~/projects/legacy (missing)  never    github.com 
 - `synced*` means in sync with upstream but with uncommitted changes.
 - Missing directories are marked `(missing)`, paths that cannot be resolved `(ERROR)`, disabled projects `(disabled)`.
 - A repository whose state cannot be read shows `ERROR` in STATUS; the error is printed on stderr and gip exits with status 1.
-- `list` has no summary line and does not accept `--errors-last`.
+- `list` has no summary line and does not accept `--errors-last` or `--show-skipped`.
 
 | Flag | Description |
 |------|-------------|
@@ -163,6 +163,7 @@ gip pull
 gip pull --tag work -j 8
 gip pull -a           # also clone every missing repo
 gip --noop pull       # preview what would be done
+gip pull --show-skipped  # list which projects were skipped, and why
 
 # only pull repos that are behind their upstream
 gip pull --behind

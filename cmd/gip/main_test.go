@@ -946,3 +946,32 @@ func TestListJSONResolvedLocalPath(t *testing.T) {
 		t.Fatalf("local_path: got %+v, want %q", got.Projects, want)
 	}
 }
+
+// TestShowSkippedFlag verifies that --show-skipped lists each skipped project with its reason.
+func TestShowSkippedFlag(t *testing.T) {
+	tmpDir := t.TempDir()
+	binPath := buildBinary(t, tmpDir)
+	makeSlowGit(t, tmpDir, 0)
+
+	repo1 := filepath.Join(tmpDir, "repo1")
+	makeGitRepo(t, repo1)
+	missing := filepath.Join(tmpDir, "missing")
+
+	configPath := filepath.Join(tmpDir, ".gip")
+	makeConfig(t, configPath, []string{repo1, missing})
+
+	t.Setenv("PATH", tmpDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	out, _ := exec.Command(binPath, "-f", configPath, "pull").CombinedOutput()
+	if bytes.Contains(out, []byte("[SKIP]")) {
+		t.Fatalf("skipped section printed without --show-skipped:\n%s", out)
+	}
+
+	out, _ = exec.Command(binPath, "-f", configPath, "pull", "--show-skipped").CombinedOutput()
+	if !bytes.Contains(out, []byte("[SKIP] repo2 — local dir missing")) {
+		t.Fatalf("expected skipped project with reason:\n%s", out)
+	}
+	if bytes.Contains(out, []byte("[SKIP] repo1")) {
+		t.Fatalf("pulled project listed as skipped:\n%s", out)
+	}
+}
