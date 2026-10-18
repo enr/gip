@@ -594,3 +594,59 @@ func (g *GitCommands) LatestTag(ctx context.Context, dirpath, match string) (Tag
 	}
 	return info, nil
 }
+
+// RemoteURLs returns the configured URL of each remote, keyed by remote name.
+// A repository without remotes yields an empty map. It reads the local
+// configuration only.
+func (g *GitCommands) RemoteURLs(ctx context.Context, dirpath string) (map[string]string, error) {
+	if strings.HasPrefix(dirpath, "-") {
+		return nil, fmt.Errorf("invalid dirpath: cannot start with '-'")
+	}
+	r := g.executor.exec(runcmdWrapperRequest{
+		ctx:        ctx,
+		args:       []string{"config", "--get-regexp", `^remote\..*\.url$`},
+		workingDir: dirpath,
+	})
+	urls := make(map[string]string)
+	if !r.Success() {
+		// Exit status 1: no key matched, i.e. no remote configured.
+		if r.ExitStatus() == 1 && strings.TrimSpace(r.Stderr().String()) == "" {
+			return urls, nil
+		}
+		return nil, gitResultError(r)
+	}
+	for _, line := range strings.Split(r.Stdout().String(), "\n") {
+		key, value, ok := strings.Cut(strings.TrimRight(line, "\r"), " ")
+		if !ok {
+			continue
+		}
+		// remote.<name>.url: the name itself may contain dots.
+		name := strings.TrimSuffix(strings.TrimPrefix(key, "remote."), ".url")
+		if _, seen := urls[name]; !seen {
+			urls[name] = strings.TrimSpace(value)
+		}
+	}
+	return urls, nil
+}
+
+// LsRemote checks that repourl is reachable and readable with
+// "git ls-remote <repourl> HEAD". dirpath, when not empty, is the working
+// directory (its core.sshCommand is honoured). Nothing is changed locally.
+func (g *GitCommands) LsRemote(ctx context.Context, dirpath, repourl string) error {
+	if strings.HasPrefix(dirpath, "-") {
+		return fmt.Errorf("invalid dirpath: cannot start with '-'")
+	}
+	if strings.HasPrefix(repourl, "-") {
+		return fmt.Errorf("invalid repository URL: cannot start with '-'")
+	}
+	r := g.executor.exec(runcmdWrapperRequest{
+		ctx:        ctx,
+		args:       []string{"ls-remote", repourl, "HEAD"},
+		workingDir: dirpath,
+		remote:     true,
+	})
+	if !r.Success() {
+		return gitResultError(r)
+	}
+	return nil
+}

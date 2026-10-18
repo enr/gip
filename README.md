@@ -46,6 +46,7 @@ Available commands:
 - branch: current branch of each project
 - releases: latest tag and commits made after it, to spot projects to release
 - exec: arbitrary command in each project directory
+- check: verify the configuration (wrong paths, mismatched remotes, missing branches, unreachable repositories)
 - init: generate a configuration file from existing clones
 - completion: shell completion script (bash, zsh, fish)
 

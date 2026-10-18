@@ -207,6 +207,11 @@ func validateProject(i int, p gipProject, warn func(format string, args ...inter
 	if strings.TrimSpace(p.LocalPath) == "" {
 		warn("project %q (#%d) has empty local_path", p.Name, i+1)
 	}
+	for _, f := range [][2]string{{"local_path", p.LocalPath}, {"repository", p.Repository}} {
+		if f[1] != "" && strings.TrimSpace(f[1]) != f[1] {
+			warn("project %q has leading or trailing spaces in %s %q", p.Name, f[0], f[1])
+		}
+	}
 	if !p.isValidPullPolicy() {
 		warn("project %q has unknown pull_policy %q (valid values: never, always)", p.Name, p.PullPolicy)
 	}

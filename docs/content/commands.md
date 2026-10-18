@@ -14,6 +14,7 @@ weight: 3
 | [`branch`](#branch) | `br` | Current branch of each project |
 | [`releases`](#releases) | `r`, `rel` | Latest tag and commits made after it |
 | [`exec`](#exec) | | Arbitrary command in each project directory |
+| [`check`](#check) | | Verify the configuration against the disk and the remotes |
 | [`init`](#init) | | Generate a configuration file from existing clones |
 | [`completion`](#completion) | | Shell completion script |
 
@@ -335,6 +336,52 @@ gip exec --dirty -- git stash
 ```
 
 The command is run in the `local_path` of each project (missing directories are skipped). stdout and stderr of every invocation are collected and printed in a synchronised block so output from different projects does not interleave. A non-zero exit status is reported as an error for that project, and gip exits with status 1.
+
+## check
+
+Verify the configuration without changing anything. Every enabled project (filtered by `--tag`) is checked and the problems are listed by project, followed by a summary line:
+
+```
+website  /home/me/Projects/website
+  [ERR]  no remote points to repository https://bitbucket.org/me/website.git (found: origin https://github.com/me/site.git)
+tools  /opt/tools
+  [WARN] branch master has no upstream
+─────────────────────────────────────────
+OK: 36   Errors: 1   Warnings: 1   Duration: 0.1s
+```
+
+| Check | Severity |
+|-------|----------|
+| `local_path` cannot be resolved (e.g. unset environment variable) | error |
+| `local_path` is not a directory, or not a git repository | error |
+| No remote points to `repository` | error |
+| Two projects share the same `local_path` | error |
+| `repository` not reachable (`--remote` only) | error |
+| `local_path` missing (not cloned yet: `gip pull -a` clones it) | warning |
+| Detached HEAD, or checked-out branch without upstream | warning |
+| A branch listed in `branches` does not exist locally or has no upstream | warning |
+| `repository` needs credentials gip cannot provide (`--remote` only) | warning |
+
+Remote URLs are compared ignoring protocol, user, port, case and a trailing `.git` or `/`: `https://github.com/me/gip` and `git@github.com:me/gip.git` name the same repository. Any remote may match, not only `origin`. Problems found while reading the configuration (see [Configuration](/gip/configuration/)) are printed as warnings before the report.
+
+With `--remote` each repository is contacted with `git ls-remote` (network access, no change). A request for credentials is reported as a warning: hosts answer a missing private repository the same way, so its existence cannot be told.
+
+gip exits with status 1 when at least one error is found; warnings do not change the exit status.
+
+| Flag | Description |
+|------|-------------|
+| `-r, --remote` | Also check that each repository is reachable (`git ls-remote`) |
+| `--tag <tags>` | Check only the projects with one of the tags; shared directories are still looked for among all enabled projects |
+| `-j, --jobs <n>` | Maximum number of repositories checked concurrently, 1–32 (default: 4) |
+| `-t, --timeout <seconds>` | Per-project timeout in seconds; 0 means no timeout (default: 0) |
+
+```bash
+gip check
+gip check --remote -j 8 -t 30
+gip --json check | jq '.projects[] | select(.status != "ok")'
+```
+
+With `--json` the envelope has `command`, `timestamp`, `projects[]` (`name`, `local_path`, `status`: `ok`/`warning`/`error`, `issues[]` with `severity` and `message`), `summary` (`total`, `ok`, `errors`, `warnings`, `duration_ms`) and `warnings[]` (configuration warnings). With `--quiet` only the summary line is printed.
 
 ## init
 

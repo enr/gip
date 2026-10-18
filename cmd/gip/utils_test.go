@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"os"
 	"os/user"
 	"path/filepath"
@@ -401,5 +402,19 @@ func setupTestUI(t *testing.T) {
 	t.Helper()
 	if ui == nil {
 		ui, _ = clui.NewClui(func(u *clui.Clui) { u.VerbosityLevel = clui.VerbosityLevelLow })
+	}
+}
+
+func TestValidateProjectSurroundingSpaces(t *testing.T) {
+	var warnings []string
+	warn := func(format string, args ...interface{}) { warnings = append(warnings, fmt.Sprintf(format, args...)) }
+	validateProject(0, gipProject{Name: "web", LocalPath: "/tmp/web", Repository: "https://example.com/web.git "}, warn)
+	if len(warnings) != 1 || !strings.Contains(warnings[0], `spaces in repository "https://example.com/web.git "`) {
+		t.Fatalf("expected one warning on repository, got %q", warnings)
+	}
+	warnings = nil
+	validateProject(0, gipProject{Name: "web", LocalPath: "/tmp/web", Repository: "https://example.com/web.git"}, warn)
+	if len(warnings) != 0 {
+		t.Fatalf("expected no warning, got %q", warnings)
 	}
 }

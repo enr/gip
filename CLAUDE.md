@@ -42,6 +42,7 @@ The binary lives in `cmd/gip/` (package `main`). The library lives in `lib/core/
 | `commands.go` | Command definitions and `doX` handler functions |
 | `utils.go` | Config file cascade, YAML/JSON parsing, project model, `filterByTag` |
 | `tracker.go` | `tracker` struct, JSON types, progress bar, summary/JSON output |
+| `check.go` | `check` command: read-only verification of the configuration (paths, remotes vs `repository`, shared dirs, branches; `--remote` runs `GitCommands.LsRemote`), own JSON shape |
 | `filters.go` | `gitStateFilter` (`--dirty/--behind/--ahead/--unsynced`, the only place the match rule lives) and `repoState` (`readRepoState` wraps `GitCommands.StatusInfo`) |
 
 **Package-level globals** (`main.go`): `ui *clui.Clui`, `ignoreMissingDirs`, `quietMode`, `noopMode`, `jsonMode`. All goroutines read these after `app.Before` sets them; they are never written after that.
@@ -63,7 +64,7 @@ for _, project := range projects {
     }()
 }
 wg.Wait()
-if jsonMode { t.printJSON("cmd", warnings) } else { t.printSummary(c.Bool("errors-last")) }
+if jsonMode { t.printJSON("cmd", warnings) } else { t.printSummary(c.Bool("errors-last"), c.Bool("show-skipped")) }
 return buildError(t.errors())
 ```
 
@@ -97,7 +98,7 @@ type gipProject struct {
 }
 ```
 
-`projectsList` returns `([]gipProject, []string, error)` — the second return is collected warnings (empty name, empty local_path, duplicate names, bad pull_policy, undetectable provider).
+`projectsList` returns `([]gipProject, []string, error)` — the second return is collected warnings (empty name, empty local_path, bad pull_policy, invalid branches, missing repository, undetectable provider, surrounding spaces in local_path/repository); duplicate names are an error.
 
 ### Tracker / JSON output
 

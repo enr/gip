@@ -121,7 +121,7 @@ Per-project output and the progress bar are suppressed, as is the `gip: using co
 
 ### JSON (`--json`)
 
-A single JSON envelope is written to stdout after all projects have been processed; warnings and the `gip: using configuration` line go to stderr, so stdout can be piped to `jq`. The shape below is shared by `status`, `statusfull`, `pull`, `fetch`, `branch`, `releases` and `exec`; `list` uses its own shape without `summary` (see [list](/gip/commands/#list)). Extra branches appear as separate entries named `name@branch`.
+A single JSON envelope is written to stdout after all projects have been processed; warnings and the `gip: using configuration` line go to stderr, so stdout can be piped to `jq`. The shape below is shared by `status`, `statusfull`, `pull`, `fetch`, `branch`, `releases` and `exec`; `list` uses its own shape without `summary` (see [list](/gip/commands/#list)) and so does `check` (see [check](/gip/commands/#check)). Extra branches appear as separate entries named `name@branch`.
 
 ```json
 {
@@ -224,7 +224,7 @@ No ANSI codes appear in any JSON output.
 
 ### Dry-run (`--noop`)
 
-No git command (or `exec` command) is executed. Each project prints a `[DRY-RUN]` line describing what would happen, and the summary is followed by a reminder. Projects that would run count as OK. The exit status is 0 unless a `local_path` cannot be resolved (e.g. unset environment variable). Git-state filters are not evaluated in dry-run mode. `--noop` has no effect on `list`, `init` and `completion`.
+No git command (or `exec` command) is executed. Each project prints a `[DRY-RUN]` line describing what would happen, and the summary is followed by a reminder. Projects that would run count as OK. The exit status is 0 unless a `local_path` cannot be resolved (e.g. unset environment variable). Git-state filters are not evaluated in dry-run mode. `--noop` has no effect on `list`, `init` and `completion`; `check` prints a `[DRY-RUN]` line per project and checks nothing.
 
 ```bash
 $ gip --noop pull

@@ -123,6 +123,7 @@ var commands = []*cli.Command{
 	&commandBranch,
 	&commandReleases,
 	&commandExec,
+	&commandCheck,
 	&commandInit,
 	&commandCompletion,
 }

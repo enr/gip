@@ -575,3 +575,59 @@ func TestGitCommands_LatestTag_Errors(t *testing.T) {
 		t.Error("expected error for dirpath starting with '-'")
 	}
 }
+
+func TestGitCommands_RemoteURLs(t *testing.T) {
+	out := "remote.origin.url git@github.com:enr/gip.git\nremote.my.fork.url https://example.com/x.git\n"
+	mock := &mockGitWrapper{result: &runcmdStubResult{success: true, stdout: out}}
+	g := &GitCommands{ui: clui.DefaultClui(), executor: mock}
+
+	urls, err := g.RemoteURLs(context.Background(), "/tmp/r")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	want := map[string]string{"origin": "git@github.com:enr/gip.git", "my.fork": "https://example.com/x.git"}
+	if !reflect.DeepEqual(urls, want) {
+		t.Fatalf("got %v, want %v", urls, want)
+	}
+
+	// exit status 1 without stderr: no remote configured
+	mock = &mockGitWrapper{result: &runcmdStubResult{success: false, exitStatus: 1, err: errors.New("exit status 1")}}
+	g = &GitCommands{ui: clui.DefaultClui(), executor: mock}
+	urls, err = g.RemoteURLs(context.Background(), "/tmp/r")
+	if err != nil || len(urls) != 0 {
+		t.Fatalf("expected no remotes and no error, got %v, %v", urls, err)
+	}
+
+	mock = &mockGitWrapper{result: &runcmdStubResult{success: false, exitStatus: 128, stderr: "fatal: not a git repository", err: errors.New("exit status 128")}}
+	g = &GitCommands{ui: clui.DefaultClui(), executor: mock}
+	if _, err = g.RemoteURLs(context.Background(), "/tmp/r"); err == nil {
+		t.Fatal("expected error outside a repository")
+	}
+
+	if _, err = g.RemoteURLs(context.Background(), "--r"); err == nil {
+		t.Fatal("expected error for dirpath starting with '-'")
+	}
+}
+
+func TestGitCommands_LsRemote(t *testing.T) {
+	mock := &mockGitWrapper{}
+	g := &GitCommands{ui: clui.DefaultClui(), executor: mock}
+	if err := g.LsRemote(context.Background(), "/tmp/r", "https://example.com/x.git"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	req := mock.requests[0]
+	if !reflect.DeepEqual(req.args, []string{"ls-remote", "https://example.com/x.git", "HEAD"}) || !req.remote {
+		t.Fatalf("unexpected request %+v", req)
+	}
+
+	mock = &mockGitWrapper{result: &runcmdStubResult{success: false, stderr: "fatal: repository not found", err: errors.New("exit status 128")}}
+	g = &GitCommands{ui: clui.DefaultClui(), executor: mock}
+	err := g.LsRemote(context.Background(), "", "https://example.com/gone.git")
+	if err == nil || !strings.Contains(err.Error(), "repository not found") {
+		t.Fatalf("expected git's message in the error, got %v", err)
+	}
+
+	if err := g.LsRemote(context.Background(), "", "--upload-pack=evil"); err == nil {
+		t.Fatal("expected error for URL starting with '-'")
+	}
+}

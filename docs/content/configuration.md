@@ -156,6 +156,9 @@ When the config file is loaded, gip validates every entry and prints a warning f
 - invalid entry in `branches` (empty or starting with `-`; it is ignored)
 - missing `repository` URL
 - repository URL from which the provider cannot be detected
+- leading or trailing spaces in `local_path` or `repository`
+
+These checks only read the file: [`gip check`](/gip/commands/#check) also compares the configuration with the disk and the remotes.
 
 Warnings are printed on stderr in yellow and do not block execution. They are printed in `--quiet` and `--json` mode too; with `--json` they also appear in the `warnings` array of the output envelope.
 
