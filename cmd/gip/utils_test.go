@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/user"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -405,16 +406,47 @@ func setupTestUI(t *testing.T) {
 	}
 }
 
-func TestValidateProjectSurroundingSpaces(t *testing.T) {
+func TestTrimProject(t *testing.T) {
 	var warnings []string
 	warn := func(format string, args ...interface{}) { warnings = append(warnings, fmt.Sprintf(format, args...)) }
-	validateProject(0, gipProject{Name: "web", LocalPath: "/tmp/web", Repository: "https://example.com/web.git "}, warn)
-	if len(warnings) != 1 || !strings.Contains(warnings[0], `spaces in repository "https://example.com/web.git "`) {
-		t.Fatalf("expected one warning on repository, got %q", warnings)
+	p := gipProject{Name: " web", LocalPath: "/tmp/web\t", Repository: "https://example.com/web.git ",
+		PullPolicy: "never ", Tags: []string{" work", "js"}, Branches: []string{"rel "}}
+	trimProject(&p, warn)
+	want := gipProject{Name: "web", LocalPath: "/tmp/web", Repository: "https://example.com/web.git",
+		PullPolicy: "never", Tags: []string{"work", "js"}, Branches: []string{"rel"}}
+	if !reflect.DeepEqual(p, want) {
+		t.Fatalf("got %+v, want %+v", p, want)
 	}
+	if len(warnings) != 6 || !strings.Contains(warnings[1], `project "web": leading or trailing spaces removed from repository "https://example.com/web.git "`) {
+		t.Fatalf("expected one warning per trimmed value, got %q", warnings)
+	}
+
 	warnings = nil
-	validateProject(0, gipProject{Name: "web", LocalPath: "/tmp/web", Repository: "https://example.com/web.git"}, warn)
+	trimProject(&p, warn)
 	if len(warnings) != 0 {
-		t.Fatalf("expected no warning, got %q", warnings)
+		t.Fatalf("expected no warning on clean values, got %q", warnings)
+	}
+}
+
+func TestProjectsListTrimsValues(t *testing.T) {
+	if ui == nil {
+		ui, _ = clui.NewClui(func(u *clui.Clui) {
+			u.VerbosityLevel = clui.VerbosityLevelLow
+		})
+	}
+	cfg := filepath.Join(t.TempDir(), ".gip")
+	content := "- name: web\n  local_path: \"/tmp/web \"\n  repository: \"https://example.com/web.git \"\n"
+	if err := os.WriteFile(cfg, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+	projects, warnings, err := projectsList(cfg)
+	if err != nil {
+		t.Fatalf("projectsList: %v", err)
+	}
+	if projects[0].Repository != "https://example.com/web.git" || projects[0].LocalPath != "/tmp/web" {
+		t.Fatalf("values not trimmed: %+v", projects[0])
+	}
+	if len(warnings) != 2 {
+		t.Fatalf("expected two warnings, got %q", warnings)
 	}
 }

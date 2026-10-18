@@ -183,6 +183,7 @@ func projectsList(configurationPath string) ([]gipProject, []string, error) {
 	}
 	for i := range projects {
 		projects[i].baseDir = baseDir
+		trimProject(&projects[i], warn)
 	}
 
 	nameIndex := make(map[string]int) // tracks first occurrence index of each name
@@ -198,6 +199,30 @@ func projectsList(configurationPath string) ([]gipProject, []string, error) {
 	return projects, warnings, nil
 }
 
+// trimProject removes leading and trailing spaces from every string field:
+// they are typos (only a quoted YAML value keeps them) that would otherwise
+// reach git, e.g. an unusable repository URL. Each removal is reported so the
+// file gets fixed.
+func trimProject(p *gipProject, warn func(format string, args ...interface{})) {
+	name := strings.TrimSpace(p.Name)
+	trim := func(field string, v *string) {
+		if t := strings.TrimSpace(*v); t != *v {
+			warn("project %q: leading or trailing spaces removed from %s %q", name, field, *v)
+			*v = t
+		}
+	}
+	trim("name", &p.Name)
+	trim("repository", &p.Repository)
+	trim("local_path", &p.LocalPath)
+	trim("pull_policy", &p.PullPolicy)
+	for i := range p.Tags {
+		trim("tags", &p.Tags[i])
+	}
+	for i := range p.Branches {
+		trim("branches", &p.Branches[i])
+	}
+}
+
 // validateProject reports, through warn, the non-fatal problems of the i-th
 // configured project.
 func validateProject(i int, p gipProject, warn func(format string, args ...interface{})) {
@@ -206,11 +231,6 @@ func validateProject(i int, p gipProject, warn func(format string, args ...inter
 	}
 	if strings.TrimSpace(p.LocalPath) == "" {
 		warn("project %q (#%d) has empty local_path", p.Name, i+1)
-	}
-	for _, f := range [][2]string{{"local_path", p.LocalPath}, {"repository", p.Repository}} {
-		if f[1] != "" && strings.TrimSpace(f[1]) != f[1] {
-			warn("project %q has leading or trailing spaces in %s %q", p.Name, f[0], f[1])
-		}
 	}
 	if !p.isValidPullPolicy() {
 		warn("project %q has unknown pull_policy %q (valid values: never, always)", p.Name, p.PullPolicy)

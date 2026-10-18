@@ -156,7 +156,7 @@ When the config file is loaded, gip validates every entry and prints a warning f
 - invalid entry in `branches` (empty or starting with `-`; it is ignored)
 - missing `repository` URL
 - repository URL from which the provider cannot be detected
-- leading or trailing spaces in `local_path` or `repository`
+- leading or trailing spaces in a value (`name`, `repository`, `local_path`, `pull_policy`, `tags`, `branches`): they are removed and the trimmed value is used. Only quoted YAML values can keep them; as a consequence a `local_path` really ending with a space is not supported
 
 These checks only read the file: [`gip check`](/gip/commands/#check) also compares the configuration with the disk and the remotes.
 

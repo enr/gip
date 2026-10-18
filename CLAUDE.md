@@ -98,7 +98,7 @@ type gipProject struct {
 }
 ```
 
-`projectsList` returns `([]gipProject, []string, error)` — the second return is collected warnings (empty name, empty local_path, bad pull_policy, invalid branches, missing repository, undetectable provider, surrounding spaces in local_path/repository); duplicate names are an error.
+`projectsList` returns `([]gipProject, []string, error)` — the second return is collected warnings (empty name, empty local_path, bad pull_policy, invalid branches, missing repository, undetectable provider, spaces trimmed by `trimProject`); duplicate names are an error. String fields are trimmed at load, before validation.
 
 ### Tracker / JSON output
 
