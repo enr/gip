@@ -1,11 +1,14 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/enr/gip/lib/core"
@@ -185,5 +188,47 @@ func TestListReportsUnreadableRepo(t *testing.T) {
 	}
 	if len(env.Projects) != 1 || env.Projects[0].Error == "" {
 		t.Fatalf("expected the error in the project entry, got %+v", env.Projects)
+	}
+}
+
+// TestListReportsTimeout verifies that a repository whose git status outlives
+// --timeout is shown as TIMEOUT, with an error naming the timeout rather than
+// the "signal: killed" of the stopped git process.
+func TestListReportsTimeout(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("fake git is a shell script")
+	}
+	realGit, err := exec.LookPath("git")
+	if err != nil {
+		t.Skip("git not available")
+	}
+	root := t.TempDir()
+	binPath := buildBinary(t, root)
+	repo := filepath.Join(root, "slow")
+	runGit(t, root, "init", "-q", repo)
+	cfg := filepath.Join(root, ".gip")
+	makeConfig(t, cfg, []string{repo})
+	// A git that hangs on status and behaves normally otherwise.
+	fakeDir := filepath.Join(root, "fakebin")
+	if err := os.MkdirAll(fakeDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	script := fmt.Sprintf("#!/bin/sh\ncase \"$1\" in status) exec sleep 30;; esac\nexec %q \"$@\"\n", realGit)
+	if err := os.WriteFile(filepath.Join(fakeDir, "git"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	cmd := exec.Command(binPath, "-f", cfg, "list", "--timeout", "1")
+	cmd.Env = append(os.Environ(), "PATH="+fakeDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	if err := cmd.Run(); err == nil {
+		t.Fatalf("expected non-zero exit for a timed out repository:\n%s", stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "TIMEOUT") {
+		t.Errorf("expected TIMEOUT in the table, got:\n%s", stdout.String())
+	}
+	if !strings.Contains(stderr.String(), "timed out after 1s") {
+		t.Errorf("expected the timeout in the error, got:\n%s", stderr.String())
 	}
 }

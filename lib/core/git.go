@@ -20,6 +20,16 @@ func gitResultError(result runcmdResult) error {
 	return fmt.Errorf("%w: %s", result.Error(), msg)
 }
 
+// failureDetail is the inline detail of a failed git run: exit status and
+// stderr, or the error itself when git did not exit on its own (killed by a
+// timeout, not started), where the status is a meaningless -1.
+func failureDetail(result runcmdResult) string {
+	if result.ExitStatus() < 0 && result.Error() != nil {
+		return result.Error().Error()
+	}
+	return fmt.Sprintf("(%d) %s", result.ExitStatus(), strings.TrimSpace(result.Stderr().String()))
+}
+
 // GitOption configures a GitCommands instance.
 type GitOption func(*GitCommands)
 
@@ -101,7 +111,7 @@ func (g *GitCommands) Clone(ctx context.Context, repourl string, dirpath string)
 	g.ui.Title(dirpath)
 	if !result.Success() {
 		g.ui.Errorf("Error executing Git in %s", dirpath)
-		g.ui.Errorf("(%d) %s", result.ExitStatus(), strings.TrimSpace(result.Stderr().String()))
+		g.ui.Errorf("%s", failureDetail(result))
 	}
 	g.ui.Lifecycle(result.Stdout().String())
 	g.outMu.Unlock()
@@ -134,7 +144,7 @@ func (g *GitCommands) Pull(ctx context.Context, dirpath string) error {
 	g.ui.Title(dirpath)
 	if !result.Success() {
 		g.ui.Errorf("Error executing Git in %s", dirpath)
-		g.ui.Errorf("(%d) %s", result.ExitStatus(), strings.TrimSpace(result.Stderr().String()))
+		g.ui.Errorf("%s", failureDetail(result))
 	}
 	g.ui.Lifecycle(result.Stdout().String())
 	g.outMu.Unlock()
@@ -167,7 +177,7 @@ func (g *GitCommands) Status(ctx context.Context, dirpath string, untracked bool
 		g.ui.Title(dirpath)
 		if !result.Success() {
 			g.ui.Errorf("Error executing Git in %s", dirpath)
-			g.ui.Errorf("(%d) %s", result.ExitStatus(), strings.TrimSpace(result.Stderr().String()))
+			g.ui.Errorf("%s", failureDetail(result))
 		}
 		g.ui.Lifecycle(gitOutput)
 		g.outMu.Unlock()
@@ -198,7 +208,7 @@ func (g *GitCommands) Fetch(ctx context.Context, dirpath string) error {
 	g.ui.Title(dirpath)
 	if !result.Success() {
 		g.ui.Errorf("Error executing Git in %s", dirpath)
-		g.ui.Errorf("(%d) %s", result.ExitStatus(), strings.TrimSpace(result.Stderr().String()))
+		g.ui.Errorf("%s", failureDetail(result))
 	}
 	g.ui.Lifecycle(result.Stdout().String())
 	g.outMu.Unlock()

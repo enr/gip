@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -320,9 +321,24 @@ func doStatusFull(c *cli.Context) error {
 func opContext(c *cli.Context) (context.Context, context.CancelFunc) {
 	secs := c.Int("timeout")
 	if secs > 0 {
-		return context.WithTimeout(context.Background(), time.Duration(secs)*time.Second)
+		return context.WithTimeoutCause(context.Background(), time.Duration(secs)*time.Second, timeoutError{secs: secs})
 	}
 	return context.Background(), func() {}
+}
+
+// timeoutError is the error of an operation stopped by --timeout: it names the
+// timeout instead of the "signal: killed" of the killed git process.
+type timeoutError struct{ secs int }
+
+func (e timeoutError) Error() string {
+	return fmt.Sprintf("timed out after %ds (--timeout)", e.secs)
+}
+
+func (e timeoutError) Unwrap() error { return context.DeadlineExceeded }
+
+func isTimeout(err error) bool {
+	var te timeoutError
+	return errors.As(err, &te)
 }
 
 func gitStatus(c *cli.Context, untracked bool) error {
@@ -608,6 +624,8 @@ func printListTable(rows []listRow, extended bool, t *tracker) {
 			branch = cell(r.state.sync.Branch)
 			status = t.colorSync(r.state.sync, r.state.dirty.IsDirty())
 			dirty = cell(r.state.dirty.Symbols())
+		case isTimeout(r.err):
+			status = t.applyStyle(styleErr, "TIMEOUT")
 		case r.err != nil:
 			status = t.applyStyle(styleErr, "ERROR")
 		}

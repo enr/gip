@@ -60,7 +60,7 @@ func (r *CommandRunner) Run(ctx context.Context, workingDir, name string, args [
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
-	runErr := cmd.Run()
+	runErr := contextError(ctx, cmd.Run())
 
 	r.outMu.Lock()
 	r.beforeDisplay()
