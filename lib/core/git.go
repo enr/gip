@@ -20,6 +20,16 @@ func gitResultError(result runcmdResult) error {
 	return fmt.Errorf("%w: %s", result.Error(), msg)
 }
 
+// failureDetail is the inline detail of a failed git run: exit status and
+// stderr, or the error itself when git did not exit on its own (killed by a
+// timeout, not started), where the status is a meaningless -1.
+func failureDetail(result runcmdResult) string {
+	if result.ExitStatus() < 0 && result.Error() != nil {
+		return result.Error().Error()
+	}
+	return fmt.Sprintf("(%d) %s", result.ExitStatus(), strings.TrimSpace(result.Stderr().String()))
+}
+
 // GitOption configures a GitCommands instance.
 type GitOption func(*GitCommands)
 
@@ -68,6 +78,9 @@ type GitCommands struct {
 	executor      runcmdWrapper
 	outMu         *sync.Mutex
 	beforeDisplay func()
+
+	showStashOnce sync.Once
+	showStash     bool // "status --porcelain=v2 --show-stash" reports "# stash N" (git >= 2.35)
 }
 
 // Clone executes `git clone`
@@ -101,7 +114,7 @@ func (g *GitCommands) Clone(ctx context.Context, repourl string, dirpath string)
 	g.ui.Title(dirpath)
 	if !result.Success() {
 		g.ui.Errorf("Error executing Git in %s", dirpath)
-		g.ui.Errorf("(%d) %s", result.ExitStatus(), strings.TrimSpace(result.Stderr().String()))
+		g.ui.Errorf("%s", failureDetail(result))
 	}
 	g.ui.Lifecycle(result.Stdout().String())
 	g.outMu.Unlock()
@@ -134,7 +147,7 @@ func (g *GitCommands) Pull(ctx context.Context, dirpath string) error {
 	g.ui.Title(dirpath)
 	if !result.Success() {
 		g.ui.Errorf("Error executing Git in %s", dirpath)
-		g.ui.Errorf("(%d) %s", result.ExitStatus(), strings.TrimSpace(result.Stderr().String()))
+		g.ui.Errorf("%s", failureDetail(result))
 	}
 	g.ui.Lifecycle(result.Stdout().String())
 	g.outMu.Unlock()
@@ -167,7 +180,7 @@ func (g *GitCommands) Status(ctx context.Context, dirpath string, untracked bool
 		g.ui.Title(dirpath)
 		if !result.Success() {
 			g.ui.Errorf("Error executing Git in %s", dirpath)
-			g.ui.Errorf("(%d) %s", result.ExitStatus(), strings.TrimSpace(result.Stderr().String()))
+			g.ui.Errorf("%s", failureDetail(result))
 		}
 		g.ui.Lifecycle(gitOutput)
 		g.outMu.Unlock()
@@ -198,7 +211,7 @@ func (g *GitCommands) Fetch(ctx context.Context, dirpath string) error {
 	g.ui.Title(dirpath)
 	if !result.Success() {
 		g.ui.Errorf("Error executing Git in %s", dirpath)
-		g.ui.Errorf("(%d) %s", result.ExitStatus(), strings.TrimSpace(result.Stderr().String()))
+		g.ui.Errorf("%s", failureDetail(result))
 	}
 	g.ui.Lifecycle(result.Stdout().String())
 	g.outMu.Unlock()
@@ -285,11 +298,8 @@ func (d DirtyStatus) IsDirty() bool {
 
 func parseStatusLine(line string, sync *BranchSyncStatus, dirty *DirtyStatus) {
 	switch {
-	case strings.HasPrefix(line, "# branch.head "):
-		sync.Branch = strings.TrimPrefix(line, "# branch.head ")
-	case strings.HasPrefix(line, "# branch.ab "):
-		sync.NoRemote = false
-		fmt.Sscanf(strings.TrimPrefix(line, "# branch.ab "), "+%d -%d", &sync.Ahead, &sync.Behind)
+	case strings.HasPrefix(line, "# "):
+		parseStatusHeader(line, sync, dirty)
 	case strings.HasPrefix(line, "1 ") || strings.HasPrefix(line, "2 "):
 		if len(line) >= 4 {
 			if line[2] != '.' {
@@ -306,15 +316,42 @@ func parseStatusLine(line string, sync *BranchSyncStatus, dirty *DirtyStatus) {
 	}
 }
 
-// StatusInfo runs "git status --porcelain=v2 --branch" and "git stash list" to
-// collect upstream delta and working-tree indicators in two calls.
+// parseStatusHeader parses one "# ..." header line of porcelain v2 status.
+func parseStatusHeader(line string, sync *BranchSyncStatus, dirty *DirtyStatus) {
+	switch {
+	case strings.HasPrefix(line, "# branch.head "):
+		sync.Branch = strings.TrimPrefix(line, "# branch.head ")
+	case strings.HasPrefix(line, "# branch.ab "):
+		sync.NoRemote = false
+		fmt.Sscanf(strings.TrimPrefix(line, "# branch.ab "), "+%d -%d", &sync.Ahead, &sync.Behind)
+	case strings.HasPrefix(line, "# stash "):
+		dirty.Stashed = true
+	}
+}
+
+// statusConfig makes "git status" decide whether a file changed by its size
+// and mtime only. The full stat check also compares inode, device, owner and
+// ctime, which never match in an index written by another git (Git for
+// Windows on a repository that WSL reads through /mnt/c): every file is then
+// re-read and hashed on every status, which on a large repository takes tens
+// of seconds.
+var statusConfig = []string{"-c", "core.checkStat=minimal", "-c", "core.trustctime=false"}
+
+// StatusInfo runs "git status --porcelain=v2 --branch" to collect upstream
+// delta and working-tree indicators, stash included: in the same call when
+// git reports it there, otherwise with a "git stash list".
 func (g *GitCommands) StatusInfo(ctx context.Context, dirpath string) (BranchSyncStatus, DirtyStatus, error) {
 	if strings.HasPrefix(dirpath, "-") {
 		return BranchSyncStatus{}, DirtyStatus{}, fmt.Errorf("invalid dirpath: cannot start with '-'")
 	}
+	showStash := g.statusShowsStash(ctx)
+	args := append(append([]string{}, statusConfig...), "status", "--porcelain=v2", "--branch")
+	if showStash {
+		args = append(args, "--show-stash")
+	}
 	r := g.executor.exec(runcmdWrapperRequest{
 		ctx:        ctx,
-		args:       []string{"status", "--porcelain=v2", "--branch"},
+		args:       args,
 		workingDir: dirpath,
 	})
 	if !r.Success() {
@@ -328,6 +365,9 @@ func (g *GitCommands) StatusInfo(ctx context.Context, dirpath string) (BranchSyn
 	for _, line := range strings.Split(r.Stdout().String(), "\n") {
 		parseStatusLine(line, &sync, &dirty)
 	}
+	if showStash {
+		return sync, dirty, nil
+	}
 
 	stash := g.executor.exec(runcmdWrapperRequest{
 		ctx:        ctx,
@@ -339,6 +379,26 @@ func (g *GitCommands) StatusInfo(ctx context.Context, dirpath string) (BranchSyn
 	}
 
 	return sync, dirty, nil
+}
+
+// statusShowsStash reports whether the installed git prints the stash count in
+// porcelain v2 status (git >= 2.35), asking "git version" once.
+func (g *GitCommands) statusShowsStash(ctx context.Context) bool {
+	g.showStashOnce.Do(func() {
+		r := g.executor.exec(runcmdWrapperRequest{ctx: ctx, args: []string{"version"}})
+		g.showStash = r.Success() && gitVersionAtLeast(r.Stdout().String(), 2, 35)
+	})
+	return g.showStash
+}
+
+// gitVersionAtLeast parses "git version X.Y..." output (also "2.41.0.windows.1"
+// or "2.39.3 (Apple Git-146)"); unparsable output counts as older.
+func gitVersionAtLeast(output string, major, minor int) bool {
+	var gotMajor, gotMinor int
+	if _, err := fmt.Sscanf(strings.TrimSpace(output), "git version %d.%d", &gotMajor, &gotMinor); err != nil {
+		return false
+	}
+	return gotMajor > major || (gotMajor == major && gotMinor >= minor)
 }
 
 // LastCommit returns the subject line and relative date of the most recent commit.
@@ -371,11 +431,11 @@ func statusArguments(untracked bool) []string {
 	if untracked {
 		untrackedFlag = ""
 	}
-	args := []string{
+	args := append(append([]string{}, statusConfig...),
 		"status",
 		"--porcelain",
 		fmt.Sprintf("--untracked-files%s", untrackedFlag),
-	}
+	)
 	return args
 }
 

@@ -131,3 +131,20 @@ func TestCloneSuccess(t *testing.T) {
 		t.Errorf("Expected no error in clone but got %v", err)
 	}
 }
+
+// TestExecReportsContextCause verifies that a git run stopped by its context
+// fails with the context's cause, not with the bare error of the process.
+func TestExecReportsContextCause(t *testing.T) {
+	g := newTestGitWrapper(t)
+	g.ui = clui.DefaultClui()
+	cause := errors.New("timed out after 1s")
+	ctx, cancel := context.WithCancelCause(context.Background())
+	cancel(cause)
+	r := g.exec(runcmdWrapperRequest{ctx: ctx, args: []string{"--version"}})
+	if !errors.Is(r.Error(), cause) {
+		t.Errorf("expected %v, got %v", cause, r.Error())
+	}
+	if got := failureDetail(r); got != cause.Error() {
+		t.Errorf("failureDetail = %q, want %q", got, cause.Error())
+	}
+}

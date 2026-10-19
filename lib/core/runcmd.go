@@ -87,7 +87,7 @@ func (g defaultGitWrapper) exec(r runcmdWrapperRequest) runcmdResult {
 
 	g.ui.Confidentialf("Execute command %s %v in %s", g.git, r.args, r.workingDir)
 	if err := cmd.Run(); err != nil {
-		result.err = err
+		result.err = contextError(ctx, err)
 		if exitErr, ok := err.(*exec.ExitError); ok {
 			result.exitStatus = exitErr.ExitCode()
 		} else {
@@ -95,6 +95,17 @@ func (g defaultGitWrapper) exec(r runcmdWrapperRequest) runcmdResult {
 		}
 	}
 	return result
+}
+
+// contextError returns why ctx ended when it ended before the command did:
+// a process killed by its context fails with a bare "signal: killed", which
+// hides that it ran out of time. The cause is the one given to
+// context.WithTimeoutCause, or context.DeadlineExceeded/Canceled.
+func contextError(ctx context.Context, err error) error {
+	if err != nil && ctx.Err() != nil {
+		return context.Cause(ctx)
+	}
+	return err
 }
 
 // sshCommand returns the value for GIT_SSH_COMMAND that forces non-interactive

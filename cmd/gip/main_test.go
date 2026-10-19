@@ -716,6 +716,8 @@ func makeDirtyGit(t *testing.T, tmpDir, logPath string) {
 		t.Skip("dirty-git fake not implemented for windows")
 	}
 	script := fmt.Sprintf(`#!/bin/sh
+# skip the "-c key=value" options gip passes before the subcommand
+while [ "$1" = -c ]; do shift 2; done
 case "$1" in
   status)
     echo "# branch.head main"
@@ -777,6 +779,8 @@ func TestPullErrorsWhenDirtyCheckFails(t *testing.T) {
 	binPath := buildBinary(t, tmpDir)
 	logPath := filepath.Join(tmpDir, "pull.log")
 	script := fmt.Sprintf(`#!/bin/sh
+# skip the "-c key=value" options gip passes before the subcommand
+while [ "$1" = -c ]; do shift 2; done
 case "$1" in
   status)
     echo "fatal: index file corrupt" >&2
