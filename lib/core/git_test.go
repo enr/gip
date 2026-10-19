@@ -231,7 +231,7 @@ func TestGitCommands_Status(t *testing.T) {
 	if len(mock.requests) != 1 {
 		t.Fatalf("Expected 1 execution, got %d", len(mock.requests))
 	}
-	expectedArgs := []string{"status", "--porcelain", "--untracked-files=no"}
+	expectedArgs := append(append([]string{}, statusConfig...), "status", "--porcelain", "--untracked-files=no")
 	if !reflect.DeepEqual(mock.requests[0].args, expectedArgs) {
 		t.Fatalf("Expected args %v, got %v", expectedArgs, mock.requests[0].args)
 	}
@@ -331,6 +331,8 @@ func TestGitCommands_StatusInfo(t *testing.T) {
 			ui := clui.DefaultClui()
 			mock := &mockGitWrapper{
 				results: []runcmdResult{
+					// A git without "# stash" in porcelain v2: stash list is run.
+					&runcmdStubResult{success: true, stdout: "git version 2.34.1\n"},
 					&runcmdStubResult{success: true, stdout: tc.statusOutput},
 					&runcmdStubResult{success: true, stdout: tc.stashOutput},
 				},
@@ -353,8 +355,8 @@ func TestGitCommands_StatusInfo(t *testing.T) {
 			if dirty != tc.wantDirty {
 				t.Errorf("dirty: got %+v, want %+v", dirty, tc.wantDirty)
 			}
-			if len(mock.requests) != 2 {
-				t.Errorf("expected 2 git calls, got %d", len(mock.requests))
+			if len(mock.requests) != 3 {
+				t.Errorf("expected 3 git calls (version, status, stash list), got %d", len(mock.requests))
 			}
 		})
 	}
@@ -629,5 +631,60 @@ func TestGitCommands_LsRemote(t *testing.T) {
 
 	if err := g.LsRemote(context.Background(), "", "--upload-pack=evil"); err == nil {
 		t.Fatal("expected error for URL starting with '-'")
+	}
+}
+
+func TestGitVersionAtLeast(t *testing.T) {
+	tests := []struct {
+		output string
+		want   bool
+	}{
+		{"git version 2.35.0\n", true},
+		{"git version 2.43.0", true},
+		{"git version 3.0.0", true},
+		{"git version 2.41.0.windows.1", true},
+		{"git version 2.39.3 (Apple Git-146)", true},
+		{"git version 2.34.1", false},
+		{"git version 1.99.0", false},
+		{"", false},
+		{"garbage", false},
+	}
+	for _, tc := range tests {
+		if got := gitVersionAtLeast(tc.output, 2, 35); got != tc.want {
+			t.Errorf("gitVersionAtLeast(%q) = %v, want %v", tc.output, got, tc.want)
+		}
+	}
+}
+
+// TestStatusInfoShowStash verifies that with git >= 2.35 the stash comes from
+// the "# stash N" line of status, with no "git stash list" call.
+func TestStatusInfoShowStash(t *testing.T) {
+	synced := "# branch.oid abc123\n# branch.head main\n# branch.upstream origin/main\n# branch.ab +0 -0\n"
+	mock := &mockGitWrapper{
+		results: []runcmdResult{
+			&runcmdStubResult{success: true, stdout: "git version 2.43.0\n"},
+			&runcmdStubResult{success: true, stdout: synced + "# stash 2\n"},
+			&runcmdStubResult{success: true, stdout: synced},
+		},
+	}
+	gitCmd := &GitCommands{ui: clui.DefaultClui(), executor: mock}
+	_, dirty, err := gitCmd.StatusInfo(context.Background(), "/tmp/repo")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !dirty.Stashed {
+		t.Errorf("expected Stashed from the # stash line, got %+v", dirty)
+	}
+	// The version is asked once: a second call is status only.
+	_, dirty, _ = gitCmd.StatusInfo(context.Background(), "/tmp/repo")
+	if dirty.Stashed {
+		t.Errorf("expected no stash without the # stash line, got %+v", dirty)
+	}
+	if len(mock.requests) != 3 {
+		t.Fatalf("expected 3 git calls (version, status, status), got %d", len(mock.requests))
+	}
+	want := append(append([]string{}, statusConfig...), "status", "--porcelain=v2", "--branch", "--show-stash")
+	if !reflect.DeepEqual(mock.requests[1].args, want) {
+		t.Errorf("args: got %v, want %v", mock.requests[1].args, want)
 	}
 }

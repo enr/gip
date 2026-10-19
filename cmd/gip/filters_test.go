@@ -213,7 +213,7 @@ func TestListReportsTimeout(t *testing.T) {
 	if err := os.MkdirAll(fakeDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	script := fmt.Sprintf("#!/bin/sh\ncase \"$1\" in status) exec sleep 30;; esac\nexec %q \"$@\"\n", realGit)
+	script := fmt.Sprintf("#!/bin/sh\nfor a; do [ \"$a\" = status ] && exec sleep 30; done\nexec %q \"$@\"\n", realGit)
 	if err := os.WriteFile(filepath.Join(fakeDir, "git"), []byte(script), 0o755); err != nil {
 		t.Fatal(err)
 	}
