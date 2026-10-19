@@ -479,8 +479,16 @@ func buildListRows(projects []gipProject) []listRow {
 	return rows
 }
 
-// readListStates reads the repository state of every present project, in parallel.
-func readListStates(c *cli.Context, git *core.GitCommands, rows []listRow, jobs int) {
+// readListStates reads the repository state of every present project, in
+// parallel, drawing t's progress bar as each one completes: on slow
+// filesystems (e.g. /mnt/c under WSL) git status can take a long time and
+// the table is only printed at the end.
+func readListStates(c *cli.Context, git *core.GitCommands, rows []listRow, jobs int, t *tracker) {
+	for _, r := range rows {
+		if !r.missing && r.err == nil {
+			t.expect(1)
+		}
+	}
 	sem := make(chan struct{}, jobs)
 	var wg sync.WaitGroup
 	for i := range rows {
@@ -493,6 +501,7 @@ func readListStates(c *cli.Context, git *core.GitCommands, rows []listRow, jobs 
 		go func() {
 			defer wg.Done()
 			defer func() { <-sem }()
+			defer t.record(opResult{project: r.project.Name})
 			// --timeout applies to each repo, not to the whole batch.
 			ctx, cancel := opContext(c)
 			defer cancel()
@@ -505,6 +514,7 @@ func readListStates(c *cli.Context, git *core.GitCommands, rows []listRow, jobs 
 		}()
 	}
 	wg.Wait()
+	t.clearProgress()
 }
 
 func listErrors(rows []listRow) map[string]error {
@@ -645,7 +655,8 @@ func doList(c *cli.Context) error {
 	}
 
 	rows := buildListRows(projects)
-	readListStates(c, git, rows, jobs)
+	t := newTracker(0)
+	readListStates(c, git, rows, jobs, t)
 	errs := listErrors(rows)
 	if filter.active() {
 		rows = filterListRows(rows, filter)
@@ -653,7 +664,7 @@ func doList(c *cli.Context) error {
 	if jsonMode {
 		printListJSON(rows, warnings)
 	} else {
-		printListTable(rows, c.Bool("extended"), newTracker(0))
+		printListTable(rows, c.Bool("extended"), t)
 	}
 	return buildError(errs)
 }
