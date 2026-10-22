@@ -17,6 +17,7 @@ import (
 var releasesFlags = append(parallelFlags,
 	&cli.BoolFlag{Name: "pending", Aliases: []string{"p"}, Usage: "only include projects with commits after the latest tag (or never tagged)"},
 	&cli.BoolFlag{Name: "tagged", Usage: "only include projects with at least one tag (hide \"(none)\" and \"(no commits)\")"},
+	&cli.IntFlag{Name: "min", Usage: "only include projects with at least `NUM` commits after the latest tag (total commits when never tagged, unless --tagged)"},
 	&cli.StringFlag{Name: "match", Usage: "only consider tags matching this glob (git describe --match), e.g. 'v*'"},
 )
 
@@ -34,6 +35,7 @@ read: run "gip fetch" first to see tags created elsewhere.
    gip releases
    gip releases --pending
    gip releases --tagged --pending
+   gip releases --min 5
    gip releases --match 'v*'`,
 	Action:       doReleases,
 	Flags:        releasesFlags,
@@ -52,19 +54,28 @@ type releaseEntry struct {
 type releasesOptions struct {
 	match           string
 	pending, tagged bool
+	min             int // 0 = no minimum
 	filter          gitStateFilter
 }
 
+// filtering reports whether --pending/--tagged/--min can hide projects.
+func (o releasesOptions) filtering() bool {
+	return o.pending || o.tagged || o.min > 0
+}
+
 // skipReason returns why a project with the given tag info is filtered out
-// by --tagged/--pending, or "" when it must be listed.
+// by --tagged/--pending/--min, or "" when it must be listed. --min compares
+// the COMMITS value, i.e. the total commits of a project never tagged.
 func (o releasesOptions) skipReason(info core.TagInfo) string {
 	switch {
-	case (o.tagged || o.pending) && info.NoCommits:
+	case o.filtering() && info.NoCommits:
 		return "no commits"
 	case o.tagged && info.Tag == "":
 		return "no tags"
 	case o.pending && !info.Unreleased():
 		return "no commits after latest tag"
+	case info.CommitsSince < o.min:
+		return fmt.Sprintf("fewer than %d commits after latest tag", o.min)
 	}
 	return ""
 }
@@ -89,7 +100,13 @@ func doReleases(c *cli.Context) error {
 	if err != nil {
 		return exitErrorf(1, "%v", err)
 	}
-	opts := releasesOptions{match: c.String("match"), pending: c.Bool("pending"), tagged: c.Bool("tagged"), filter: newGitStateFilter(c)}
+	if c.Int("min") < 0 {
+		return exitErrorf(1, "--min must be >= 0, got %d", c.Int("min"))
+	}
+	opts := releasesOptions{
+		match: c.String("match"), pending: c.Bool("pending"), tagged: c.Bool("tagged"), min: c.Int("min"),
+		filter: newGitStateFilter(c),
+	}
 
 	var entriesMu sync.Mutex
 	entries := make([]releaseEntry, 0, len(projects))
@@ -140,7 +157,7 @@ func releaseProject(c *cli.Context, git *core.GitCommands, t *tracker, project g
 			t.printNoop("%s → SKIPPED  (directory missing)", project.Name)
 		}
 		t.record(opResult{project: project.Name, localPath: line, status: opSkipped, reason: "local dir missing"})
-		return entry, !opts.pending && !opts.tagged && !opts.filter.active()
+		return entry, !opts.filtering() && !opts.filter.active()
 	}
 	if noopMode {
 		t.printNoop("%s → git describe --tags --long  (in %s)", project.Name, line)

@@ -128,6 +128,26 @@ func TestReleases(t *testing.T) {
 		}
 	})
 
+	t.Run("min", func(t *testing.T) {
+		for args, want := range map[string]map[string]bool{
+			"--min 1":          {"ahead": true, "ontag": false, "notag": true, "empty": false},
+			"--min 2":          {"ahead": true, "ontag": false, "notag": false, "empty": false},
+			"--min 3":          {"ahead": false, "ontag": false, "notag": false, "empty": false},
+			"--min 1 --tagged": {"ahead": true, "ontag": false, "notag": false, "empty": false},
+			"--min 0":          {"ahead": true, "ontag": true, "notag": true, "empty": true},
+		} {
+			out := runReleases(t, binPath, cfg, append([]string{"-q", "releases"}, strings.Fields(args)...)...)
+			for name, listed := range want {
+				if strings.Contains(out, repos[name]) != listed {
+					t.Errorf("%s: %s listed=%v, want %v:\n%s", args, name, !listed, listed, out)
+				}
+			}
+		}
+		if out, err := exec.Command(binPath, "-f", cfg, "releases", "--min", "-1").CombinedOutput(); err == nil {
+			t.Errorf("--min -1: expected an error:\n%s", out)
+		}
+	})
+
 	t.Run("alias", func(t *testing.T) {
 		if out := runReleases(t, binPath, cfg, "-q", "r", "--pending"); !strings.Contains(out, repos["ahead"]) {
 			t.Errorf("gip r --pending: expected ahead in output:\n%s", out)

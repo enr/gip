@@ -47,6 +47,7 @@ Available on `releases`, in addition to the parallel command flags.
 |------|-------------|
 | `-p, --pending` | Only include projects with commits after the latest tag, or never tagged |
 | `--tagged` | Only include projects with at least one tag (hides `(none)` and `(no commits)`) |
+| `--min <n>` | Only include projects with at least `n` commits after the latest tag; never-tagged projects count all their commits unless `--tagged` is given (default 0: no minimum) |
 | `--match <glob>` | Only consider tags matching the glob (`git describe --match`), e.g. `'v*'` |
 
 ### Extended view (`--extended`)
@@ -166,7 +167,7 @@ A single JSON envelope is written to stdout after all projects have been process
 | `uncommitted changes (use --force)` | `pull` on a dirty repo |
 | `not dirty`, `not ahead or behind`, `not behind`, `not ahead` | excluded by a git-state filter |
 | `clean and in sync` | `statusfull` on a repo with nothing to report |
-| `no commits`, `no tags`, `no commits after latest tag` | excluded by `releases --tagged` / `--pending` |
+| `no commits`, `no tags`, `no commits after latest tag`, `fewer than <n> commits after latest tag` | excluded by `releases --tagged` / `--pending` / `--min` |
 | `in sync`, `branch not found locally`, `no upstream configured`, `ahead of upstream (nothing to pull)` | extra `branches` entries |
 
 #### Extended JSON fields (`branch --extended`)

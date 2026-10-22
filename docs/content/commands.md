@@ -272,6 +272,7 @@ gip releases --pending          # only projects with unreleased commits
 gip r --pending                 # same, using the short alias (also: rel)
 gip releases --tagged           # hide projects never tagged
 gip releases --tagged --pending # tagged projects with unreleased commits
+gip releases --min 5            # only projects with at least 5 unreleased commits
 gip releases --match 'v*'       # only consider tags matching a glob
 gip releases --pending --tag work
 gip --json releases --pending
@@ -292,8 +293,9 @@ scratch     (no commits)  —        —             —       ~/projects/scratc
 - `(no commits)` marks a repository without any commit; `(missing)` a missing directory.
 - `--pending` keeps only projects with commits after the latest tag, or never tagged; the others are reported as skipped.
 - `--tagged` keeps only projects with at least one tag (hides `(none)` and `(no commits)`); combined with `--pending` it lists the tagged projects with commits after their latest tag.
+- `--min <n>` keeps only projects whose `COMMITS` is at least `n`: commits after the latest tag, or total commits for a project never tagged. Add `--tagged` to leave out the projects never tagged. `--min 1` is equivalent to `--pending`; `--min 0` (the default) disables the filter.
 - Only local refs are read: run `gip fetch` first to see tags created elsewhere.
-- The usual `--dirty`, `--behind`, `--ahead` and `--unsynced` filters are supported. With any filter (including `--pending`/`--tagged`) missing directories are left out of the table.
+- The usual `--dirty`, `--behind`, `--ahead` and `--unsynced` filters are supported. With any filter (including `--pending`/`--tagged`/`--min`) missing directories are left out of the table.
 
 ### How the latest tag is chosen
 
