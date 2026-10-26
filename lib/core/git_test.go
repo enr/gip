@@ -688,3 +688,21 @@ func TestStatusInfoShowStash(t *testing.T) {
 		t.Errorf("args: got %v, want %v", mock.requests[1].args, want)
 	}
 }
+
+func TestGitCommands_FetchTags(t *testing.T) {
+	ui := clui.DefaultClui()
+	mock := &mockGitWrapper{}
+	if err := (&GitCommands{ui: ui, executor: mock}).FetchTags(context.Background(), "/tmp/repo"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got := mock.requests[0]; !reflect.DeepEqual(got.args, []string{"fetch", "--all", "--tags", "--quiet"}) || !got.remote {
+		t.Errorf("fetch request: %+v", got)
+	}
+	fail := &mockGitWrapper{result: &runcmdStubResult{success: false, err: errors.New("exit status 128"), stderr: "fatal: unable to access"}}
+	if err := (&GitCommands{ui: ui, executor: fail}).FetchTags(context.Background(), "/tmp/repo"); err == nil || !strings.Contains(err.Error(), "unable to access") {
+		t.Errorf("expected git error, got %v", err)
+	}
+	if err := (&GitCommands{ui: ui, executor: &mockGitWrapper{}}).FetchTags(context.Background(), "--repo"); err == nil {
+		t.Error("expected error for dirpath starting with '-'")
+	}
+}

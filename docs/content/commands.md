@@ -274,6 +274,7 @@ gip releases --tagged           # hide projects never tagged
 gip releases --tagged --pending # tagged projects with unreleased commits
 gip releases --min 5            # only projects with at least 5 unreleased commits
 gip releases --match 'v*'       # only consider tags matching a glob
+gip releases --fetch --pending  # fetch tags from the remotes first
 gip releases --pending --tag work
 gip --json releases --pending
 ```
@@ -294,7 +295,7 @@ scratch     (no commits)  —        —             —       ~/projects/scratc
 - `--pending` keeps only projects with commits after the latest tag, or never tagged; the others are reported as skipped.
 - `--tagged` keeps only projects with at least one tag (hides `(none)` and `(no commits)`); combined with `--pending` it lists the tagged projects with commits after their latest tag.
 - `--min <n>` keeps only projects whose `COMMITS` is at least `n`: commits after the latest tag, or total commits for a project never tagged. Add `--tagged` to leave out the projects never tagged. `--min 1` is equivalent to `--pending`; `--min 0` (the default) disables the filter.
-- Only local refs are read: run `gip fetch` first to see tags created elsewhere.
+- Only local refs are read. `--fetch` runs `git fetch --all --tags` in each project before reading the tags, so tags pushed by someone else are seen too (a fetch failure is reported as an error for that project); alternatively run `gip fetch` first. Local tags missing on the remotes are kept. A fetched tag shows up only once its commit is part of the checked-out branch: if the tag is on commits not pulled yet, run `gip pull` (with `--fetch`, `--behind` also reflects the freshly fetched state).
 - The usual `--dirty`, `--behind`, `--ahead` and `--unsynced` filters are supported. With any filter (including `--pending`/`--tagged`/`--min`) missing directories are left out of the table.
 
 ### How the latest tag is chosen
