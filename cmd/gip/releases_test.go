@@ -81,6 +81,16 @@ func derefInt(p *int) string {
 	return fmt.Sprint(*p)
 }
 
+// checkListed verifies which projects appear in the releases output.
+func checkListed(t *testing.T, args, out string, repos map[string]string, want map[string]bool) {
+	t.Helper()
+	for name, listed := range want {
+		if strings.Contains(out, repos[name]) != listed {
+			t.Errorf("%s: %s listed=%v, want %v:\n%s", args, name, !listed, listed, out)
+		}
+	}
+}
+
 func TestReleases(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not available")
@@ -107,11 +117,7 @@ func TestReleases(t *testing.T) {
 
 	t.Run("pending", func(t *testing.T) {
 		out := runReleases(t, binPath, cfg, "-q", "releases", "--pending")
-		for name, listed := range map[string]bool{"ahead": true, "notag": true, "ontag": false, "empty": false} {
-			if strings.Contains(out, repos[name]) != listed {
-				t.Errorf("--pending: %s listed=%v, want %v:\n%s", name, !listed, listed, out)
-			}
-		}
+		checkListed(t, "--pending", out, repos, map[string]bool{"ahead": true, "notag": true, "ontag": false, "empty": false})
 	})
 
 	t.Run("tagged", func(t *testing.T) {
@@ -120,11 +126,7 @@ func TestReleases(t *testing.T) {
 			"--tagged --pending": {"ahead": true, "ontag": false, "notag": false, "empty": false},
 		} {
 			out := runReleases(t, binPath, cfg, append([]string{"-q", "releases"}, strings.Fields(args)...)...)
-			for name, listed := range want {
-				if strings.Contains(out, repos[name]) != listed {
-					t.Errorf("%s: %s listed=%v, want %v:\n%s", args, name, !listed, listed, out)
-				}
-			}
+			checkListed(t, args, out, repos, want)
 		}
 	})
 
@@ -137,11 +139,7 @@ func TestReleases(t *testing.T) {
 			"--min 0":          {"ahead": true, "ontag": true, "notag": true, "empty": true},
 		} {
 			out := runReleases(t, binPath, cfg, append([]string{"-q", "releases"}, strings.Fields(args)...)...)
-			for name, listed := range want {
-				if strings.Contains(out, repos[name]) != listed {
-					t.Errorf("%s: %s listed=%v, want %v:\n%s", args, name, !listed, listed, out)
-				}
-			}
+			checkListed(t, args, out, repos, want)
 		}
 		if out, err := exec.Command(binPath, "-f", cfg, "releases", "--min", "-1").CombinedOutput(); err == nil {
 			t.Errorf("--min -1: expected an error:\n%s", out)
