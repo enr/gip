@@ -46,6 +46,7 @@ type opResult struct {
 	commitsSinceTag int
 	tagDate         string
 	unreleased      bool
+	unreachableTags []string
 }
 
 func (r opResult) statusString() string {
@@ -82,6 +83,8 @@ type projectJSON struct {
 	CommitsSinceTag *int   `json:"commits_since_tag,omitempty"`
 	TagDate         string `json:"tag_date,omitempty"`
 	Unreleased      bool   `json:"unreleased,omitempty"`
+	// tags not reachable from HEAD that descend from LastTag (see releases)
+	UnreachableTags []string `json:"unreachable_tags,omitempty"`
 }
 
 type summaryJSON struct {
@@ -301,6 +304,7 @@ func (t *tracker) printJSON(command string, warnings []string) {
 			p.CommitsSinceTag = &commits
 			p.TagDate = r.tagDate
 			p.Unreleased = r.unreleased
+			p.UnreachableTags = r.unreachableTags
 		}
 		projects = append(projects, p)
 		switch r.status {

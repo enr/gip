@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"sort"
 	"strconv"
+	"strings"
 	"sync"
 
 	"github.com/urfave/cli/v2"
@@ -34,6 +35,10 @@ Lightweight and annotated tags are both considered. Only local refs are
 read: use --fetch (or run "gip fetch" first) to see tags pushed elsewhere.
 A fetched tag is listed only once its commit is in the checked-out branch:
 a tag on commits not pulled yet is not reachable from HEAD.
+
+A warning is printed for tags that follow the latest reachable one but are
+not in the checked-out branch (e.g. a release tag left on a commit rewritten
+before being merged), since COMMITS is then counted from an older tag.
 
    gip releases
    gip releases --pending
@@ -196,6 +201,13 @@ func releaseProject(c *cli.Context, git *core.GitCommands, t *tracker, project g
 	if entry.info, err = git.LatestTag(ctx, line, opts.match); err != nil {
 		return fail(err)
 	}
+	var unreachable []string
+	if !entry.info.NoCommits {
+		if unreachable, err = git.UnreachableTags(ctx, line, opts.match, entry.info.Tag); err != nil {
+			return fail(err)
+		}
+		warnUnreachableTags(t, project.Name, unreachable)
+	}
 	if reason := opts.skipReason(entry.info); reason != "" {
 		t.record(opResult{project: project.Name, localPath: line, status: opSkipped, reason: reason})
 		return entry, false
@@ -204,9 +216,21 @@ func releaseProject(c *cli.Context, git *core.GitCommands, t *tracker, project g
 	t.record(opResult{
 		project: project.Name, localPath: line, status: opOK, branch: entry.branch,
 		tagSet: !entry.info.NoCommits, lastTag: entry.info.Tag, commitsSinceTag: entry.info.CommitsSince,
-		tagDate: entry.info.TagDate, unreleased: entry.info.Unreleased(),
+		tagDate: entry.info.TagDate, unreleased: entry.info.Unreleased(), unreachableTags: unreachable,
 	})
 	return entry, true
+}
+
+// warnUnreachableTags reports tags newer than the latest reachable one but not
+// in the checked-out branch, e.g. a release tag left on a commit rewritten
+// before being merged: COMMITS is then counted from an older tag.
+func warnUnreachableTags(t *tracker, name string, tags []string) {
+	if len(tags) == 0 {
+		return
+	}
+	t.withOutput(func() {
+		ui.Warnf("%s: tag %s not reachable from HEAD (commits counted from the latest reachable tag)", name, strings.Join(tags, ", "))
+	})
 }
 
 // releaseCells returns the TAG, COMMITS and DATE cells for one entry.

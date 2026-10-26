@@ -706,3 +706,30 @@ func TestGitCommands_FetchTags(t *testing.T) {
 		t.Error("expected error for dirpath starting with '-'")
 	}
 }
+
+func TestGitCommands_UnreachableTags(t *testing.T) {
+	ui := clui.DefaultClui()
+	mock := &mockGitWrapper{results: []runcmdResult{&runcmdStubResult{success: true, stdout: "v0.5.0\nv0.4.0\n"}}}
+	tags, err := (&GitCommands{ui: ui, executor: mock}).UnreachableTags(context.Background(), "/tmp/repo", "v*", "v0.3.0")
+	if err != nil || !reflect.DeepEqual(tags, []string{"v0.5.0", "v0.4.0"}) {
+		t.Errorf("got %v (err %v)", tags, err)
+	}
+	want := []string{"tag", "--list", "--no-merged=HEAD", "--sort=-creatordate", "--contains=refs/tags/v0.3.0", "--", "v*"}
+	if got := mock.requests[0].args; !reflect.DeepEqual(got, want) {
+		t.Errorf("args: %v", got)
+	}
+	mock = &mockGitWrapper{}
+	if tags, err := (&GitCommands{ui: ui, executor: mock}).UnreachableTags(context.Background(), "/tmp/repo", "", ""); err != nil || tags != nil {
+		t.Errorf("got %v (err %v), want none", tags, err)
+	}
+	if got := mock.requests[0].args; !reflect.DeepEqual(got, want[:4]) {
+		t.Errorf("args without base/match: %v", got)
+	}
+	fail := &mockGitWrapper{result: &runcmdStubResult{success: false, err: errors.New("exit status 128"), stderr: "fatal: not a git repository"}}
+	if _, err := (&GitCommands{ui: ui, executor: fail}).UnreachableTags(context.Background(), "/tmp/repo", "", ""); err == nil {
+		t.Error("expected git error")
+	}
+	if _, err := (&GitCommands{ui: ui, executor: &mockGitWrapper{}}).UnreachableTags(context.Background(), "--repo", "", ""); err == nil {
+		t.Error("expected error for dirpath starting with '-'")
+	}
+}

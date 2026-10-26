@@ -245,3 +245,59 @@ func TestReleasesFetch(t *testing.T) {
 		t.Errorf("--fetch: got tag %q, want v1.0.0", got)
 	}
 }
+
+// TestReleasesUnreachableTag reproduces a release tagged on a commit that was
+// rewritten before being merged: the tag is not reachable from HEAD, COMMITS
+// is counted from the previous tag and a warning names the unreachable tag.
+func TestReleasesUnreachableTag(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not available")
+	}
+	root := t.TempDir()
+	repo := filepath.Join(root, "repo")
+	runGit(t, root, "init", "-q", "-b", "main", repo)
+	runGit(t, repo, "commit", "-q", "--allow-empty", "-m", "c1")
+	runGit(t, repo, "tag", "-a", "v0.3.0", "-m", "0.3.0")
+	runGit(t, repo, "commit", "-q", "--allow-empty", "-m", "c2")
+	runGit(t, repo, "checkout", "-q", "-b", "release")
+	runGit(t, repo, "commit", "-q", "--allow-empty", "-m", "release 0.4.0")
+	runGit(t, repo, "tag", "-a", "v0.4.0", "-m", "0.4.0")
+	runGit(t, repo, "checkout", "-q", "main")
+	runGit(t, repo, "commit", "-q", "--allow-empty", "-m", "c3")
+	runGit(t, repo, "commit", "-q", "--allow-empty", "-m", "release 0.4.0 (rewritten)")
+	runGit(t, repo, "branch", "-q", "-D", "release")
+
+	binPath := buildBinary(t, root)
+	cfg := filepath.Join(root, ".gip")
+	content := fmt.Sprintf("- name: repo\n  local_path: %s\n  repository: \"https://example.com/r.git\"\n", repo)
+	if err := os.WriteFile(cfg, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(binPath, "-f", cfg, "--json", "releases")
+	var stderr strings.Builder
+	cmd.Stderr = &stderr
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("gip releases failed: %v\n%s", err, stderr.String())
+	}
+	var parsed struct {
+		Projects []struct {
+			releaseProjectJSON
+			UnreachableTags []string `json:"unreachable_tags"`
+		} `json:"projects"`
+	}
+	if err := json.Unmarshal(out, &parsed); err != nil || len(parsed.Projects) != 1 {
+		t.Fatalf("invalid JSON (%v):\n%s", err, out)
+	}
+	p := parsed.Projects[0]
+	if p.LastTag != "v0.3.0" || derefInt(p.CommitsSinceTag) != "3" || fmt.Sprint(p.UnreachableTags) != "[v0.4.0]" {
+		t.Errorf("got tag=%q commits=%s unreachable=%v, want v0.3.0, 3, [v0.4.0]", p.LastTag, derefInt(p.CommitsSinceTag), p.UnreachableTags)
+	}
+	if !strings.Contains(stderr.String(), "repo: tag v0.4.0 not reachable from HEAD") {
+		t.Errorf("missing warning on stderr:\n%s", stderr.String())
+	}
+	// --match excluding the unreachable tag silences the warning.
+	if out := runReleases(t, binPath, cfg, "--json", "releases", "--match", "v0.3*"); strings.Contains(out, "unreachable_tags") {
+		t.Errorf("--match v0.3*: unexpected unreachable_tags:\n%s", out)
+	}
+}

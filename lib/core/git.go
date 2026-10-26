@@ -674,6 +674,35 @@ func (g *GitCommands) LatestTag(ctx context.Context, dirpath, match string) (Tag
 	return info, nil
 }
 
+// UnreachableTags returns the tags not reachable from HEAD that descend from
+// base (every unreachable tag when base is empty), most recent first. They
+// reveal a release tagged on a commit later rewritten or never merged into
+// the checked-out branch, which LatestTag cannot see. match, when not empty,
+// is a glob restricting the tags considered. It reads local refs only.
+func (g *GitCommands) UnreachableTags(ctx context.Context, dirpath, match, base string) ([]string, error) {
+	if strings.HasPrefix(dirpath, "-") {
+		return nil, fmt.Errorf("invalid dirpath: cannot start with '-'")
+	}
+	args := []string{"tag", "--list", "--no-merged=HEAD", "--sort=-creatordate"}
+	if base != "" {
+		args = append(args, "--contains=refs/tags/"+base)
+	}
+	if match != "" {
+		args = append(args, "--", match)
+	}
+	r := g.executor.exec(runcmdWrapperRequest{ctx: ctx, args: args, workingDir: dirpath})
+	if !r.Success() {
+		return nil, gitResultError(r)
+	}
+	var tags []string
+	for _, line := range strings.Split(r.Stdout().String(), "\n") {
+		if tag := strings.TrimSpace(line); tag != "" {
+			tags = append(tags, tag)
+		}
+	}
+	return tags, nil
+}
+
 // RemoteURLs returns the configured URL of each remote, keyed by remote name.
 // A repository without remotes yields an empty map. It reads the local
 // configuration only.
