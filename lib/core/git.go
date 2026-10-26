@@ -600,6 +600,25 @@ func isNoTagError(stderr string) bool {
 	return strings.Contains(stderr, "No names found") || strings.Contains(stderr, "No tags can describe")
 }
 
+// FetchTags downloads the tags of every remote (git fetch --all --tags) without
+// printing anything, so that LatestTag also sees tags pushed elsewhere. Local
+// tags missing on the remotes are kept (no --prune).
+func (g *GitCommands) FetchTags(ctx context.Context, dirpath string) error {
+	if strings.HasPrefix(dirpath, "-") {
+		return fmt.Errorf("invalid dirpath: cannot start with '-'")
+	}
+	r := g.executor.exec(runcmdWrapperRequest{
+		ctx:        ctx,
+		args:       []string{"fetch", "--all", "--tags", "--quiet"},
+		workingDir: dirpath,
+		remote:     true,
+	})
+	if !r.Success() {
+		return gitResultError(r)
+	}
+	return nil
+}
+
 // LatestTag returns the latest tag reachable from HEAD and the number of
 // commits made after it. match, when not empty, is a glob restricting the
 // tags considered (git describe --match). It reads local refs only.

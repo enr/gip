@@ -203,3 +203,45 @@ func TestReleasesTagSelection(t *testing.T) {
 		t.Errorf("got tag=%q commits=%s, want v1.0.0 and 1 (closest annotated tag, maint's v1.0.1 unmerged)", p.LastTag, derefInt(p.CommitsSinceTag))
 	}
 }
+
+// TestReleasesFetch checks that --fetch picks up a tag pushed to the remote
+// by someone else, which plain releases (local refs only) does not see.
+func TestReleasesFetch(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not available")
+	}
+	root := t.TempDir()
+	origin := filepath.Join(root, "origin.git")
+	other := filepath.Join(root, "other")
+	repo := filepath.Join(root, "repo")
+	runGit(t, root, "init", "-q", "--bare", origin)
+	runGit(t, root, "clone", "-q", origin, other)
+	runGit(t, other, "commit", "-q", "--allow-empty", "-m", "c1")
+	runGit(t, other, "push", "-q", "origin", "HEAD")
+	runGit(t, root, "clone", "-q", origin, repo)
+	runGit(t, other, "tag", "v1.0.0")
+	runGit(t, other, "push", "-q", "origin", "v1.0.0")
+
+	binPath := buildBinary(t, root)
+	cfg := filepath.Join(root, ".gip")
+	content := fmt.Sprintf("- name: repo\n  local_path: %s\n  repository: %q\n", repo, origin)
+	if err := os.WriteFile(cfg, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+	lastTag := func(args ...string) string {
+		var parsed struct {
+			Projects []releaseProjectJSON `json:"projects"`
+		}
+		out := runReleases(t, binPath, cfg, append([]string{"--json", "releases"}, args...)...)
+		if err := json.Unmarshal([]byte(out), &parsed); err != nil || len(parsed.Projects) != 1 {
+			t.Fatalf("invalid JSON (%v):\n%s", err, out)
+		}
+		return parsed.Projects[0].LastTag
+	}
+	if got := lastTag(); got != "" {
+		t.Errorf("without --fetch: got tag %q, want none (not fetched yet)", got)
+	}
+	if got := lastTag("--fetch"); got != "v1.0.0" {
+		t.Errorf("--fetch: got tag %q, want v1.0.0", got)
+	}
+}

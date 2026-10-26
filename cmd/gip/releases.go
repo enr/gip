@@ -19,6 +19,7 @@ var releasesFlags = append(parallelFlags,
 	&cli.BoolFlag{Name: "tagged", Usage: "only include projects with at least one tag (hide \"(none)\" and \"(no commits)\")"},
 	&cli.IntFlag{Name: "min", Usage: "only include projects with at least `NUM` commits after the latest tag (total commits when never tagged, unless --tagged)"},
 	&cli.StringFlag{Name: "match", Usage: "only consider tags matching this glob (git describe --match), e.g. 'v*'"},
+	&cli.BoolFlag{Name: "fetch", Usage: "fetch tags from the remotes (git fetch --all --tags) before reading them"},
 )
 
 var commandReleases = cli.Command{
@@ -30,13 +31,16 @@ branch (HEAD) and the number of commits made after it: projects with
 commits after their latest tag are candidates for a new release.
 
 Lightweight and annotated tags are both considered. Only local refs are
-read: run "gip fetch" first to see tags created elsewhere.
+read: use --fetch (or run "gip fetch" first) to see tags pushed elsewhere.
+A fetched tag is listed only once its commit is in the checked-out branch:
+a tag on commits not pulled yet is not reachable from HEAD.
 
    gip releases
    gip releases --pending
    gip releases --tagged --pending
    gip releases --min 5
-   gip releases --match 'v*'`,
+   gip releases --match 'v*'
+   gip releases --fetch --pending`,
 	Action:       doReleases,
 	Flags:        releasesFlags,
 	BashComplete: bashCompleteWithFlags(releasesFlags),
@@ -53,6 +57,7 @@ type releaseEntry struct {
 
 type releasesOptions struct {
 	match           string
+	fetch           bool
 	pending, tagged bool
 	min             int // 0 = no minimum
 	filter          gitStateFilter
@@ -104,7 +109,7 @@ func doReleases(c *cli.Context) error {
 		return exitErrorf(1, "--min must be >= 0, got %d", c.Int("min"))
 	}
 	opts := releasesOptions{
-		match: c.String("match"), pending: c.Bool("pending"), tagged: c.Bool("tagged"), min: c.Int("min"),
+		match: c.String("match"), fetch: c.Bool("fetch"), pending: c.Bool("pending"), tagged: c.Bool("tagged"), min: c.Int("min"),
 		filter: newGitStateFilter(c),
 	}
 
@@ -160,6 +165,9 @@ func releaseProject(c *cli.Context, git *core.GitCommands, t *tracker, project g
 		return entry, !opts.filtering() && !opts.filter.active()
 	}
 	if noopMode {
+		if opts.fetch {
+			t.printNoop("%s → git fetch --all --tags  (in %s)", project.Name, line)
+		}
 		t.printNoop("%s → git describe --tags --long  (in %s)", project.Name, line)
 		entry.note = "(noop)"
 		t.record(opResult{project: project.Name, localPath: line, status: opOK})
@@ -171,6 +179,11 @@ func releaseProject(c *cli.Context, git *core.GitCommands, t *tracker, project g
 		entry.err = err
 		t.record(opResult{project: project.Name, localPath: line, status: opError, err: err})
 		return entry, true
+	}
+	if opts.fetch {
+		if err := git.FetchTags(ctx, line); err != nil {
+			return fail(fmt.Errorf("fetching tags: %w", err))
+		}
 	}
 	reason, err := opts.filter.check(ctx, git, line)
 	if err != nil {
