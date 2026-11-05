@@ -344,11 +344,11 @@ func isTimeout(err error) bool {
 func gitStatus(c *cli.Context, untracked bool) error {
 	configurationFile, err := configurationFilePath(c)
 	if err != nil {
-		return exitErrorf(1, "Error loading configuration file %s: %v", c.String("f"), err)
+		return configurationError(c, err)
 	}
 	projects, warnings, err := projectsList(configurationFile)
 	if err != nil {
-		return exitErrorf(1, "Error loading projects list: %v", err)
+		return exitErrorf(1, "gip: %v", err)
 	}
 	projects = filterByTag(projects, tagFilterValue(c))
 	projects = filterDisabled(projects)
@@ -388,7 +388,7 @@ func gitStatus(c *cli.Context, untracked bool) error {
 	} else {
 		t.printSummary(c.Bool("errors-last"), c.Bool("show-skipped"))
 	}
-	return buildError(t.errors())
+	return trackerError(c, t)
 }
 
 func doStatusProject(c *cli.Context, git *core.GitCommands, t *tracker, project gipProject, untracked bool, untrackedFlag string, filter gitStateFilter) {
@@ -459,6 +459,16 @@ func statusProjectFull(ctx context.Context, git *core.GitCommands, t *tracker, p
 	t.record(res)
 }
 
+// trackerError is the final error of a tracked command: the one-line-per-project
+// list, unless --errors-last already printed it in the summary.
+func trackerError(c *cli.Context, t *tracker) error {
+	errs := t.errors()
+	if len(errs) > 0 && !jsonMode && c.Bool("errors-last") {
+		return exitError(1, "")
+	}
+	return buildError(errs)
+}
+
 func buildError(errors map[string]error) error {
 	if len(errors) == 0 {
 		return nil
@@ -470,7 +480,7 @@ func buildError(errors map[string]error) error {
 	sort.Strings(keys)
 	var buffer bytes.Buffer
 	for _, key := range keys {
-		buffer.WriteString(fmt.Sprintf("- %s: %v\n", key, errors[key]))
+		buffer.WriteString(fmt.Sprintf("- %s: %s\n", key, errorSummaryLine(errors[key])))
 	}
 	return exitError(1, buffer.String())
 }
@@ -652,11 +662,11 @@ func printListTable(rows []listRow, extended bool, t *tracker) {
 func doList(c *cli.Context) error {
 	configurationFile, err := configurationFilePath(c)
 	if err != nil {
-		return exitErrorf(1, "Error loading configuration file %s: %v", c.String("f"), err)
+		return configurationError(c, err)
 	}
 	projects, warnings, err := projectsList(configurationFile)
 	if err != nil {
-		return exitErrorf(1, "Error loading projects list: %v", err)
+		return exitErrorf(1, "gip: %v", err)
 	}
 	projects = filterByTag(projects, tagFilterValue(c))
 	if !c.Bool("all") {
@@ -735,7 +745,7 @@ func printListJSON(rows []listRow, warnings []string) {
 func doPull(c *cli.Context) error {
 	configurationFile, err := configurationFilePath(c)
 	if err != nil {
-		return exitErrorf(1, "Error loading configuration file %s: %v", c.String("f"), err)
+		return configurationError(c, err)
 	}
 	args := c.Args().Slice()
 	if len(args) > 0 {
@@ -748,7 +758,7 @@ func doPull(c *cli.Context) error {
 	ui.Confidentialf("%s PULL all? %t", configurationFile, all)
 	projects, warnings, err := projectsList(configurationFile)
 	if err != nil {
-		return exitErrorf(1, "Error loading projects list: %v", err)
+		return exitErrorf(1, "gip: %v", err)
 	}
 	projects = filterByTag(projects, tagFilterValue(c))
 	projects = filterDisabled(projects)
@@ -785,7 +795,7 @@ func doPull(c *cli.Context) error {
 	} else {
 		t.printSummary(c.Bool("errors-last"), c.Bool("show-skipped"))
 	}
-	return buildError(t.errors())
+	return trackerError(c, t)
 }
 
 func pullOne(c *cli.Context, git *core.GitCommands, project gipProject, all bool, t *tracker, filter gitStateFilter) {
@@ -840,8 +850,8 @@ func pullOne(c *cli.Context, git *core.GitCommands, project gipProject, all bool
 }
 
 func pullMissingDir(c *cli.Context, git *core.GitCommands, project gipProject, line string, all bool, t *tracker) {
-	t.withOutput(func() { warnMissingDir(line) })
 	if !(all || project.pullAlways()) {
+		t.withOutput(func() { warnMissingDir(line) })
 		if noopMode {
 			t.printNoop("%s → SKIPPED  (directory missing)", project.Name)
 		}
@@ -865,11 +875,11 @@ func pullMissingDir(c *cli.Context, git *core.GitCommands, project gipProject, l
 func doFetch(c *cli.Context) error {
 	configurationFile, err := configurationFilePath(c)
 	if err != nil {
-		return exitErrorf(1, "Error loading configuration file %s: %v", c.String("f"), err)
+		return configurationError(c, err)
 	}
 	projects, warnings, err := projectsList(configurationFile)
 	if err != nil {
-		return exitErrorf(1, "Error loading projects list: %v", err)
+		return exitErrorf(1, "gip: %v", err)
 	}
 	projects = filterByTag(projects, tagFilterValue(c))
 	projects = filterDisabled(projects)
@@ -904,7 +914,7 @@ func doFetch(c *cli.Context) error {
 	} else {
 		t.printSummary(c.Bool("errors-last"), c.Bool("show-skipped"))
 	}
-	return buildError(t.errors())
+	return trackerError(c, t)
 }
 
 // fetchOne fetches a single project, honouring pull_policy and the git state
@@ -1058,11 +1068,11 @@ func printBranchTable(entries []branchEntry, extended bool, t *tracker) {
 func doBranch(c *cli.Context) error {
 	configurationFile, err := configurationFilePath(c)
 	if err != nil {
-		return exitErrorf(1, "Error loading configuration file %s: %v", c.String("f"), err)
+		return configurationError(c, err)
 	}
 	projects, warnings, err := projectsList(configurationFile)
 	if err != nil {
-		return exitErrorf(1, "Error loading projects list: %v", err)
+		return exitErrorf(1, "gip: %v", err)
 	}
 	projects = filterByTag(projects, tagFilterValue(c))
 	projects = filterDisabled(projects)
@@ -1102,7 +1112,7 @@ func doBranch(c *cli.Context) error {
 		printBranchTable(entries, extended, t)
 		t.printSummary(c.Bool("errors-last"), c.Bool("show-skipped"))
 	}
-	return buildError(t.errors())
+	return trackerError(c, t)
 }
 
 func execProject(project gipProject, runner *core.CommandRunner, git *core.GitCommands, cmdName string, cmdArgs []string, filter gitStateFilter, t *tracker, c *cli.Context) {
@@ -1151,11 +1161,11 @@ func doExec(c *cli.Context) error {
 	cmdArgs := args[1:]
 	configurationFile, err := configurationFilePath(c)
 	if err != nil {
-		return exitErrorf(1, "Error loading configuration file %s: %v", c.String("f"), err)
+		return configurationError(c, err)
 	}
 	projects, warnings, err := projectsList(configurationFile)
 	if err != nil {
-		return exitErrorf(1, "Error loading projects list: %v", err)
+		return exitErrorf(1, "gip: %v", err)
 	}
 	projects = filterByTag(projects, tagFilterValue(c))
 	projects = filterDisabled(projects)
@@ -1192,7 +1202,7 @@ func doExec(c *cli.Context) error {
 	} else {
 		t.printSummary(c.Bool("errors-last"), c.Bool("show-skipped"))
 	}
-	return buildError(t.errors())
+	return trackerError(c, t)
 }
 
 // initEntry is the shape written to the generated config file.
@@ -1341,19 +1351,41 @@ func exitError(exitCode int, message string) error {
 	return cli.Exit(message, exitCode)
 }
 
-// configurationFilePath returns the configuration file to use. When it was not
-// given explicitly with -f, its path is printed on stderr: a .gip in the
-// current directory takes precedence over ~/.gip, so the user must be able to
-// see which file (and therefore which repositories and paths) is in effect.
+// configurationFilePath returns the configuration file to use. A .gip picked
+// up from the current directory takes precedence over ~/.gip, so its path is
+// printed on stderr: the user must be able to see which file (and therefore
+// which repositories and paths) is in effect. The usual files (-f, GIP_FILE,
+// ~/.gip) are announced only with --debug, to keep every run free of noise.
 func configurationFilePath(c *cli.Context) (string, error) {
 	if c.String("f") != "" {
 		return explicitConfigurationFilePath(c)
 	}
 	path, err := defaultConfigurationFilePath()
-	if err == nil && !quietMode {
+	if err == nil && !quietMode && os.Getenv("GIP_FILE") == "" && isLocalConfiguration(path) {
 		fmt.Fprintf(os.Stderr, "gip: using configuration %s\n", path)
 	}
 	return path, err
+}
+
+// isLocalConfiguration reports whether path is the .gip of the current directory.
+func isLocalConfiguration(path string) bool {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return false
+	}
+	return filepath.Clean(path) == filepath.Join(cwd, configFileBaseName)
+}
+
+// configurationError is the single-line error for a configuration file that
+// cannot be found or resolved, with the way out when none exists yet.
+func configurationError(c *cli.Context, err error) error {
+	if errors.Is(err, errConfigNotFound) {
+		return exitErrorf(1, "gip: %v. Create one with 'gip init' or pass -f <file>.", err)
+	}
+	if f := c.String("f"); f != "" {
+		return exitErrorf(1, "gip: configuration file %s: %v", f, err)
+	}
+	return exitErrorf(1, "gip: configuration file: %v", err)
 }
 
 func explicitConfigurationFilePath(c *cli.Context) (string, error) {

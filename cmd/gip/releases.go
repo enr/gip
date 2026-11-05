@@ -93,11 +93,11 @@ func (o releasesOptions) skipReason(info core.TagInfo) string {
 func doReleases(c *cli.Context) error {
 	configurationFile, err := configurationFilePath(c)
 	if err != nil {
-		return exitErrorf(1, "Error loading configuration file %s: %v", c.String("f"), err)
+		return configurationError(c, err)
 	}
 	projects, warnings, err := projectsList(configurationFile)
 	if err != nil {
-		return exitErrorf(1, "Error loading projects list: %v", err)
+		return exitErrorf(1, "gip: %v", err)
 	}
 	projects = filterByTag(projects, tagFilterValue(c))
 	projects = filterDisabled(projects)
@@ -146,7 +146,7 @@ func doReleases(c *cli.Context) error {
 		printReleasesTable(entries, t)
 		t.printSummary(c.Bool("errors-last"), c.Bool("show-skipped"))
 	}
-	return buildError(t.errors())
+	return trackerError(c, t)
 }
 
 // releaseProject collects the tag info of one project and records its outcome.

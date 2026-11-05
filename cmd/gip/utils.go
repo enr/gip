@@ -143,7 +143,7 @@ func defaultConfigurationFilePath() (string, error) {
 	configFile := filepath.Join(home, configFileBaseName)
 	ui.Confidentialf("Using configuration file %s", configFile)
 	if !files.Exists(configFile) {
-		return "", fmt.Errorf("configuration file not found (searched: ./.gip, %s)", configFile)
+		return "", fmt.Errorf("%w (searched: ./.gip, %s)", errConfigNotFound, configFile)
 	}
 	return configFile, nil
 }
@@ -151,6 +151,9 @@ func defaultConfigurationFilePath() (string, error) {
 func normalizePath(dirpath string) string {
 	return strings.TrimSuffix(filepath.ToSlash(dirpath), "/")
 }
+
+// errConfigNotFound is returned when no configuration file exists in the cascade.
+var errConfigNotFound = errors.New("configuration file not found")
 
 func projectsList(configurationPath string) ([]gipProject, []string, error) {
 	var projects []gipProject
@@ -164,7 +167,6 @@ func projectsList(configurationPath string) ([]gipProject, []string, error) {
 
 	data, err := os.ReadFile(configurationPath)
 	if err != nil {
-		ui.Errorf("Error reading %s: %v", configurationPath, err)
 		return projects, warnings, err
 	}
 	// Unknown keys are rejected: a typo such as "pull-policy" would otherwise be
@@ -172,9 +174,7 @@ func projectsList(configurationPath string) ([]gipProject, []string, error) {
 	dec := yaml.NewDecoder(bytes.NewReader(data))
 	dec.KnownFields(true)
 	if err = dec.Decode(&projects); err != nil && !errors.Is(err, io.EOF) {
-		ui.Errorf("Error reading configuration: %v", err)
-		ui.Lifecyclef("Check the format of %s: it should be Yaml or Json", configurationPath)
-		return projects, warnings, err
+		return projects, warnings, fmt.Errorf("%s is not valid YAML or JSON: %w", configurationPath, err)
 	}
 
 	baseDir := filepath.Dir(configurationPath)
@@ -243,7 +243,9 @@ func validateProject(i int, p gipProject, warn func(format string, args ...inter
 	if p.Repository == "" {
 		warn("no repository URL for project %s", p.Name)
 	} else if p.repoProvider() == "" {
-		warn("unable to detect provider for project %s using repository URL %s", p.Name, p.Repository)
+		// Informational only (it leaves the PROVIDER column of list empty) and
+		// expected for self-hosted or local remotes: shown with --debug.
+		ui.Confidentialf("unable to detect provider for project %s using repository URL %s", p.Name, p.Repository)
 	}
 }
 

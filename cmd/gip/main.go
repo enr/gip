@@ -32,7 +32,7 @@ func main() {
 	app := cli.NewApp()
 	app.Name = "gip"
 	app.Version = appVersion
-	app.Usage = "Keep tracks of your Git projects"
+	app.Usage = "Keep track of your Git projects"
 	app.Flags = []cli.Flag{
 		&cli.StringFlag{Name: "file", Aliases: []string{"f"}, Usage: "path to the configuration file to use (if not set will be picked ${HOME}/.gip)"},
 		&cli.BoolFlag{Name: "debug", Aliases: []string{"d"}, Usage: "operates in debug mode: lot of output"},
@@ -42,6 +42,7 @@ func main() {
 		&cli.BoolFlag{Name: "json", Usage: "output results as JSON (takes precedence over --quiet)"},
 	}
 	app.EnableBashCompletion = true
+	app.CommandNotFound = commandNotFound
 
 	app.Before = func(c *cli.Context) error {
 		if ui != nil {
@@ -56,6 +57,10 @@ func main() {
 		}
 		ui, _ = clui.NewClui(func(ui *clui.Clui) {
 			ui.VerbosityLevel = verbosityLevel
+			// Colors only on terminals, never with NO_COLOR: piped output and
+			// CI logs get plain text.
+			ui.StdWriter = plainWriterUnlessColor(ui.StdWriter, os.Stdout)
+			ui.ErrorWriter = plainWriterUnlessColor(ui.ErrorWriter, os.Stderr)
 		})
 		ignoreMissingDirs = c.Bool("m")
 		quietMode = c.Bool("quiet")
@@ -66,7 +71,7 @@ func main() {
 
 	app.Commands = commands
 
-	if err := app.Run(os.Args); err != nil {
+	if err := app.Run(hoistGlobalFlags(os.Args, app.Flags, app.Commands)); err != nil {
 		os.Exit(1)
 	}
 }

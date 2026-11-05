@@ -43,6 +43,7 @@ The binary lives in `cmd/gip/` (package `main`). The library lives in `lib/core/
 | `utils.go` | Config file cascade, YAML/JSON parsing, project model, `filterByTag` |
 | `tracker.go` | `tracker` struct, JSON types, progress bar, summary/JSON output |
 | `check.go` | `check` command: read-only verification of the configuration (paths, remotes vs `repository`, shared dirs, branches; `--remote` runs `GitCommands.LsRemote`), own JSON shape |
+| `output.go` | Output hygiene: `colorEnabled` (TTY, `NO_COLOR`, `FORCE_COLOR`), `ansiStripWriter` for the clui writers, `hoistGlobalFlags` (global flags accepted after the command), `commandNotFound` (exit 2 + suggestion), `errorSummaryLine`/`errorHint` (one line per failed project) |
 | `filters.go` | `gitStateFilter` (`--dirty/--behind/--ahead/--unsynced`, the only place the match rule lives) and `repoState` (`readRepoState` wraps `GitCommands.StatusInfo`) |
 
 **Package-level globals** (`main.go`): `ui *clui.Clui`, `ignoreMissingDirs`, `quietMode`, `noopMode`, `jsonMode`. All goroutines read these after `app.Before` sets them; they are never written after that.
@@ -72,7 +73,7 @@ return buildError(t.errors())
 
 ### Output modes
 
-- **Normal**: `clui` Title/Lifecycle go to stdout, Warnf/Errorf to stderr (warnings stay visible in `--quiet`/`--json`); progress bar overwrites stderr.
+- **Normal**: `clui` Title/Lifecycle go to stdout, Warnf/Errorf to stderr (warnings stay visible in `--quiet`/`--json`); progress bar overwrites stderr. ANSI colors only where `colorEnabled` allows it (per stream). The final error list (`trackerError` → `buildError`) has one line per project via `errorSummaryLine`.
 - **`--quiet`**: clui verbosity → Low; only the summary line is printed.
 - **`--json`**: clui verbosity → Low (suppresses inline output); `tracker.printJSON` emits a single JSON envelope after `wg.Wait()`.
 - **`--noop`**: skips all git calls; `tracker.printNoop` writes `[DRY-RUN]` lines.
@@ -98,7 +99,7 @@ type gipProject struct {
 }
 ```
 
-`projectsList` returns `([]gipProject, []string, error)` — the second return is collected warnings (empty name, empty local_path, bad pull_policy, invalid branches, missing repository, undetectable provider, spaces trimmed by `trimProject`); duplicate names are an error. String fields are trimmed at load, before validation.
+`projectsList` returns `([]gipProject, []string, error)` — the second return is collected warnings (empty name, empty local_path, bad pull_policy, invalid branches, missing repository, spaces trimmed by `trimProject`); duplicate names are an error. String fields are trimmed at load, before validation.
 
 ### Tracker / JSON output
 

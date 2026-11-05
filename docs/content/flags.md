@@ -6,12 +6,12 @@ weight: 4
 
 ## Global flags
 
-These flags are available on every command and go **before** the command name (`gip --json status`, not `gip status --json`).
+These flags are available on every command and can be written before or after the command name: `gip --json status` and `gip status --json` are the same. After the command they are recognized up to the first argument that is not a flag, or `--`: in `gip exec -- git log -q` the `-q` belongs to `git log`.
 
 | Flag | Description |
 |------|-------------|
 | `-f, --file <path>` | Path to the configuration file (overrides all other lookup methods) |
-| `-d, --debug` | Verbose output: logs every git command executed and the config file path |
+| `-d, --debug` | Verbose output: logs every git command executed, the config file path and informational notices (e.g. repositories whose provider cannot be detected) |
 | `-q, --quiet` | Suppress per-project output and the progress bar; tables, warnings (on stderr) and the summary line are still printed |
 | `--json` | Emit a single JSON envelope to stdout instead of text output; takes precedence over `--quiet` |
 | `--noop` | Dry-run: print what would be done without executing any git command |
@@ -118,7 +118,7 @@ OK: 5   Errors: 1   Skipped: 2   Duration: 3.4s
 
 ### Quiet (`--quiet`)
 
-Per-project output and the progress bar are suppressed, as is the `gip: using configuration` line. Tables (`list`, `branch`, `releases`), the final summary line and warnings and errors (on stderr) are still printed.
+Per-project output and the progress bar are suppressed, as is the `gip: using configuration` line (printed only for a `.gip` found in the current directory). Tables (`list`, `branch`, `releases`), the final summary line and warnings and errors (on stderr) are still printed.
 
 ### JSON (`--json`)
 
@@ -238,4 +238,8 @@ DRY-RUN — no operations performed. Remove --noop to proceed.
 
 ## Exit status
 
-gip exits with status `0` when every project succeeded or was skipped, and `1` when at least one project failed or the command could not start (configuration not found or invalid, bad flag values such as `--jobs 0`). The failed projects are listed on stderr.
+gip exits with status `0` when every project succeeded or was skipped, and `1` when at least one project failed or the command could not start (configuration not found or invalid, bad flag values such as `--jobs 0`). The failed projects are listed on stderr, one line each: the most telling line of the git output (`fatal: ...`), followed by a hint for well-known causes (missing credentials, rejected SSH key, unknown host, repository not found, diverged branches). The full git output is printed inline above it. With `--errors-last` the list appears only in the summary's error section. An unknown command exits with status `2` and suggests the closest one.
+
+## Colors
+
+Colors are used only when the output stream is a terminal. They are disabled by `NO_COLOR` (any non-empty value, see [no-color.org](https://no-color.org)) and by `TERM=dumb`, and forced with `FORCE_COLOR` (any non-empty value other than `0`), e.g. in CI systems that render ANSI in their logs. `NO_COLOR` wins over `FORCE_COLOR`. Piped or redirected output never contains escape sequences unless `FORCE_COLOR` is set.

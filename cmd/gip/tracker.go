@@ -138,7 +138,7 @@ type tracker struct {
 	total           int
 	started         time.Time
 	tty             bool // stderr is a TTY: gates the progress bar
-	colorTTY        bool // stdout is a TTY: gates ANSI styling of summary/tables
+	colorTTY        bool // stdout accepts colors (TTY, no NO_COLOR): gates ANSI styling of summary/tables
 	lastProgressLen int  // display-column width of the last progress line; guarded by outMu
 }
 
@@ -148,7 +148,7 @@ func newTracker(total int) *tracker {
 		total:    total,
 		started:  time.Now(),
 		tty:      isTTY(os.Stderr),
-		colorTTY: isTTY(os.Stdout),
+		colorTTY: colorEnabled(os.Stdout),
 	}
 }
 
@@ -262,7 +262,7 @@ func (t *tracker) printSummary(errorsLast, showSkipped bool) {
 	if errorsLast && len(errEntries) > 0 {
 		fmt.Fprintf(os.Stdout, "\n%s\n", t.applyStyle(styleDivider, "── Errors ────────────────────────────────"))
 		for _, r := range errEntries {
-			fmt.Fprintf(os.Stdout, "%s %s — %v\n", t.applyStyle(styleErr, "[ERR]"), r.project, r.err)
+			fmt.Fprintf(os.Stdout, "%s %s — %s\n", t.applyStyle(styleErr, "[ERR]"), r.project, errorSummaryLine(r.err))
 		}
 	}
 	if showSkipped && len(skipEntries) > 0 {

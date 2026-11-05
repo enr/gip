@@ -92,11 +92,11 @@ func (e checkEntry) status() string {
 func doCheck(c *cli.Context) error {
 	configurationFile, err := configurationFilePath(c)
 	if err != nil {
-		return exitErrorf(1, "Error loading configuration file %s: %v", c.String("f"), err)
+		return configurationError(c, err)
 	}
 	projects, warnings, err := projectsList(configurationFile)
 	if err != nil {
-		return exitErrorf(1, "Error loading projects list: %v", err)
+		return exitErrorf(1, "gip: %v", err)
 	}
 	projects = filterDisabled(projects)
 	// Shared directories are looked for among all the enabled projects, not
