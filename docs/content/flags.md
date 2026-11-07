@@ -124,27 +124,38 @@ Per-project output and the progress bar are suppressed, as is the `gip: using co
 
 A single JSON envelope is written to stdout after all projects have been processed; warnings and the `gip: using configuration` line go to stderr, so stdout can be piped to `jq`. The shape below is shared by `status`, `statusfull`, `pull`, `fetch`, `branch`, `releases` and `exec`; `list` uses its own shape without `summary` (see [list](/gip/commands/#list)) and so does `check` (see [check](/gip/commands/#check)). Extra branches appear as separate entries named `name@branch`.
 
+Every envelope starts with `schema_version` (currently `2`): it changes only when a field is removed or changes meaning, while new fields can be added without changing it. Projects are sorted by name, so two runs on the same repositories give the same order. `command` is the command that ran (`statusfull`, not `status`, for `gip statusfull`).
+
 ```json
 {
-  "command": "status",
+  "schema_version": 2,
+  "command": "statusfull",
   "timestamp": "2025-05-15T10:30:00Z",
   "projects": [
     {
+      "name": "broken",
+      "local_path": "/home/user/broken",
+      "status": "error",
+      "error": "exit status 128: fatal: not a git repository"
+    },
+    {
       "name": "frontend",
       "local_path": "/home/user/projects/frontend",
-      "status": "ok"
+      "status": "ok",
+      "state": {
+        "upstream": true, "ahead": 0, "behind": 0,
+        "dirty": true, "staged": false, "unstaged": true, "untracked": true, "stashed": false
+      },
+      "files": [
+        { "path": "src/app.ts", "index": ".", "worktree": "M" },
+        { "path": "notes.md", "index": "?", "worktree": "?" }
+      ]
     },
     {
       "name": "legacy",
       "local_path": "/home/user/projects/legacy",
       "status": "skipped",
-      "reason": "pull_policy: never"
-    },
-    {
-      "name": "broken",
-      "local_path": "/home/user/broken",
-      "status": "error",
-      "error": "exit status 128"
+      "reason": "clean and in sync"
     }
   ],
   "summary": {
@@ -170,22 +181,31 @@ A single JSON envelope is written to stdout after all projects have been process
 | `no commits`, `no tags`, `no commits after latest tag`, `fewer than <n> commits after latest tag` | excluded by `releases --tagged` / `--pending` / `--min` |
 | `in sync`, `branch not found locally`, `no upstream configured`, `ahead of upstream (nothing to pull)` | extra `branches` entries |
 
-#### Extended JSON fields (`branch --extended`)
+#### Command results
 
-`branch` always sets `branch`. When `--extended` (or a git-state filter) is used, each project entry may also include:
+Each entry carries the data of the command that ran, so a script or an agent never has to run git again to read it. A field is omitted when the data was not read (skipped or failed project, `--noop`); once present, it is complete: `false`, `0` and empty values are written.
+
+| Field | Commands | Description |
+|-------|----------|-------------|
+| `files` | `status`, `statusfull` | Changed files of `git status --porcelain` (untracked ones only with `statusfull`): `path`, `orig_path` (source of a rename or copy), `index` and `worktree` (the X and Y status letters, `.` when unchanged, `?` for untracked files). `[]` for a clean tree |
+| `exec` | `exec` | `exit_code` (`-1` when the command did not start or was stopped by `--timeout`), `stdout` and `stderr` of the command, also when it failed |
+| `pull` | `pull` | `cloned` (`true` for a repository cloned by `--all` or `pull_policy: always`), `updated`, `from` and `to` (`HEAD` before and after, full hashes; `from` is omitted for a clone), `commits` (number of commits between them) |
+| `branch` | `branch`, `releases`, extra branches | Current branch name or `"(detached)"` |
+| `state` | `statusfull`, `branch --extended`, git-state filters | Upstream delta and working tree, described below |
+| `commit_msg`, `commit_date` | `branch --extended` | Last commit subject and relative date (e.g. `"2 hours ago"`) |
+
+#### The `state` object
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `branch` | string | Current branch name or `"(detached)"` |
-| `ahead` | int | Commits ahead of upstream (omitted when 0) |
-| `behind` | int | Commits behind upstream (omitted when 0) |
-| `no_remote` | bool | `true` when no upstream tracking branch is configured |
-| `dirty` | string | Dirty symbols (e.g. `"+*"`); omitted when clean |
-| `commit_msg` | string | Last commit subject line (`--extended` only) |
-| `commit_date` | string | Relative date of last commit (e.g. `"2 hours ago"`; `--extended` only) |
+| `upstream` | bool | An upstream tracking branch is configured |
+| `ahead`, `behind` | int | Commits ahead of and behind the upstream |
+| `dirty` | bool | Uncommitted changes: `staged`, `unstaged` or `untracked` (a stash alone does not count) |
+| `staged`, `unstaged`, `untracked`, `stashed` | bool | Each kind of change; `stashed` is `true` when the stash is not empty |
 
 ```json
 {
+  "schema_version": 2,
   "command": "branch",
   "timestamp": "2025-05-15T10:30:00Z",
   "projects": [
@@ -194,8 +214,10 @@ A single JSON envelope is written to stdout after all projects have been process
       "local_path": "/home/user/projects/backend",
       "status": "ok",
       "branch": "dev",
-      "ahead": 2,
-      "dirty": "+*",
+      "state": {
+        "upstream": true, "ahead": 2, "behind": 0,
+        "dirty": true, "staged": true, "unstaged": true, "untracked": false, "stashed": false
+      },
       "commit_msg": "feat: add auth endpoint",
       "commit_date": "2 hours ago"
     }
@@ -204,6 +226,10 @@ A single JSON envelope is written to stdout after all projects have been process
   "warnings": []
 }
 ```
+
+#### Changes from schema version 1
+
+Version 1 envelopes had no `schema_version`. Version 2 replaces the top-level `ahead`, `behind` (omitted when 0), `no_remote` and `dirty` (a string of symbols such as `"+*?"`) with the `state` object, sorts the projects by name, reports `statusfull` as its own command and adds `files`, `exec` and `pull`.
 
 #### Tag JSON fields (`releases`)
 
@@ -219,7 +245,7 @@ The `releases` command adds to each project entry with at least one commit:
 
 #### Git fields in `list` JSON
 
-`list` entries include `branch`, `ahead`, `behind`, `no_remote` and `dirty` whenever they are known and non-empty, with or without `--extended` (same meaning as above; no commit fields).
+`list` entries include `branch` and the `state` object whenever the repository could be read, with or without `--extended` (same meaning as above; no commit fields).
 
 No ANSI codes appear in any JSON output.
 

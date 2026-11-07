@@ -121,10 +121,11 @@ gip list --dirty --extended
 
 When a filter is active, missing directories and repositories whose state cannot be read are left out of the table; the latter are still reported as errors.
 
-With `--json` the output has no `summary`. Each entry has `name`, `local_path` (resolved), `repository`, `policy`, `provider` and `tags`; `missing` and `disabled` appear when `true`, `error` when the path or the repository state cannot be read; `provider` is empty when it cannot be detected; `branch`, `ahead`, `behind`, `no_remote` and `dirty` appear when known and non-zero/non-empty, with or without `--extended`:
+With `--json` the output has no `summary`. Each entry has `name`, `local_path` (resolved), `repository`, `policy`, `provider` and `tags`; `missing` and `disabled` appear when `true`, `error` when the path or the repository state cannot be read; `provider` is empty when it cannot be detected; `branch` and the [`state` object](/gip/flags/#the-state-object) appear when the repository could be read, with or without `--extended`:
 
 ```json
 {
+  "schema_version": 2,
   "command": "list",
   "timestamp": "2025-05-15T10:30:00Z",
   "projects": [
@@ -136,8 +137,10 @@ With `--json` the output has no `summary`. Each entry has `name`, `local_path` (
       "provider": "github.com",
       "tags": ["work", "js"],
       "branch": "main",
-      "ahead": 2,
-      "dirty": "+*"
+      "state": {
+        "upstream": true, "ahead": 2, "behind": 0,
+        "dirty": true, "staged": true, "unstaged": true, "untracked": false, "stashed": false
+      }
     }
   ],
   "warnings": []
@@ -239,10 +242,11 @@ gip branch --dirty --extended
 gip branch --behind --extended
 ```
 
-With `--json`, each entry has a `branch` field; with `--extended` (or a git-state filter) it gains sync and dirty fields, and with `--extended` the commit fields. Zero, `false` and empty values are omitted:
+With `--json`, each entry has a `branch` field; with `--extended` (or a git-state filter) it gains the [`state` object](/gip/flags/#the-state-object), and with `--extended` the commit fields:
 
 ```json
 {
+  "schema_version": 2,
   "command": "branch",
   "timestamp": "2025-05-15T10:30:00Z",
   "projects": [
@@ -251,8 +255,10 @@ With `--json`, each entry has a `branch` field; with `--extended` (or a git-stat
       "local_path": "/home/user/projects/backend",
       "status": "ok",
       "branch": "dev",
-      "ahead": 2,
-      "dirty": "+*",
+      "state": {
+        "upstream": true, "ahead": 2, "behind": 0,
+        "dirty": true, "staged": true, "unstaged": true, "untracked": false, "stashed": false
+      },
       "commit_msg": "feat: add auth endpoint",
       "commit_date": "2 hours ago"
     }
@@ -385,7 +391,7 @@ gip check --remote -j 8 -t 30
 gip --json check | jq '.projects[] | select(.status != "ok")'
 ```
 
-With `--json` the envelope has `command`, `timestamp`, `projects[]` (`name`, `local_path`, `status`: `ok`/`warning`/`error`, `issues[]` with `severity` and `message`), `summary` (`total`, `ok`, `errors`, `warnings`, `duration_ms`) and `warnings[]` (configuration warnings). With `--quiet` only the summary line is printed.
+With `--json` the envelope has `schema_version`, `command`, `timestamp`, `projects[]` (`name`, `local_path`, `status`: `ok`/`warning`/`error`, `issues[]` with `severity` and `message`), `summary` (`total`, `ok`, `errors`, `warnings`, `duration_ms`) and `warnings[]` (configuration warnings). With `--quiet` only the summary line is printed.
 
 ## init
 

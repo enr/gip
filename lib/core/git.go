@@ -154,12 +154,14 @@ func (g *GitCommands) Pull(ctx context.Context, dirpath string) error {
 	return err
 }
 
-// Status executes `git status`
-func (g *GitCommands) Status(ctx context.Context, dirpath string, untracked bool) error {
+// Status executes `git status --porcelain` and prints its output; it returns
+// that output (porcelain v1, one "XY path" line per changed file) so callers
+// can report the files without running git again.
+func (g *GitCommands) Status(ctx context.Context, dirpath string, untracked bool) (string, error) {
 	g.ensureOut()
 	var err error
 	if strings.HasPrefix(dirpath, "-") {
-		return fmt.Errorf("invalid dirpath: cannot start with '-'")
+		return "", fmt.Errorf("invalid dirpath: cannot start with '-'")
 	}
 	g.ui.Confidentialf("Status on %s", dirpath)
 	r := runcmdWrapperRequest{
@@ -185,7 +187,10 @@ func (g *GitCommands) Status(ctx context.Context, dirpath string, untracked bool
 		g.ui.Lifecycle(gitOutput)
 		g.outMu.Unlock()
 	}
-	return err
+	if err != nil {
+		return "", err
+	}
+	return gitOutput, nil
 }
 
 // Fetch executes `git fetch --all --prune`
@@ -216,6 +221,43 @@ func (g *GitCommands) Fetch(ctx context.Context, dirpath string) error {
 	g.ui.Lifecycle(result.Stdout().String())
 	g.outMu.Unlock()
 	return err
+}
+
+// Head returns the full hash of the commit checked out in dirpath.
+func (g *GitCommands) Head(ctx context.Context, dirpath string) (string, error) {
+	if strings.HasPrefix(dirpath, "-") {
+		return "", fmt.Errorf("invalid dirpath: cannot start with '-'")
+	}
+	r := g.executor.exec(runcmdWrapperRequest{
+		ctx:        ctx,
+		args:       []string{"rev-parse", "--verify", "--quiet", "HEAD"},
+		workingDir: dirpath,
+	})
+	if !r.Success() {
+		return "", gitResultError(r)
+	}
+	return strings.TrimSpace(r.Stdout().String()), nil
+}
+
+// CountCommits returns the number of commits reachable from to and not from
+// from ("git rev-list --count from..to").
+func (g *GitCommands) CountCommits(ctx context.Context, dirpath, from, to string) (int, error) {
+	if strings.HasPrefix(dirpath, "-") || strings.HasPrefix(from, "-") || strings.HasPrefix(to, "-") {
+		return 0, fmt.Errorf("invalid argument: cannot start with '-'")
+	}
+	r := g.executor.exec(runcmdWrapperRequest{
+		ctx:        ctx,
+		args:       []string{"rev-list", "--count", from + ".." + to},
+		workingDir: dirpath,
+	})
+	if !r.Success() {
+		return 0, gitResultError(r)
+	}
+	var n int
+	if _, err := fmt.Sscanf(strings.TrimSpace(r.Stdout().String()), "%d", &n); err != nil {
+		return 0, fmt.Errorf("unexpected rev-list output %q", r.Stdout().String())
+	}
+	return n, nil
 }
 
 // CurrentBranch returns the name of the current branch, or "(detached)" for a detached HEAD.

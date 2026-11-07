@@ -428,20 +428,22 @@ type checkSummaryJSON struct {
 }
 
 type checkOutputJSON struct {
-	Command   string             `json:"command"`
-	Timestamp string             `json:"timestamp"`
-	Projects  []checkProjectJSON `json:"projects"`
-	Summary   checkSummaryJSON   `json:"summary"`
-	Warnings  []string           `json:"warnings"`
+	SchemaVersion int                `json:"schema_version"`
+	Command       string             `json:"command"`
+	Timestamp     string             `json:"timestamp"`
+	Projects      []checkProjectJSON `json:"projects"`
+	Summary       checkSummaryJSON   `json:"summary"`
+	Warnings      []string           `json:"warnings"`
 }
 
 func printCheckJSON(entries []checkEntry, warnings []string, t *tracker) {
 	t.clearProgress()
 	out := checkOutputJSON{
-		Command:   "check",
-		Timestamp: time.Now().UTC().Format(time.RFC3339),
-		Projects:  make([]checkProjectJSON, 0, len(entries)),
-		Warnings:  warnings,
+		SchemaVersion: jsonSchemaVersion,
+		Command:       "check",
+		Timestamp:     time.Now().UTC().Format(time.RFC3339),
+		Projects:      make([]checkProjectJSON, 0, len(entries)),
+		Warnings:      warnings,
 	}
 	if out.Warnings == nil {
 		out.Warnings = []string{}

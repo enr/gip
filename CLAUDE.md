@@ -31,8 +31,8 @@ The binary lives in `cmd/gip/` (package `main`). The library lives in `lib/core/
 ### `lib/core/`
 
 - **`runcmd.go`** — `runcmdWrapper` interface + `defaultGitWrapper` that executes the `git` binary. The interface exists solely for test injection: `stubs_test.go` provides `mockGitWrapper`.
-- **`git.go`** — `GitCommands` struct. Every public method (Clone, Pull, Status, Fetch, CurrentBranch) calls `executor.exec(runcmdWrapperRequest{})` and synchronises output through `outputMu sync.Mutex` before calling `ui.Title`/`ui.Lifecycle`.
-- **`exec.go`** — `CommandRunner` for arbitrary shell commands (used by `gip exec`). Same mutex-guarded output pattern as `GitCommands`.
+- **`git.go`** — `GitCommands` struct. Every public method (Clone, Pull, Status, Fetch, CurrentBranch) calls `executor.exec(runcmdWrapperRequest{})` and synchronises output through `outputMu sync.Mutex` before calling `ui.Title`/`ui.Lifecycle`. `Status` also returns the porcelain output; `Head`/`CountCommits` let `pull --json` report what changed.
+- **`exec.go`** — `CommandRunner` for arbitrary shell commands (used by `gip exec`). Same mutex-guarded output pattern as `GitCommands`; `Run` returns an `ExecResult` (stdout, stderr, exit code, `-1` when not started or killed).
 
 ### `cmd/gip/`
 
@@ -44,6 +44,7 @@ The binary lives in `cmd/gip/` (package `main`). The library lives in `lib/core/
 | `tracker.go` | `tracker` struct, JSON types, progress bar, summary/JSON output |
 | `check.go` | `check` command: read-only verification of the configuration (paths, remotes vs `repository`, shared dirs, branches; `--remote` runs `GitCommands.LsRemote`), own JSON shape |
 | `output.go` | Output hygiene: `colorEnabled` (TTY, `NO_COLOR`, `FORCE_COLOR`), `ansiStripWriter` for the clui writers, `hoistGlobalFlags` (global flags accepted after the command), `commandNotFound` (exit 2 + suggestion), `errorSummaryLine`/`errorHint` (one line per failed project) |
+| `results.go` | Command data for `--json`: `parsePorcelain` (status files), `pullInfo`/`readPullInfo` (HEAD before/after a pull) |
 | `filters.go` | `gitStateFilter` (`--dirty/--behind/--ahead/--unsynced`, the only place the match rule lives) and `repoState` (`readRepoState` wraps `GitCommands.StatusInfo`) |
 
 **Package-level globals** (`main.go`): `ui *clui.Clui`, `ignoreMissingDirs`, `quietMode`, `noopMode`, `jsonMode`. All goroutines read these after `app.Before` sets them; they are never written after that.
@@ -103,11 +104,11 @@ type gipProject struct {
 
 ### Tracker / JSON output
 
-`tracker` accumulates `opResult` values (one per project). Fields: `project`, `localPath`, `status` (opOK/opError/opSkipped), `err`, `reason`, `branch`, `state *repoState` (sync/dirty, nil when not read), `commitMsg`/`commitDate`, plus tag fields (`tagSet`, `lastTag`, `commitsSinceTag`, `tagDate`, `unreleased`) set by `releases` (`cmd/gip/releases.go`, backed by `GitCommands.LatestTag`; `--fetch` runs `GitCommands.FetchTags` first). At the end:
+`tracker` accumulates `opResult` values (one per project). Fields: `project`, `localPath`, `status` (opOK/opError/opSkipped), `err`, `reason`, `branch`, `state *repoState` (sync/dirty, nil when not read), `commitMsg`/`commitDate`, plus tag fields (`tagSet`, `lastTag`, `commitsSinceTag`, `tagDate`, `unreleased`) set by `releases`, and the command results reported by `--json` (`files []statusFile` from `parsePorcelain` for status/statusfull, `execRes *core.ExecResult` for exec, `pull *pullInfo` for pull; `cmd/gip/results.go`) (`cmd/gip/releases.go`, backed by `GitCommands.LatestTag`; `--fetch` runs `GitCommands.FetchTags` first). At the end:
 - `printSummary(errorsLast bool)` — text table with ANSI color (TTY only).
-- `printJSON(command, warnings)` — single JSON object: `command`, `timestamp`, `projects[]`, `summary{total,ok,errors,skipped,duration_ms}`, `warnings[]`.
+- `printJSON(command, warnings)` — single JSON object: `schema_version` (`jsonSchemaVersion`; bump it only when a field is removed or changes meaning), `command`, `timestamp`, `projects[]` (sorted by name; built by `opResult.toJSON`, sync/dirty in the `state` object), `summary{total,ok,errors,skipped,duration_ms}`, `warnings[]`.
 
-`list` uses a separate `listOutputJSON` / `listProjectJSON` shape (includes repository, policy, provider, tags, missing, disabled, error).
+`list` uses a separate `listOutputJSON` / `listProjectJSON` shape (includes repository, policy, provider, tags, missing, disabled, error, state); `check` has its own `checkOutputJSON`. All three carry `schema_version`.
 
 ## Testing
 

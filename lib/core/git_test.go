@@ -223,7 +223,7 @@ func TestGitCommands_Status(t *testing.T) {
 		executor: mock,
 	}
 
-	err := gitCmd.Status(context.Background(), "/tmp/myrepo", false)
+	_, err := gitCmd.Status(context.Background(), "/tmp/myrepo", false)
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)
 	}
@@ -240,7 +240,7 @@ func TestGitCommands_Status(t *testing.T) {
 	}
 
 	// test option injection dirpath
-	err = gitCmd.Status(context.Background(), "--myrepo", false)
+	_, err = gitCmd.Status(context.Background(), "--myrepo", false)
 	if err == nil {
 		t.Fatalf("Expected error for dirpath starting with -")
 	}
@@ -731,5 +731,52 @@ func TestGitCommands_UnreachableTags(t *testing.T) {
 	}
 	if _, err := (&GitCommands{ui: ui, executor: &mockGitWrapper{}}).UnreachableTags(context.Background(), "--repo", "", ""); err == nil {
 		t.Error("expected error for dirpath starting with '-'")
+	}
+}
+
+func TestGitCommands_StatusReturnsOutput(t *testing.T) {
+	mock := &mockGitWrapper{result: &runcmdStubResult{success: true, stdout: " M a.go\n"}}
+	gitCmd := &GitCommands{ui: clui.DefaultClui(), executor: mock}
+	out, err := gitCmd.Status(context.Background(), "/tmp/myrepo", false)
+	if err != nil || out != " M a.go\n" {
+		t.Fatalf("Status = %q, %v", out, err)
+	}
+	mock = &mockGitWrapper{result: &runcmdStubResult{success: false, stdout: "partial", err: errors.New("exit status 128")}}
+	gitCmd = &GitCommands{ui: clui.DefaultClui(), executor: mock}
+	if out, err = gitCmd.Status(context.Background(), "/tmp/myrepo", false); err == nil || out != "" {
+		t.Fatalf("failed Status = %q, %v; want empty output and an error", out, err)
+	}
+}
+
+func TestGitCommands_HeadAndCountCommits(t *testing.T) {
+	mock := &mockGitWrapper{results: []runcmdResult{
+		&runcmdStubResult{success: true, stdout: "abc123\n"},
+		&runcmdStubResult{success: true, stdout: "3\n"},
+	}}
+	gitCmd := &GitCommands{ui: clui.DefaultClui(), executor: mock}
+	head, err := gitCmd.Head(context.Background(), "/r")
+	if err != nil || head != "abc123" {
+		t.Fatalf("Head = %q, %v", head, err)
+	}
+	n, err := gitCmd.CountCommits(context.Background(), "/r", "aaa", "bbb")
+	if err != nil || n != 3 {
+		t.Fatalf("CountCommits = %d, %v", n, err)
+	}
+	want := [][]string{
+		{"rev-parse", "--verify", "--quiet", "HEAD"},
+		{"rev-list", "--count", "aaa..bbb"},
+	}
+	for i, w := range want {
+		if !reflect.DeepEqual(mock.requests[i].args, w) {
+			t.Errorf("call %d: args %v, want %v", i, mock.requests[i].args, w)
+		}
+	}
+	if _, err := gitCmd.CountCommits(context.Background(), "/r", "--all", "x"); err == nil {
+		t.Error("CountCommits must reject arguments starting with '-'")
+	}
+	mock = &mockGitWrapper{result: &runcmdStubResult{success: false, err: errors.New("exit status 1")}}
+	gitCmd = &GitCommands{ui: clui.DefaultClui(), executor: mock}
+	if _, err := gitCmd.Head(context.Background(), "/r"); err == nil {
+		t.Error("Head must fail on an unborn branch")
 	}
 }

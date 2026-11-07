@@ -384,7 +384,11 @@ func gitStatus(c *cli.Context, untracked bool) error {
 	}
 	wg.Wait()
 	if jsonMode {
-		t.printJSON("status", warnings)
+		command := "status"
+		if untracked {
+			command = "statusfull"
+		}
+		t.printJSON(command, warnings)
 	} else {
 		t.printSummary(c.Bool("errors-last"), c.Bool("show-skipped"))
 	}
@@ -423,10 +427,11 @@ func doStatusProject(c *cli.Context, git *core.GitCommands, t *tracker, project 
 		t.record(opResult{project: project.Name, localPath: line, status: opSkipped, reason: reason})
 		return
 	}
-	if err = git.Status(ctx, line, untracked); err != nil {
+	out, err := git.Status(ctx, line, untracked)
+	if err != nil {
 		t.record(opResult{project: project.Name, localPath: line, status: opError, err: err})
 	} else {
-		t.record(opResult{project: project.Name, localPath: line, status: opOK})
+		t.record(opResult{project: project.Name, localPath: line, status: opOK, files: parsePorcelain(out)})
 	}
 }
 
@@ -442,13 +447,16 @@ func statusProjectFull(ctx context.Context, git *core.GitCommands, t *tracker, p
 		t.record(opResult{project: project.Name, localPath: line, status: opSkipped, reason: "clean and in sync"})
 		return
 	}
-	res := opResult{project: project.Name, localPath: line, state: &st}
+	res := opResult{project: project.Name, localPath: line, state: &st, files: []statusFile{}}
 	if st.dirty.IsDirty() {
-		if err = git.Status(ctx, line, true); err != nil {
+		out, err := git.Status(ctx, line, true)
+		if err != nil {
 			res.status = opError
 			res.err = err
+			res.files = nil
 		} else {
 			res.status = opOK
+			res.files = parsePorcelain(out)
 		}
 	} else {
 		t.withOutput(func() {
@@ -722,10 +730,7 @@ func printListJSON(rows []listRow, warnings []string) {
 		}
 		if r.state != nil {
 			entry.Branch = r.state.sync.Branch
-			entry.Ahead = r.state.sync.Ahead
-			entry.Behind = r.state.sync.Behind
-			entry.NoRemote = r.state.sync.NoRemote
-			entry.Dirty = r.state.dirty.Symbols()
+			entry.State = newStateJSON(r.state)
 		}
 		pjs = append(pjs, entry)
 	}
@@ -733,10 +738,11 @@ func printListJSON(rows []listRow, warnings []string) {
 		warnings = []string{}
 	}
 	out := listOutputJSON{
-		Command:   "list",
-		Timestamp: time.Now().UTC().Format(time.RFC3339),
-		Projects:  pjs,
-		Warnings:  warnings,
+		SchemaVersion: jsonSchemaVersion,
+		Command:       "list",
+		Timestamp:     time.Now().UTC().Format(time.RFC3339),
+		Projects:      pjs,
+		Warnings:      warnings,
 	}
 	data, _ := json.MarshalIndent(out, "", "  ")
 	fmt.Fprintf(os.Stdout, "%s\n", data)
@@ -842,11 +848,19 @@ func pullOne(c *cli.Context, git *core.GitCommands, project gipProject, all bool
 			return
 		}
 	}
+	before := ""
+	if jsonMode {
+		before = headOrEmpty(ctx, git, line)
+	}
 	if err = git.Pull(ctx, line); err != nil {
 		t.record(opResult{project: project.Name, localPath: line, status: opError, err: err})
-	} else {
-		t.record(opResult{project: project.Name, localPath: line, status: opOK})
+		return
 	}
+	res := opResult{project: project.Name, localPath: line, status: opOK}
+	if jsonMode {
+		res.pull = readPullInfo(ctx, git, line, before, false)
+	}
+	t.record(res)
 }
 
 func pullMissingDir(c *cli.Context, git *core.GitCommands, project gipProject, line string, all bool, t *tracker) {
@@ -867,9 +881,13 @@ func pullMissingDir(c *cli.Context, git *core.GitCommands, project gipProject, l
 	defer cancel()
 	if err := git.Clone(ctx, project.Repository, line); err != nil {
 		t.record(opResult{project: project.Name, localPath: line, status: opError, err: err})
-	} else {
-		t.record(opResult{project: project.Name, localPath: line, status: opOK})
+		return
 	}
+	res := opResult{project: project.Name, localPath: line, status: opOK}
+	if jsonMode {
+		res.pull = readPullInfo(ctx, git, line, "", true)
+	}
+	t.record(res)
 }
 
 func doFetch(c *cli.Context) error {
@@ -1145,10 +1163,11 @@ func execProject(project gipProject, runner *core.CommandRunner, git *core.GitCo
 		t.record(opResult{project: project.Name, localPath: line, status: opSkipped, reason: reason})
 		return
 	}
-	if err = runner.Run(ctx, line, cmdName, cmdArgs); err != nil {
-		t.record(opResult{project: project.Name, localPath: line, status: opError, err: err})
+	res, err := runner.Run(ctx, line, cmdName, cmdArgs)
+	if err != nil {
+		t.record(opResult{project: project.Name, localPath: line, status: opError, err: err, execRes: &res})
 	} else {
-		t.record(opResult{project: project.Name, localPath: line, status: opOK})
+		t.record(opResult{project: project.Name, localPath: line, status: opOK, execRes: &res})
 	}
 }
 

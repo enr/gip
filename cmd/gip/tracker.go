@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -47,6 +48,10 @@ type opResult struct {
 	tagDate         string
 	unreleased      bool
 	unreachableTags []string
+	// command output reported by --json
+	files   []statusFile     // status/statusfull: changed files; nil when git status did not run
+	execRes *core.ExecResult // exec: output and exit code of the command
+	pull    *pullInfo        // pull: HEAD before and after (JSON mode only)
 }
 
 func (r opResult) statusString() string {
@@ -64,19 +69,21 @@ func (r opResult) statusString() string {
 
 // --- JSON output types ---
 
+// jsonSchemaVersion is the version of every JSON envelope written by gip. It
+// changes only when a field is removed or changes meaning; new fields can be
+// added without changing it.
+const jsonSchemaVersion = 2
+
 type projectJSON struct {
-	Name       string `json:"name"`
-	LocalPath  string `json:"local_path"`
-	Status     string `json:"status"`
-	Error      string `json:"error,omitempty"`
-	Reason     string `json:"reason,omitempty"`
-	Branch     string `json:"branch,omitempty"`
-	Ahead      int    `json:"ahead,omitempty"`
-	Behind     int    `json:"behind,omitempty"`
-	NoRemote   bool   `json:"no_remote,omitempty"`
-	Dirty      string `json:"dirty,omitempty"`
-	CommitMsg  string `json:"commit_msg,omitempty"`
-	CommitDate string `json:"commit_date,omitempty"`
+	Name       string     `json:"name"`
+	LocalPath  string     `json:"local_path"`
+	Status     string     `json:"status"`
+	Error      string     `json:"error,omitempty"`
+	Reason     string     `json:"reason,omitempty"`
+	Branch     string     `json:"branch,omitempty"`
+	State      *stateJSON `json:"state,omitempty"`
+	CommitMsg  string     `json:"commit_msg,omitempty"`
+	CommitDate string     `json:"commit_date,omitempty"`
 	// releases command: CommitsSinceTag is a pointer so that 0 (HEAD on the
 	// tag) is still emitted.
 	LastTag         string `json:"last_tag,omitempty"`
@@ -85,6 +92,62 @@ type projectJSON struct {
 	Unreleased      bool   `json:"unreleased,omitempty"`
 	// tags not reachable from HEAD that descend from LastTag (see releases)
 	UnreachableTags []string `json:"unreachable_tags,omitempty"`
+	// status/statusfull: a pointer so that a clean tree gives "files": []
+	Files *[]fileJSON `json:"files,omitempty"`
+	Exec  *execJSON   `json:"exec,omitempty"`
+	Pull  *pullJSON   `json:"pull,omitempty"`
+}
+
+// stateJSON is the upstream delta and working-tree state of a repository.
+// Every field is always present: false and 0 are values, not omissions.
+type stateJSON struct {
+	Upstream  bool `json:"upstream"`
+	Ahead     int  `json:"ahead"`
+	Behind    int  `json:"behind"`
+	Dirty     bool `json:"dirty"`
+	Staged    bool `json:"staged"`
+	Unstaged  bool `json:"unstaged"`
+	Untracked bool `json:"untracked"`
+	Stashed   bool `json:"stashed"`
+}
+
+func newStateJSON(st *repoState) *stateJSON {
+	if st == nil {
+		return nil
+	}
+	return &stateJSON{
+		Upstream:  !st.sync.NoRemote,
+		Ahead:     st.sync.Ahead,
+		Behind:    st.sync.Behind,
+		Dirty:     st.dirty.IsDirty(),
+		Staged:    st.dirty.Staged,
+		Unstaged:  st.dirty.Unstaged,
+		Untracked: st.dirty.Untracked,
+		Stashed:   st.dirty.Stashed,
+	}
+}
+
+// fileJSON is one changed file of "git status --porcelain": index and
+// worktree are the X and Y status letters, "." when unchanged.
+type fileJSON struct {
+	Path     string `json:"path"`
+	OrigPath string `json:"orig_path,omitempty"`
+	Index    string `json:"index"`
+	Worktree string `json:"worktree"`
+}
+
+type execJSON struct {
+	ExitCode int    `json:"exit_code"`
+	Stdout   string `json:"stdout"`
+	Stderr   string `json:"stderr"`
+}
+
+type pullJSON struct {
+	Cloned  bool   `json:"cloned"`
+	Updated bool   `json:"updated"`
+	From    string `json:"from,omitempty"`
+	To      string `json:"to,omitempty"`
+	Commits int    `json:"commits"`
 }
 
 type summaryJSON struct {
@@ -96,35 +159,34 @@ type summaryJSON struct {
 }
 
 type commandOutputJSON struct {
-	Command   string        `json:"command"`
-	Timestamp string        `json:"timestamp"`
-	Projects  []projectJSON `json:"projects"`
-	Summary   summaryJSON   `json:"summary"`
-	Warnings  []string      `json:"warnings"`
+	SchemaVersion int           `json:"schema_version"`
+	Command       string        `json:"command"`
+	Timestamp     string        `json:"timestamp"`
+	Projects      []projectJSON `json:"projects"`
+	Summary       summaryJSON   `json:"summary"`
+	Warnings      []string      `json:"warnings"`
 }
 
 type listProjectJSON struct {
-	Name       string   `json:"name"`
-	LocalPath  string   `json:"local_path"`
-	Repository string   `json:"repository"`
-	Policy     string   `json:"policy"`
-	Provider   string   `json:"provider"`
-	Tags       []string `json:"tags"`
-	Missing    bool     `json:"missing,omitempty"`
-	Disabled   bool     `json:"disabled,omitempty"`
-	Error      string   `json:"error,omitempty"`
-	Branch     string   `json:"branch,omitempty"`
-	Ahead      int      `json:"ahead,omitempty"`
-	Behind     int      `json:"behind,omitempty"`
-	NoRemote   bool     `json:"no_remote,omitempty"`
-	Dirty      string   `json:"dirty,omitempty"`
+	Name       string     `json:"name"`
+	LocalPath  string     `json:"local_path"`
+	Repository string     `json:"repository"`
+	Policy     string     `json:"policy"`
+	Provider   string     `json:"provider"`
+	Tags       []string   `json:"tags"`
+	Missing    bool       `json:"missing,omitempty"`
+	Disabled   bool       `json:"disabled,omitempty"`
+	Error      string     `json:"error,omitempty"`
+	Branch     string     `json:"branch,omitempty"`
+	State      *stateJSON `json:"state,omitempty"`
 }
 
 type listOutputJSON struct {
-	Command   string            `json:"command"`
-	Timestamp string            `json:"timestamp"`
-	Projects  []listProjectJSON `json:"projects"`
-	Warnings  []string          `json:"warnings"`
+	SchemaVersion int               `json:"schema_version"`
+	Command       string            `json:"command"`
+	Timestamp     string            `json:"timestamp"`
+	Projects      []listProjectJSON `json:"projects"`
+	Warnings      []string          `json:"warnings"`
 }
 
 // --- tracker ---
@@ -280,33 +342,7 @@ func (t *tracker) printJSON(command string, warnings []string) {
 	projects := make([]projectJSON, 0, len(t.results))
 	var okCount, errCount, skipCount int
 	for _, r := range t.results {
-		p := projectJSON{
-			Name:       r.project,
-			LocalPath:  r.localPath,
-			Status:     r.statusString(),
-			Reason:     r.reason,
-			Branch:     r.branch,
-			CommitMsg:  r.commitMsg,
-			CommitDate: r.commitDate,
-		}
-		if r.err != nil {
-			p.Error = r.err.Error()
-		}
-		if r.state != nil {
-			p.Ahead = r.state.sync.Ahead
-			p.Behind = r.state.sync.Behind
-			p.NoRemote = r.state.sync.NoRemote
-			p.Dirty = r.state.dirty.Symbols()
-		}
-		if r.tagSet {
-			commits := r.commitsSinceTag
-			p.LastTag = r.lastTag
-			p.CommitsSinceTag = &commits
-			p.TagDate = r.tagDate
-			p.Unreleased = r.unreleased
-			p.UnreachableTags = r.unreachableTags
-		}
-		projects = append(projects, p)
+		projects = append(projects, r.toJSON())
 		switch r.status {
 		case opOK:
 			okCount++
@@ -319,10 +355,13 @@ func (t *tracker) printJSON(command string, warnings []string) {
 	if warnings == nil {
 		warnings = []string{}
 	}
+	// Projects finish in any order: sorting by name makes the output stable.
+	sort.SliceStable(projects, func(a, b int) bool { return projects[a].Name < projects[b].Name })
 	out := commandOutputJSON{
-		Command:   command,
-		Timestamp: time.Now().UTC().Format(time.RFC3339),
-		Projects:  projects,
+		SchemaVersion: jsonSchemaVersion,
+		Command:       command,
+		Timestamp:     time.Now().UTC().Format(time.RFC3339),
+		Projects:      projects,
 		Summary: summaryJSON{
 			Total:      t.total,
 			OK:         okCount,
@@ -334,6 +373,45 @@ func (t *tracker) printJSON(command string, warnings []string) {
 	}
 	data, _ := json.MarshalIndent(out, "", "  ")
 	fmt.Fprintf(os.Stdout, "%s\n", data)
+}
+
+// toJSON converts a result to its JSON entry.
+func (r opResult) toJSON() projectJSON {
+	p := projectJSON{
+		Name:       r.project,
+		LocalPath:  r.localPath,
+		Status:     r.statusString(),
+		Reason:     r.reason,
+		Branch:     r.branch,
+		State:      newStateJSON(r.state),
+		CommitMsg:  r.commitMsg,
+		CommitDate: r.commitDate,
+	}
+	if r.err != nil {
+		p.Error = r.err.Error()
+	}
+	if r.tagSet {
+		commits := r.commitsSinceTag
+		p.LastTag = r.lastTag
+		p.CommitsSinceTag = &commits
+		p.TagDate = r.tagDate
+		p.Unreleased = r.unreleased
+		p.UnreachableTags = r.unreachableTags
+	}
+	if r.files != nil {
+		files := make([]fileJSON, 0, len(r.files))
+		for _, f := range r.files {
+			files = append(files, fileJSON(f))
+		}
+		p.Files = &files
+	}
+	if r.execRes != nil {
+		p.Exec = &execJSON{ExitCode: r.execRes.ExitCode, Stdout: r.execRes.Stdout, Stderr: r.execRes.Stderr}
+	}
+	if r.pull != nil {
+		p.Pull = &pullJSON{Cloned: r.pull.cloned, Updated: r.pull.from != r.pull.to, From: r.pull.from, To: r.pull.to, Commits: r.pull.commits}
+	}
+	return p
 }
 
 // errors returns collected errors as a map suitable for buildError.
