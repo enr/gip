@@ -176,7 +176,7 @@ func commandNotFound(c *cli.Context, name string) {
 		}
 	}
 	msg += " Run 'gip --help' for the list of commands."
-	cli.HandleExitCoder(cli.Exit(msg, 2))
+	cli.HandleExitCoder(cli.Exit(msg, exitUsage))
 }
 
 // errorSummaryLine condenses an operation error to one line for the final

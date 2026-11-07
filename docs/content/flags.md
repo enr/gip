@@ -16,6 +16,7 @@ These flags are available on every command and can be written before or after th
 | `--json` | Emit a single JSON envelope to stdout instead of text output; takes precedence over `--quiet` |
 | `--noop` | Dry-run: print what would be done without executing any git command |
 | `-m, --ignore-missing` | Do not print the warning for projects whose `local_path` does not exist (they are skipped either way) |
+| `--strict` | A missing `local_path` (or a missing extra branch) is an error instead of a skipped project: the command exits with status `1`. Meant for CI, e.g. `gip --strict pull` |
 | `-v, --version` | Print version, revision and build date |
 | `-h, --help` | Show help; `gip <command> --help` shows the command's flags |
 
@@ -113,8 +114,10 @@ Each project prints its git output inline as it completes. A progress bar is sho
 
 ```text
 ─────────────────────────────────────────
-OK: 5   Errors: 1   Skipped: 2   Duration: 3.4s
+OK: 5   Errors: 1   Skipped: 3 (missing 1, filtered 2)   Duration: 3.4s
 ```
+
+The skipped projects are split by kind (only the non-zero kinds are shown): `missing` (the configured directory or branch does not exist: usually a configuration to fix), `protected` (gip refused to touch the repository: `pull_policy: never`, uncommitted changes without `--force`) and `filtered` (nothing to do: clean, in sync, excluded by a filter). `--show-skipped` lists them with their reason.
 
 ### Quiet (`--quiet`)
 
@@ -155,7 +158,8 @@ Every envelope starts with `schema_version` (currently `2`): it changes only whe
       "name": "legacy",
       "local_path": "/home/user/projects/legacy",
       "status": "skipped",
-      "reason": "clean and in sync"
+      "reason": "clean and in sync",
+      "skip": "filtered"
     }
   ],
   "summary": {
@@ -163,23 +167,27 @@ Every envelope starts with `schema_version` (currently `2`): it changes only whe
     "ok": 1,
     "errors": 1,
     "skipped": 1,
+    "skipped_by": { "missing": 0, "protected": 0, "filtered": 1 },
     "duration_ms": 1240
   },
   "warnings": []
 }
 ```
 
-`status` values: `ok`, `error`, `skipped`. `error` holds the error message of failed entries; `reason` is set for skipped entries, for example:
+`status` values: `ok`, `error`, `skipped`. `error` holds the error message of failed entries; skipped entries have a `reason` and a `skip` kind (`missing`, `protected`, `filtered`, see [Text](#text-default)), counted in `summary.skipped_by` (all three keys always present):
 
-| Reason | When |
-|--------|------|
-| `pull_policy: never` | `pull` / `fetch` on a project with `pull_policy: never` |
-| `local dir missing`, `not a project dir` | the directory does not exist or has no `.git` |
-| `uncommitted changes (use --force)` | `pull` on a dirty repo |
-| `not dirty`, `not ahead or behind`, `not behind`, `not ahead` | excluded by a git-state filter |
-| `clean and in sync` | `statusfull` on a repo with nothing to report |
-| `no commits`, `no tags`, `no commits after latest tag`, `fewer than <n> commits after latest tag` | excluded by `releases --tagged` / `--pending` / `--min` |
-| `in sync`, `branch not found locally`, `no upstream configured`, `ahead of upstream (nothing to pull)` | extra `branches` entries |
+| Reason | Kind | When |
+|--------|------|------|
+| `local dir missing`, `not a project dir` | `missing` | the directory does not exist or has no `.git` |
+| `branch not found locally` | `missing` | an extra `branches` entry that does not exist |
+| `pull_policy: never` | `protected` | `pull` / `fetch` on a project with `pull_policy: never` |
+| `uncommitted changes (use --force)` | `protected` | `pull` on a dirty repo |
+| `not dirty`, `not ahead or behind`, `not behind`, `not ahead` | `filtered` | excluded by a git-state filter |
+| `clean and in sync` | `filtered` | `statusfull` on a repo with nothing to report |
+| `no commits`, `no tags`, `no commits after latest tag`, `fewer than <n> commits after latest tag` | `filtered` | excluded by `releases --tagged` / `--pending` / `--min` |
+| `in sync`, `no upstream configured`, `ahead of upstream (nothing to pull)` | `filtered` | extra `branches` entries |
+
+With `--strict` the `missing` entries become errors (`"status": "error"`, `"error": "local dir missing (--strict)"`).
 
 #### Command results
 
@@ -222,7 +230,7 @@ Each entry carries the data of the command that ran, so a script or an agent nev
       "commit_date": "2 hours ago"
     }
   ],
-  "summary": { "total": 1, "ok": 1, "errors": 0, "skipped": 0, "duration_ms": 45 },
+  "summary": { "total": 1, "ok": 1, "errors": 0, "skipped": 0, "skipped_by": { "missing": 0, "protected": 0, "filtered": 0 }, "duration_ms": 45 },
   "warnings": []
 }
 ```
@@ -258,13 +266,30 @@ $ gip --noop pull
 [DRY-RUN] frontend → git pull  (in /home/user/projects/frontend)
 [DRY-RUN] legacy → SKIPPED  (pull_policy: never)
 ─────────────────────────────────────────
-OK: 1   Errors: 0   Skipped: 1   Duration: 0.0s
+OK: 1   Errors: 0   Skipped: 1 (protected 1)   Duration: 0.0s
 DRY-RUN — no operations performed. Remove --noop to proceed.
 ```
 
 ## Exit status
 
-gip exits with status `0` when every project succeeded or was skipped, and `1` when at least one project failed or the command could not start (configuration not found or invalid, bad flag values such as `--jobs 0`). The failed projects are listed on stderr, one line each: the most telling line of the git output (`fatal: ...`), followed by a hint for well-known causes (missing credentials, rejected SSH key, unknown host, repository not found, diverged branches). The full git output is printed inline above it. With `--errors-last` the list appears only in the summary's error section. An unknown command exits with status `2` and suggests the closest one.
+| Status | Meaning |
+|--------|---------|
+| `0` | Every project succeeded or was skipped |
+| `1` | At least one project failed, or is missing with `--strict`; also when gip cannot run at all (git not installed, `init` cannot write its file) |
+| `2` | Usage or configuration error, nothing was done: configuration not found, unreadable or invalid (bad YAML, duplicate names), unknown command or flag, bad flag value (`--jobs 0`, `--min -1`), missing argument (`gip exec` without a command) |
+
+So a script can tell "some repositories need attention" from "gip was called or configured wrongly":
+
+```bash
+gip --strict --json pull > result.json
+case $? in
+  0) echo "all good" ;;
+  1) jq -r '.projects[] | select(.status == "error") | .name' result.json ;;
+  2) echo "fix the gip invocation or configuration" >&2; exit 2 ;;
+esac
+```
+
+The failed projects are listed on stderr, one line each: the most telling line of the git output (`fatal: ...`), followed by a hint for well-known causes (missing credentials, rejected SSH key, unknown host, repository not found, diverged branches). The full git output is printed inline above it. With `--errors-last` the list appears only in the summary's error section. An unknown command suggests the closest one.
 
 ## Colors
 

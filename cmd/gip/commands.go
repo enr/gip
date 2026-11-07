@@ -290,13 +290,13 @@ compdef _gip gip
 func doCompletion(c *cli.Context) error {
 	shell := c.Args().First()
 	if shell == "" {
-		return exitErrorf(1, "completion requires a shell argument: bash, zsh, or fish")
+		return usageErrorf("completion requires a shell argument: bash, zsh, or fish")
 	}
 	switch shell {
 	case "fish":
 		script, err := c.App.ToFishCompletion()
 		if err != nil {
-			return exitErrorf(1, "Error generating fish completion: %v", err)
+			return exitErrorf(exitFailure, "Error generating fish completion: %v", err)
 		}
 		fmt.Fprint(os.Stdout, script)
 	case "bash":
@@ -304,7 +304,7 @@ func doCompletion(c *cli.Context) error {
 	case "zsh":
 		fmt.Fprint(os.Stdout, zshCompletionScript)
 	default:
-		return exitErrorf(1, "unsupported shell %q: supported shells are bash, zsh, fish", shell)
+		return usageErrorf("unsupported shell %q: supported shells are bash, zsh, fish", shell)
 	}
 	return nil
 }
@@ -348,20 +348,20 @@ func gitStatus(c *cli.Context, untracked bool) error {
 	}
 	projects, warnings, err := projectsList(configurationFile)
 	if err != nil {
-		return exitErrorf(1, "gip: %v", err)
+		return usageErrorf("gip: %v", err)
 	}
 	projects = filterByTag(projects, tagFilterValue(c))
 	projects = filterDisabled(projects)
 	t := newTracker(len(projects))
 	git, err := core.NewGit(ui, core.WithSharedOutput(t.sharedOutput()))
 	if err != nil {
-		return exitErrorf(1, "Error loading git: %v", err)
+		return exitErrorf(exitFailure, "Error loading git: %v", err)
 	}
 	filter := newGitStateFilter(c)
 
 	jobs, err := resolveJobs(c)
 	if err != nil {
-		return exitErrorf(1, "%v", err)
+		return usageErrorf("%v", err)
 	}
 
 	untrackedFlag := "--untracked-files=no"
@@ -403,7 +403,7 @@ func doStatusProject(c *cli.Context, git *core.GitCommands, t *tracker, project 
 	}
 	if !isProjectDir(line) {
 		t.withOutput(func() { warnMissingDir(line) })
-		t.record(opResult{project: project.Name, localPath: line, status: opSkipped, reason: "not a project dir"})
+		t.record(opResult{project: project.Name, localPath: line, status: opSkipped, reason: reasonNotProjectDir})
 		return
 	}
 	if noopMode {
@@ -472,7 +472,7 @@ func statusProjectFull(ctx context.Context, git *core.GitCommands, t *tracker, p
 func trackerError(c *cli.Context, t *tracker) error {
 	errs := t.errors()
 	if len(errs) > 0 && !jsonMode && c.Bool("errors-last") {
-		return exitError(1, "")
+		return exitError(exitFailure, "")
 	}
 	return buildError(errs)
 }
@@ -490,7 +490,7 @@ func buildError(errors map[string]error) error {
 	for _, key := range keys {
 		buffer.WriteString(fmt.Sprintf("- %s: %s\n", key, errorSummaryLine(errors[key])))
 	}
-	return exitError(1, buffer.String())
+	return exitError(exitFailure, buffer.String())
 }
 
 // listRow is one project of the list table.
@@ -554,8 +554,11 @@ func readListStates(c *cli.Context, git *core.GitCommands, rows []listRow, jobs 
 func listErrors(rows []listRow) map[string]error {
 	errs := map[string]error{}
 	for _, r := range rows {
-		if r.err != nil {
+		switch {
+		case r.err != nil:
 			errs[r.project.Name] = r.err
+		case r.missing && strictMode:
+			errs[r.project.Name] = fmt.Errorf("%s (--strict)", reasonDirMissing)
 		}
 	}
 	return errs
@@ -674,7 +677,7 @@ func doList(c *cli.Context) error {
 	}
 	projects, warnings, err := projectsList(configurationFile)
 	if err != nil {
-		return exitErrorf(1, "gip: %v", err)
+		return usageErrorf("gip: %v", err)
 	}
 	projects = filterByTag(projects, tagFilterValue(c))
 	if !c.Bool("all") {
@@ -683,11 +686,11 @@ func doList(c *cli.Context) error {
 	filter := newGitStateFilter(c)
 	jobs, err := resolveJobs(c)
 	if err != nil {
-		return exitErrorf(1, "%v", err)
+		return usageErrorf("%v", err)
 	}
 	git, err := core.NewGit(ui)
 	if err != nil {
-		return exitErrorf(1, "Error loading git: %v", err)
+		return exitErrorf(exitFailure, "Error loading git: %v", err)
 	}
 
 	rows := buildListRows(projects)
@@ -755,28 +758,28 @@ func doPull(c *cli.Context) error {
 	}
 	args := c.Args().Slice()
 	if len(args) > 0 {
-		return exitErrorf(1, "Pull command does not accept any argument, found: %v", args)
+		return usageErrorf("Pull command does not accept any argument, found: %v", args)
 	}
 	if c.Bool("dirty") && !c.Bool("force") {
-		return exitErrorf(1, "--dirty selects only repositories with uncommitted changes, which pull skips without --force: add --force or drop --dirty")
+		return usageErrorf("--dirty selects only repositories with uncommitted changes, which pull skips without --force: add --force or drop --dirty")
 	}
 	all := c.Bool("all")
 	ui.Confidentialf("%s PULL all? %t", configurationFile, all)
 	projects, warnings, err := projectsList(configurationFile)
 	if err != nil {
-		return exitErrorf(1, "gip: %v", err)
+		return usageErrorf("gip: %v", err)
 	}
 	projects = filterByTag(projects, tagFilterValue(c))
 	projects = filterDisabled(projects)
 	t := newTracker(len(projects))
 	git, err := core.NewGit(ui, core.WithSharedOutput(t.sharedOutput()))
 	if err != nil {
-		return exitErrorf(1, "Error loading git: %v", err)
+		return exitErrorf(exitFailure, "Error loading git: %v", err)
 	}
 
 	jobs, err := resolveJobs(c)
 	if err != nil {
-		return exitErrorf(1, "%v", err)
+		return usageErrorf("%v", err)
 	}
 
 	sem := make(chan struct{}, jobs)
@@ -810,7 +813,7 @@ func pullOne(c *cli.Context, git *core.GitCommands, project gipProject, all bool
 		if noopMode {
 			t.printNoop("%s → SKIPPED  (pull_policy: never)", project.Name)
 		}
-		t.record(opResult{project: project.Name, status: opSkipped, reason: "pull_policy: never"})
+		t.record(opResult{project: project.Name, status: opSkipped, reason: reasonPullNever})
 		return
 	}
 
@@ -844,7 +847,7 @@ func pullOne(c *cli.Context, git *core.GitCommands, project gipProject, all bool
 			return
 		}
 		if !force && st.dirty.IsDirty() {
-			t.record(opResult{project: project.Name, localPath: line, status: opSkipped, reason: "uncommitted changes (use --force)"})
+			t.record(opResult{project: project.Name, localPath: line, status: opSkipped, reason: reasonUncommitted})
 			return
 		}
 	}
@@ -869,7 +872,7 @@ func pullMissingDir(c *cli.Context, git *core.GitCommands, project gipProject, l
 		if noopMode {
 			t.printNoop("%s → SKIPPED  (directory missing)", project.Name)
 		}
-		t.record(opResult{project: project.Name, localPath: line, status: opSkipped, reason: "local dir missing"})
+		t.record(opResult{project: project.Name, localPath: line, status: opSkipped, reason: reasonDirMissing})
 		return
 	}
 	if noopMode {
@@ -897,21 +900,21 @@ func doFetch(c *cli.Context) error {
 	}
 	projects, warnings, err := projectsList(configurationFile)
 	if err != nil {
-		return exitErrorf(1, "gip: %v", err)
+		return usageErrorf("gip: %v", err)
 	}
 	projects = filterByTag(projects, tagFilterValue(c))
 	projects = filterDisabled(projects)
 	t := newTracker(len(projects))
 	git, err := core.NewGit(ui, core.WithSharedOutput(t.sharedOutput()))
 	if err != nil {
-		return exitErrorf(1, "Error loading git: %v", err)
+		return exitErrorf(exitFailure, "Error loading git: %v", err)
 	}
 
 	filter := newGitStateFilter(c)
 
 	jobs, err := resolveJobs(c)
 	if err != nil {
-		return exitErrorf(1, "%v", err)
+		return usageErrorf("%v", err)
 	}
 	sem := make(chan struct{}, jobs)
 	var wg sync.WaitGroup
@@ -943,7 +946,7 @@ func fetchOne(c *cli.Context, git *core.GitCommands, project gipProject, t *trac
 		if noopMode {
 			t.printNoop("%s → SKIPPED  (pull_policy: never)", project.Name)
 		}
-		t.record(opResult{project: project.Name, status: opSkipped, reason: "pull_policy: never"})
+		t.record(opResult{project: project.Name, status: opSkipped, reason: reasonPullNever})
 		return
 	}
 
@@ -957,7 +960,7 @@ func fetchOne(c *cli.Context, git *core.GitCommands, project gipProject, t *trac
 		if noopMode {
 			t.printNoop("%s → SKIPPED  (directory missing)", project.Name)
 		}
-		t.record(opResult{project: project.Name, localPath: line, status: opSkipped, reason: "local dir missing"})
+		t.record(opResult{project: project.Name, localPath: line, status: opSkipped, reason: reasonDirMissing})
 		return
 	}
 	if noopMode {
@@ -1015,7 +1018,7 @@ func branchProject(c *cli.Context, git *core.GitCommands, t *tracker, project gi
 		if noopMode {
 			t.printNoop("%s → SKIPPED  (directory missing)", project.Name)
 		}
-		t.record(opResult{project: project.Name, localPath: line, status: opSkipped, reason: "local dir missing"})
+		t.record(opResult{project: project.Name, localPath: line, status: opSkipped, reason: reasonDirMissing})
 		return entry, !filter.active()
 	}
 	if noopMode {
@@ -1090,20 +1093,20 @@ func doBranch(c *cli.Context) error {
 	}
 	projects, warnings, err := projectsList(configurationFile)
 	if err != nil {
-		return exitErrorf(1, "gip: %v", err)
+		return usageErrorf("gip: %v", err)
 	}
 	projects = filterByTag(projects, tagFilterValue(c))
 	projects = filterDisabled(projects)
 	t := newTracker(len(projects))
 	git, err := core.NewGit(ui, core.WithSharedOutput(t.sharedOutput()))
 	if err != nil {
-		return exitErrorf(1, "Error loading git: %v", err)
+		return exitErrorf(exitFailure, "Error loading git: %v", err)
 	}
 	extended := c.Bool("extended")
 	filter := newGitStateFilter(c)
 	jobs, err := resolveJobs(c)
 	if err != nil {
-		return exitErrorf(1, "%v", err)
+		return usageErrorf("%v", err)
 	}
 	var entriesMu sync.Mutex
 	entries := make([]branchEntry, 0, len(projects))
@@ -1144,7 +1147,7 @@ func execProject(project gipProject, runner *core.CommandRunner, git *core.GitCo
 		if noopMode {
 			t.printNoop("%s → SKIPPED  (directory missing)", project.Name)
 		}
-		t.record(opResult{project: project.Name, localPath: line, status: opSkipped, reason: "not a project dir"})
+		t.record(opResult{project: project.Name, localPath: line, status: opSkipped, reason: reasonNotProjectDir})
 		return
 	}
 	if noopMode {
@@ -1174,7 +1177,7 @@ func execProject(project gipProject, runner *core.CommandRunner, git *core.GitCo
 func doExec(c *cli.Context) error {
 	args := c.Args().Slice()
 	if len(args) == 0 {
-		return exitErrorf(1, "exec requires a command: gip exec -- <cmd> [args...]")
+		return usageErrorf("exec requires a command: gip exec -- <cmd> [args...]")
 	}
 	cmdName := args[0]
 	cmdArgs := args[1:]
@@ -1184,7 +1187,7 @@ func doExec(c *cli.Context) error {
 	}
 	projects, warnings, err := projectsList(configurationFile)
 	if err != nil {
-		return exitErrorf(1, "gip: %v", err)
+		return usageErrorf("gip: %v", err)
 	}
 	projects = filterByTag(projects, tagFilterValue(c))
 	projects = filterDisabled(projects)
@@ -1196,12 +1199,12 @@ func doExec(c *cli.Context) error {
 	if filter.active() {
 		git, err = core.NewGit(ui, core.WithSharedOutput(t.sharedOutput()))
 		if err != nil {
-			return exitErrorf(1, "Error loading git: %v", err)
+			return exitErrorf(exitFailure, "Error loading git: %v", err)
 		}
 	}
 	jobs, err := resolveJobs(c)
 	if err != nil {
-		return exitErrorf(1, "%v", err)
+		return usageErrorf("%v", err)
 	}
 	sem := make(chan struct{}, jobs)
 	var wg sync.WaitGroup
@@ -1238,18 +1241,18 @@ func doInit(c *cli.Context) error {
 	}
 	scanDir, err := projectPath(scanDir)
 	if err != nil {
-		return exitErrorf(1, "Error expanding path %s: %v", scanDir, err)
+		return usageErrorf("Error expanding path %s: %v", scanDir, err)
 	}
 	scanDir, err = filepath.Abs(scanDir)
 	if err != nil {
-		return exitErrorf(1, "Error resolving path %s: %v", scanDir, err)
+		return usageErrorf("Error resolving path %s: %v", scanDir, err)
 	}
 
 	ui.Lifecyclef("Scanning %s ...", scanDir)
 
 	repos, err := scanForRepos(scanDir, c.Int("depth"))
 	if err != nil {
-		return exitErrorf(1, "Error scanning directory: %v", err)
+		return exitErrorf(exitFailure, "Error scanning directory: %v", err)
 	}
 
 	var entries []initEntry
@@ -1291,10 +1294,10 @@ func doInit(c *cli.Context) error {
 
 	data, err := yaml.Marshal(entries)
 	if err != nil {
-		return exitErrorf(1, "Error generating YAML: %v", err)
+		return exitErrorf(exitFailure, "Error generating YAML: %v", err)
 	}
 	if err := os.WriteFile(outputPath, data, 0600); err != nil {
-		return exitErrorf(1, "Error writing %s: %v", outputPath, err)
+		return exitErrorf(exitFailure, "Error writing %s: %v", outputPath, err)
 	}
 
 	ui.Lifecyclef("Configuration written to %s (%d repositories)", outputPath, len(entries))
@@ -1399,12 +1402,12 @@ func isLocalConfiguration(path string) bool {
 // cannot be found or resolved, with the way out when none exists yet.
 func configurationError(c *cli.Context, err error) error {
 	if errors.Is(err, errConfigNotFound) {
-		return exitErrorf(1, "gip: %v. Create one with 'gip init' or pass -f <file>.", err)
+		return usageErrorf("gip: %v. Create one with 'gip init' or pass -f <file>.", err)
 	}
 	if f := c.String("f"); f != "" {
-		return exitErrorf(1, "gip: configuration file %s: %v", f, err)
+		return usageErrorf("gip: configuration file %s: %v", f, err)
 	}
-	return exitErrorf(1, "gip: configuration file: %v", err)
+	return usageErrorf("gip: configuration file: %v", err)
 }
 
 func explicitConfigurationFilePath(c *cli.Context) (string, error) {

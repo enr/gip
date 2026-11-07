@@ -80,6 +80,7 @@ type projectJSON struct {
 	Status     string     `json:"status"`
 	Error      string     `json:"error,omitempty"`
 	Reason     string     `json:"reason,omitempty"`
+	Skip       skipKind   `json:"skip,omitempty"`
 	Branch     string     `json:"branch,omitempty"`
 	State      *stateJSON `json:"state,omitempty"`
 	CommitMsg  string     `json:"commit_msg,omitempty"`
@@ -151,11 +152,13 @@ type pullJSON struct {
 }
 
 type summaryJSON struct {
-	Total      int   `json:"total"`
-	OK         int   `json:"ok"`
-	Errors     int   `json:"errors"`
-	Skipped    int   `json:"skipped"`
-	DurationMs int64 `json:"duration_ms"`
+	Total   int `json:"total"`
+	OK      int `json:"ok"`
+	Errors  int `json:"errors"`
+	Skipped int `json:"skipped"`
+	// SkippedBy splits Skipped by kind: missing, protected, filtered.
+	SkippedBy  map[skipKind]int `json:"skipped_by"`
+	DurationMs int64            `json:"duration_ms"`
 }
 
 type commandOutputJSON struct {
@@ -239,6 +242,7 @@ func (t *tracker) sharedOutput() (*sync.Mutex, func()) {
 
 // record stores one project result and redraws the progress bar.
 func (t *tracker) record(r opResult) {
+	r = strictResult(r)
 	t.mu.Lock()
 	t.results = append(t.results, r)
 	done := len(t.results)
@@ -297,25 +301,21 @@ func (t *tracker) clearProgress() {
 func (t *tracker) printSummary(errorsLast, showSkipped bool) {
 	t.clearProgress()
 
-	var okCount, errCount, skipCount int
 	var errEntries, skipEntries []opResult
 	for _, r := range t.results {
 		switch r.status {
-		case opOK:
-			okCount++
 		case opError:
-			errCount++
 			errEntries = append(errEntries, r)
 		case opSkipped:
-			skipCount++
 			skipEntries = append(skipEntries, r)
 		}
 	}
+	n := t.counts()
 
 	elapsed := time.Since(t.started)
-	okStr := t.styleIf(okCount > 0, styleOK, fmt.Sprintf("OK: %d", okCount))
-	errStr := t.styleIf(errCount > 0, styleErr, fmt.Sprintf("Errors: %d", errCount))
-	skipStr := t.styleIf(skipCount > 0, styleSkip, fmt.Sprintf("Skipped: %d", skipCount))
+	okStr := t.styleIf(n.ok > 0, styleOK, fmt.Sprintf("OK: %d", n.ok))
+	errStr := t.styleIf(n.errors > 0, styleErr, fmt.Sprintf("Errors: %d", n.errors))
+	skipStr := t.styleIf(n.skipped > 0, styleSkip, fmt.Sprintf("Skipped: %d", n.skipped)) + n.skipDetail()
 	fmt.Fprintf(os.Stdout, "%s\n", t.applyStyle(styleDivider, "─────────────────────────────────────────"))
 	fmt.Fprintf(os.Stdout, "%s   %s   %s   Duration: %.1fs\n", okStr, errStr, skipStr, elapsed.Seconds())
 	if noopMode {
@@ -335,23 +335,55 @@ func (t *tracker) printSummary(errorsLast, showSkipped bool) {
 	}
 }
 
+// resultCounts are the totals of the summary.
+type resultCounts struct {
+	ok, errors, skipped int
+	skippedBy           map[skipKind]int // every kind present, 0 included
+}
+
+func (t *tracker) counts() resultCounts {
+	n := resultCounts{skippedBy: map[skipKind]int{}}
+	for _, k := range skipKinds {
+		n.skippedBy[k] = 0
+	}
+	for _, r := range t.results {
+		switch r.status {
+		case opOK:
+			n.ok++
+		case opError:
+			n.errors++
+		case opSkipped:
+			n.skipped++
+			n.skippedBy[skipKindOf(r.reason)]++
+		}
+	}
+	return n
+}
+
+// skipDetail is the split of the skipped count, e.g. " (missing 1, filtered 2)";
+// empty when nothing was skipped.
+func (n resultCounts) skipDetail() string {
+	var parts []string
+	for _, k := range skipKinds {
+		if c := n.skippedBy[k]; c > 0 {
+			parts = append(parts, fmt.Sprintf("%s %d", k, c))
+		}
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return " (" + strings.Join(parts, ", ") + ")"
+}
+
 // printJSON serialises all results as a JSON envelope and writes to stdout.
 func (t *tracker) printJSON(command string, warnings []string) {
 	t.clearProgress()
 
 	projects := make([]projectJSON, 0, len(t.results))
-	var okCount, errCount, skipCount int
 	for _, r := range t.results {
 		projects = append(projects, r.toJSON())
-		switch r.status {
-		case opOK:
-			okCount++
-		case opError:
-			errCount++
-		case opSkipped:
-			skipCount++
-		}
 	}
+	n := t.counts()
 	if warnings == nil {
 		warnings = []string{}
 	}
@@ -364,9 +396,10 @@ func (t *tracker) printJSON(command string, warnings []string) {
 		Projects:      projects,
 		Summary: summaryJSON{
 			Total:      t.total,
-			OK:         okCount,
-			Errors:     errCount,
-			Skipped:    skipCount,
+			OK:         n.ok,
+			Errors:     n.errors,
+			Skipped:    n.skipped,
+			SkippedBy:  n.skippedBy,
 			DurationMs: time.Since(t.started).Milliseconds(),
 		},
 		Warnings: warnings,
@@ -389,6 +422,9 @@ func (r opResult) toJSON() projectJSON {
 	}
 	if r.err != nil {
 		p.Error = r.err.Error()
+	}
+	if r.status == opSkipped {
+		p.Skip = skipKindOf(r.reason)
 	}
 	if r.tagSet {
 		commits := r.commitsSinceTag

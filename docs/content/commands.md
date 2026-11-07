@@ -263,7 +263,7 @@ With `--json`, each entry has a `branch` field; with `--extended` (or a git-stat
       "commit_date": "2 hours ago"
     }
   ],
-  "summary": { "total": 1, "ok": 1, "errors": 0, "skipped": 0, "duration_ms": 45 },
+  "summary": { "total": 1, "ok": 1, "errors": 0, "skipped": 0, "skipped_by": { "missing": 0, "protected": 0, "filtered": 0 }, "duration_ms": 45 },
   "warnings": []
 }
 ```
@@ -345,7 +345,7 @@ gip --noop exec -- git reset --hard origin/main
 gip exec --dirty -- git stash
 ```
 
-The command is run in the `local_path` of each project (missing directories are skipped). stdout and stderr of every invocation are collected and printed in a synchronised block so output from different projects does not interleave. A non-zero exit status is reported as an error for that project, and gip exits with status 1.
+The command is run in the `local_path` of each project (missing directories are skipped, or reported as errors with `--strict`). stdout and stderr of every invocation are collected and printed in a synchronised block so output from different projects does not interleave. A non-zero exit status is reported as an error for that project, and gip exits with status 1.
 
 ## check
 
@@ -376,7 +376,7 @@ Remote URLs are compared ignoring protocol, user, port, case and a trailing `.gi
 
 With `--remote` each repository is contacted with `git ls-remote` (network access, no change). A request for credentials is reported as a warning: hosts answer a missing private repository the same way, so its existence cannot be told.
 
-gip exits with status 1 when at least one error is found; warnings do not change the exit status.
+gip exits with status 1 when at least one error is found; warnings do not change the exit status. With `--strict` a missing directory or extra branch is an error instead of a warning, so `gip --strict check` fails on any configured path that does not exist.
 
 | Flag | Description |
 |------|-------------|

@@ -66,6 +66,16 @@ func (e *checkEntry) errorf(format string, args ...interface{}) {
 	e.issues = append(e.issues, checkIssue{checkError, fmt.Sprintf(format, args...)})
 }
 
+// missingf reports a configured directory or branch that does not exist: a
+// warning, or an error with --strict (like the other commands).
+func (e *checkEntry) missingf(format string, args ...interface{}) {
+	if strictMode {
+		e.errorf(format+" (--strict)", args...)
+		return
+	}
+	e.warnf(format, args...)
+}
+
 func (e *checkEntry) warnf(format string, args ...interface{}) {
 	e.issues = append(e.issues, checkIssue{checkWarning, fmt.Sprintf(format, args...)})
 }
@@ -96,7 +106,7 @@ func doCheck(c *cli.Context) error {
 	}
 	projects, warnings, err := projectsList(configurationFile)
 	if err != nil {
-		return exitErrorf(1, "gip: %v", err)
+		return usageErrorf("gip: %v", err)
 	}
 	projects = filterDisabled(projects)
 	// Shared directories are looked for among all the enabled projects, not
@@ -105,12 +115,12 @@ func doCheck(c *cli.Context) error {
 	projects = filterByTag(projects, tagFilterValue(c))
 	jobs, err := resolveJobs(c)
 	if err != nil {
-		return exitErrorf(1, "%v", err)
+		return usageErrorf("%v", err)
 	}
 	t := newTracker(len(projects))
 	git, err := core.NewGit(ui, core.WithSharedOutput(t.sharedOutput()))
 	if err != nil {
-		return exitErrorf(1, "Error loading git: %v", err)
+		return exitErrorf(exitFailure, "Error loading git: %v", err)
 	}
 	remote := c.Bool("remote")
 
@@ -218,7 +228,7 @@ func checkLocalDir(e *checkEntry) bool {
 	info, err := os.Stat(e.path)
 	switch {
 	case os.IsNotExist(err):
-		e.warnf("directory missing (gip pull -a clones it)")
+		e.missingf("directory missing (gip pull -a clones it)")
 	case err != nil:
 		e.errorf("cannot read local_path: %v", err)
 	case !info.IsDir():
@@ -258,7 +268,7 @@ func checkBranches(ctx context.Context, git *core.GitCommands, project gipProjec
 	for _, b := range infos {
 		switch {
 		case !b.Exists:
-			e.warnf("branch %s (in branches) not found locally", b.Name)
+			e.missingf("branch %s (in branches) not found locally", b.Name)
 		case b.NoRemote:
 			e.warnf("branch %s (in branches) has no upstream", b.Name)
 		}

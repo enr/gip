@@ -97,21 +97,21 @@ func doReleases(c *cli.Context) error {
 	}
 	projects, warnings, err := projectsList(configurationFile)
 	if err != nil {
-		return exitErrorf(1, "gip: %v", err)
+		return usageErrorf("gip: %v", err)
 	}
 	projects = filterByTag(projects, tagFilterValue(c))
 	projects = filterDisabled(projects)
 	t := newTracker(len(projects))
 	git, err := core.NewGit(ui, core.WithSharedOutput(t.sharedOutput()))
 	if err != nil {
-		return exitErrorf(1, "Error loading git: %v", err)
+		return exitErrorf(exitFailure, "Error loading git: %v", err)
 	}
 	jobs, err := resolveJobs(c)
 	if err != nil {
-		return exitErrorf(1, "%v", err)
+		return usageErrorf("%v", err)
 	}
 	if c.Int("min") < 0 {
-		return exitErrorf(1, "--min must be >= 0, got %d", c.Int("min"))
+		return usageErrorf("--min must be >= 0, got %d", c.Int("min"))
 	}
 	opts := releasesOptions{
 		match: c.String("match"), fetch: c.Bool("fetch"), pending: c.Bool("pending"), tagged: c.Bool("tagged"), min: c.Int("min"),
@@ -166,7 +166,7 @@ func releaseProject(c *cli.Context, git *core.GitCommands, t *tracker, project g
 		if noopMode {
 			t.printNoop("%s → SKIPPED  (directory missing)", project.Name)
 		}
-		t.record(opResult{project: project.Name, localPath: line, status: opSkipped, reason: "local dir missing"})
+		t.record(opResult{project: project.Name, localPath: line, status: opSkipped, reason: reasonDirMissing})
 		return entry, !opts.filtering() && !opts.filter.active()
 	}
 	if noopMode {

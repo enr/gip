@@ -203,7 +203,7 @@ func TestCLIConfigurationErrors(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, stderr, code := runGip(t, binPath, "-f", bad, "list")
-	if code != 1 || strings.Count(stderr, "did not find expected node content") != 1 {
+	if code != exitUsage || strings.Count(stderr, "did not find expected node content") != 1 {
 		t.Fatalf("invalid configuration: exit %d\n%s", code, stderr)
 	}
 }

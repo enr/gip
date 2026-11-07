@@ -69,7 +69,7 @@ func TestOpResultToJSON(t *testing.T) {
 	}
 
 	data, _ = json.Marshal(opResult{project: "q", status: opSkipped}.toJSON())
-	if string(data) != `{"name":"q","local_path":"","status":"skipped"}` {
+	if string(data) != `{"name":"q","local_path":"","status":"skipped","skip":"filtered"}` {
 		t.Errorf("unread data must be omitted, got %s", data)
 	}
 }

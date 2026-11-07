@@ -26,6 +26,7 @@ Build date: %s
 	quietMode         bool
 	noopMode          bool
 	jsonMode          bool
+	strictMode        bool
 )
 
 func main() {
@@ -40,6 +41,7 @@ func main() {
 		&cli.BoolFlag{Name: "ignore-missing", Aliases: []string{"m"}, Usage: "ignores missing local directories, otherwise prints a warn"},
 		&cli.BoolFlag{Name: "noop", Usage: "dry-run: print what would be done without executing any git command"},
 		&cli.BoolFlag{Name: "json", Usage: "output results as JSON (takes precedence over --quiet)"},
+		&cli.BoolFlag{Name: "strict", Usage: "fail (exit status 1) when a configured directory or branch is missing, instead of skipping it"},
 	}
 	app.EnableBashCompletion = true
 	app.CommandNotFound = commandNotFound
@@ -66,12 +68,15 @@ func main() {
 		quietMode = c.Bool("quiet")
 		noopMode = c.Bool("noop")
 		jsonMode = c.Bool("json")
+		strictMode = c.Bool("strict")
 		return nil
 	}
 
 	app.Commands = commands
 
+	// Errors of the commands exit through cli.HandleExitCoder with their own
+	// status; what reaches here is a usage error found by the flag parser.
 	if err := app.Run(hoistGlobalFlags(os.Args, app.Flags, app.Commands)); err != nil {
-		os.Exit(1)
+		os.Exit(exitUsage)
 	}
 }
