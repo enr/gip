@@ -26,13 +26,14 @@ Build date: %s
 	quietMode         bool
 	noopMode          bool
 	jsonMode          bool
+	strictMode        bool
 )
 
 func main() {
 	app := cli.NewApp()
 	app.Name = "gip"
 	app.Version = appVersion
-	app.Usage = "Keep tracks of your Git projects"
+	app.Usage = "Keep track of your Git projects"
 	app.Flags = []cli.Flag{
 		&cli.StringFlag{Name: "file", Aliases: []string{"f"}, Usage: "path to the configuration file to use (if not set will be picked ${HOME}/.gip)"},
 		&cli.BoolFlag{Name: "debug", Aliases: []string{"d"}, Usage: "operates in debug mode: lot of output"},
@@ -40,8 +41,10 @@ func main() {
 		&cli.BoolFlag{Name: "ignore-missing", Aliases: []string{"m"}, Usage: "ignores missing local directories, otherwise prints a warn"},
 		&cli.BoolFlag{Name: "noop", Usage: "dry-run: print what would be done without executing any git command"},
 		&cli.BoolFlag{Name: "json", Usage: "output results as JSON (takes precedence over --quiet)"},
+		&cli.BoolFlag{Name: "strict", Usage: "fail (exit status 1) when a configured directory or branch is missing, instead of skipping it"},
 	}
 	app.EnableBashCompletion = true
+	app.CommandNotFound = commandNotFound
 
 	app.Before = func(c *cli.Context) error {
 		if ui != nil {
@@ -56,17 +59,26 @@ func main() {
 		}
 		ui, _ = clui.NewClui(func(ui *clui.Clui) {
 			ui.VerbosityLevel = verbosityLevel
+			// Colors only on terminals, never with NO_COLOR: piped output and
+			// CI logs get plain text.
+			ui.StdWriter = plainWriterUnlessColor(ui.StdWriter, os.Stdout)
+			ui.ErrorWriter = plainWriterUnlessColor(ui.ErrorWriter, os.Stderr)
 		})
 		ignoreMissingDirs = c.Bool("m")
 		quietMode = c.Bool("quiet")
 		noopMode = c.Bool("noop")
 		jsonMode = c.Bool("json")
+		strictMode = c.Bool("strict")
 		return nil
 	}
 
 	app.Commands = commands
 
-	if err := app.Run(os.Args); err != nil {
-		os.Exit(1)
+	// Errors of the commands exit through cli.HandleExitCoder with their own
+	// status; what reaches here is a usage error found by the flag parser.
+	args := hoistGlobalFlags(os.Args, app.Flags, app.Commands)
+	args = moveFlagsBeforeArgs(args, app.Flags, app.Commands)
+	if err := app.Run(args); err != nil {
+		os.Exit(exitUsage)
 	}
 }

@@ -52,7 +52,7 @@ The config file is a list of project entries in YAML or JSON. Each entry describ
 |-------|----------|-------------|
 | `name` | yes | Descriptive name for the project. Must be unique across the file. |
 | `repository` | yes | Remote URL (HTTPS or SSH). Used to clone missing repos (`pull_policy: always` or `gip pull --all`) and to detect the provider shown by `list`. |
-| `local_path` | yes | Local directory path. `~` and environment variables are expanded; an unset or empty variable is an error. A relative path is resolved against the directory of the configuration file, not the current directory. |
+| `local_path` | yes | Local directory path. `~` (the `HOME` directory, `USERPROFILE` on Windows, as in the shell) and environment variables are expanded; an unset or empty variable is an error. A relative path is resolved against the directory of the configuration file, not the current directory. |
 | `pull_policy` | no | `never` — always skip this project for `pull` and `fetch`. `always` — clone via `git clone` if `local_path` does not exist. Omit for default behaviour: operate only on already-present directories. Values are case-insensitive. |
 | `branches` | no | Extra local branches reported by `status` and fast-forwarded by `pull` (see [Extra branches](#extra-branches)). |
 | `tags` | no | List of free-form labels. Used by `--tag` filtering (see [Tag filtering](#tag-filtering)). |
@@ -133,7 +133,7 @@ gip searches for the config file in this order:
 
 The first match wins. If `GIP_FILE` is set but points to a missing file gip stops with an error instead of falling back to the next location; if no file is found at all, gip stops with an error.
 
-When the file was not given with `-f`, gip prints the one it uses on stderr (`gip: using configuration <path>`; suppressed by `--quiet`), so a `.gip` picked up from the current directory never goes unnoticed.
+When the file is the `.gip` of the current directory, gip prints it on stderr (`gip: using configuration <path>`; suppressed by `--quiet`), so a local file taking precedence over `~/.gip` never goes unnoticed. Files given with `-f` or `GIP_FILE`, and `~/.gip`, are announced only with `--debug`. When no file is found, the error suggests `gip init`.
 
 ```bash
 # explicit path

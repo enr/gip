@@ -31,8 +31,8 @@ The binary lives in `cmd/gip/` (package `main`). The library lives in `lib/core/
 ### `lib/core/`
 
 - **`runcmd.go`** — `runcmdWrapper` interface + `defaultGitWrapper` that executes the `git` binary. The interface exists solely for test injection: `stubs_test.go` provides `mockGitWrapper`.
-- **`git.go`** — `GitCommands` struct. Every public method (Clone, Pull, Status, Fetch, CurrentBranch) calls `executor.exec(runcmdWrapperRequest{})` and synchronises output through `outputMu sync.Mutex` before calling `ui.Title`/`ui.Lifecycle`.
-- **`exec.go`** — `CommandRunner` for arbitrary shell commands (used by `gip exec`). Same mutex-guarded output pattern as `GitCommands`.
+- **`git.go`** — `GitCommands` struct. Every public method (Clone, Pull, Status, Fetch, CurrentBranch) calls `executor.exec(runcmdWrapperRequest{})` and synchronises output through `outputMu sync.Mutex` before calling `ui.Title`/`ui.Lifecycle`. `Status` also returns the porcelain output; `Head`/`CountCommits` let `pull --json` report what changed. Failures are printed inline by `showFailure` ("git <op> failed (exit status N)" + stderr), once.
+- **`exec.go`** — `CommandRunner` for arbitrary shell commands (used by `gip exec`). Same mutex-guarded output pattern as `GitCommands`; `Run` returns an `ExecResult` (stdout, stderr, exit code, `-1` when not started or killed).
 
 ### `cmd/gip/`
 
@@ -43,9 +43,13 @@ The binary lives in `cmd/gip/` (package `main`). The library lives in `lib/core/
 | `utils.go` | Config file cascade, YAML/JSON parsing, project model, `filterByTag` |
 | `tracker.go` | `tracker` struct, JSON types, progress bar, summary/JSON output |
 | `check.go` | `check` command: read-only verification of the configuration (paths, remotes vs `repository`, shared dirs, branches; `--remote` runs `GitCommands.LsRemote`), own JSON shape |
+| `output.go` | Output hygiene: `colorEnabled` (TTY, `NO_COLOR`, `FORCE_COLOR`), `ansiStripWriter` for the clui writers, `hoistGlobalFlags` (global flags accepted after the command), `moveFlagsBeforeArgs` (flags after the positional argument of `init`), `commandNotFound` (exit 2 + suggestion), `errorSummaryLine`/`errorHint` (one line per failed project; hints in the `errorHints` table, most specific first) |
+| `exitcodes.go` | Exit statuses (`exitOK` 0, `exitFailure` 1, `exitUsage` 2 via `usageErrorf` for configuration/flag errors), skip reason constants (`missingReason(dir)` picks "directory does not exist" / "not a git repository") and `skipKindOf` (missing/protected/filtered; skipped = not looked at or not touched, a clean repo is OK), `strictResult` (`--strict`: missing → error, applied in `tracker.record`) |
+| `commands.go` (init) | `doInit` → `initScanDir`, `confirmOverwrite` (no prompt without a TTY: exit 2), `initEntries`, `portablePaths`/`portableLocalPath` (relative to the output file, else `~/`, else absolute), `writeInitConfig` (`-o -` = stdout) |
+| `results.go` | Command data for `--json`: `parsePorcelain` (status files), `pullInfo`/`readPullInfo` (HEAD before/after a pull) |
 | `filters.go` | `gitStateFilter` (`--dirty/--behind/--ahead/--unsynced`, the only place the match rule lives) and `repoState` (`readRepoState` wraps `GitCommands.StatusInfo`) |
 
-**Package-level globals** (`main.go`): `ui *clui.Clui`, `ignoreMissingDirs`, `quietMode`, `noopMode`, `jsonMode`. All goroutines read these after `app.Before` sets them; they are never written after that.
+**Package-level globals** (`main.go`): `ui *clui.Clui`, `ignoreMissingDirs`, `quietMode`, `noopMode`, `jsonMode`, `strictMode`. All goroutines read these after `app.Before` sets them; they are never written after that.
 
 ### Command execution pattern
 
@@ -68,14 +72,16 @@ if jsonMode { t.printJSON("cmd", warnings) } else { t.printSummary(c.Bool("error
 return buildError(t.errors())
 ```
 
-`opContext(c)` returns a `context.WithTimeout` when `--timeout` is set.
+`opContext(c)` returns a `context.WithTimeout` when `--timeout` is set. Errors raised before the loop (configuration, flags, arguments) use `usageErrorf` (exit 2); commands without positional arguments get `rejectArgs` as `Before` hook (set in `init` in `commands.go`); `gitUnavailable` wraps `core.NewGit` errors; `warnMissingDir(name, path)` tells a missing directory from a non-git one; skip reasons use the constants of `exitcodes.go` so `skipKindOf` can classify them.
 
 ### Output modes
 
-- **Normal**: `clui` Title/Lifecycle go to stdout, Warnf/Errorf to stderr (warnings stay visible in `--quiet`/`--json`); progress bar overwrites stderr.
+- **Normal**: `clui` Title/Lifecycle go to stdout, Warnf/Errorf to stderr (warnings stay visible in `--quiet`/`--json`); progress bar overwrites stderr. ANSI colors only where `colorEnabled` allows it (per stream). The final error list (`trackerError` → `buildError`) has one line per project via `errorSummaryLine`.
 - **`--quiet`**: clui verbosity → Low; only the summary line is printed.
 - **`--json`**: clui verbosity → Low (suppresses inline output); `tracker.printJSON` emits a single JSON envelope after `wg.Wait()`.
 - **`--noop`**: skips all git calls; `tracker.printNoop` writes `[DRY-RUN]` lines.
+
+`homeDir()` (`utils.go`) is what `~` means everywhere: `$HOME`/`%USERPROFILE%` via `os.UserHomeDir`, falling back to the account's home.
 
 ### Config file cascade (`utils.go` → `defaultConfigurationFilePath`)
 
@@ -98,15 +104,15 @@ type gipProject struct {
 }
 ```
 
-`projectsList` returns `([]gipProject, []string, error)` — the second return is collected warnings (empty name, empty local_path, bad pull_policy, invalid branches, missing repository, undetectable provider, spaces trimmed by `trimProject`); duplicate names are an error. String fields are trimmed at load, before validation.
+`projectsList` returns `([]gipProject, []string, error)` — the second return is collected warnings (empty name, empty local_path, bad pull_policy, invalid branches, missing repository, spaces trimmed by `trimProject`); duplicate names are an error. String fields are trimmed at load, before validation.
 
 ### Tracker / JSON output
 
-`tracker` accumulates `opResult` values (one per project). Fields: `project`, `localPath`, `status` (opOK/opError/opSkipped), `err`, `reason`, `branch`, `state *repoState` (sync/dirty, nil when not read), `commitMsg`/`commitDate`, plus tag fields (`tagSet`, `lastTag`, `commitsSinceTag`, `tagDate`, `unreleased`) set by `releases` (`cmd/gip/releases.go`, backed by `GitCommands.LatestTag`; `--fetch` runs `GitCommands.FetchTags` first). At the end:
-- `printSummary(errorsLast bool)` — text table with ANSI color (TTY only).
-- `printJSON(command, warnings)` — single JSON object: `command`, `timestamp`, `projects[]`, `summary{total,ok,errors,skipped,duration_ms}`, `warnings[]`.
+`tracker` accumulates `opResult` values (one per project). Fields: `project`, `localPath`, `status` (opOK/opError/opSkipped), `err`, `reason`, `branch`, `state *repoState` (sync/dirty, nil when not read), `commitMsg`/`commitDate`, plus tag fields (`tagSet`, `lastTag`, `commitsSinceTag`, `tagDate`, `unreleased`) set by `releases`, and the command results reported by `--json` (`files []statusFile` from `parsePorcelain` for status/statusfull, `execRes *core.ExecResult` for exec, `pull *pullInfo` for pull; `cmd/gip/results.go`) (`cmd/gip/releases.go`, backed by `GitCommands.LatestTag`; `--fetch` runs `GitCommands.FetchTags` first). At the end:
+- `printSummary(errorsLast, showSkipped bool)` — summary line with ANSI color (TTY only), then `skipNotes` (missing/protected projects named, unless `--show-skipped` or `--quiet`).
+- `printJSON(command, warnings)` — single JSON object: `schema_version` (`jsonSchemaVersion`; bump it only when a field is removed or changes meaning), `command`, `timestamp`, `projects[]` (sorted by name; built by `opResult.toJSON`, sync/dirty in the `state` object), `summary{total,ok,errors,skipped,skipped_by,duration_ms}` (counts from `tracker.counts`, shared with the text summary), `warnings[]`.
 
-`list` uses a separate `listOutputJSON` / `listProjectJSON` shape (includes repository, policy, provider, tags, missing, disabled, error).
+`list` uses a separate `listOutputJSON` / `listProjectJSON` shape (includes repository, policy, provider, tags, missing, disabled, error, state); `check` has its own `checkOutputJSON`. All three carry `schema_version`.
 
 ## Testing
 

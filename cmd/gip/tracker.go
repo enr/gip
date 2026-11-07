@@ -4,11 +4,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 	"sync"
 	"time"
 
 	"charm.land/lipgloss/v2"
+	"github.com/mattn/go-isatty"
 
 	"github.com/enr/gip/lib/core"
 )
@@ -47,6 +49,10 @@ type opResult struct {
 	tagDate         string
 	unreleased      bool
 	unreachableTags []string
+	// command output reported by --json
+	files   []statusFile     // status/statusfull: changed files; nil when git status did not run
+	execRes *core.ExecResult // exec: output and exit code of the command
+	pull    *pullInfo        // pull: HEAD before and after (JSON mode only)
 }
 
 func (r opResult) statusString() string {
@@ -64,19 +70,22 @@ func (r opResult) statusString() string {
 
 // --- JSON output types ---
 
+// jsonSchemaVersion is the version of every JSON envelope written by gip. It
+// changes only when a field is removed or changes meaning; new fields can be
+// added without changing it.
+const jsonSchemaVersion = 2
+
 type projectJSON struct {
-	Name       string `json:"name"`
-	LocalPath  string `json:"local_path"`
-	Status     string `json:"status"`
-	Error      string `json:"error,omitempty"`
-	Reason     string `json:"reason,omitempty"`
-	Branch     string `json:"branch,omitempty"`
-	Ahead      int    `json:"ahead,omitempty"`
-	Behind     int    `json:"behind,omitempty"`
-	NoRemote   bool   `json:"no_remote,omitempty"`
-	Dirty      string `json:"dirty,omitempty"`
-	CommitMsg  string `json:"commit_msg,omitempty"`
-	CommitDate string `json:"commit_date,omitempty"`
+	Name       string     `json:"name"`
+	LocalPath  string     `json:"local_path"`
+	Status     string     `json:"status"`
+	Error      string     `json:"error,omitempty"`
+	Reason     string     `json:"reason,omitempty"`
+	Skip       skipKind   `json:"skip,omitempty"`
+	Branch     string     `json:"branch,omitempty"`
+	State      *stateJSON `json:"state,omitempty"`
+	CommitMsg  string     `json:"commit_msg,omitempty"`
+	CommitDate string     `json:"commit_date,omitempty"`
 	// releases command: CommitsSinceTag is a pointer so that 0 (HEAD on the
 	// tag) is still emitted.
 	LastTag         string `json:"last_tag,omitempty"`
@@ -85,46 +94,103 @@ type projectJSON struct {
 	Unreleased      bool   `json:"unreleased,omitempty"`
 	// tags not reachable from HEAD that descend from LastTag (see releases)
 	UnreachableTags []string `json:"unreachable_tags,omitempty"`
+	// status/statusfull: a pointer so that a clean tree gives "files": []
+	Files *[]fileJSON `json:"files,omitempty"`
+	Exec  *execJSON   `json:"exec,omitempty"`
+	Pull  *pullJSON   `json:"pull,omitempty"`
+}
+
+// stateJSON is the upstream delta and working-tree state of a repository.
+// Every field is always present: false and 0 are values, not omissions.
+type stateJSON struct {
+	Upstream  bool `json:"upstream"`
+	Ahead     int  `json:"ahead"`
+	Behind    int  `json:"behind"`
+	Dirty     bool `json:"dirty"`
+	Staged    bool `json:"staged"`
+	Unstaged  bool `json:"unstaged"`
+	Untracked bool `json:"untracked"`
+	Stashed   bool `json:"stashed"`
+}
+
+func newStateJSON(st *repoState) *stateJSON {
+	if st == nil {
+		return nil
+	}
+	return &stateJSON{
+		Upstream:  !st.sync.NoRemote,
+		Ahead:     st.sync.Ahead,
+		Behind:    st.sync.Behind,
+		Dirty:     st.dirty.IsDirty(),
+		Staged:    st.dirty.Staged,
+		Unstaged:  st.dirty.Unstaged,
+		Untracked: st.dirty.Untracked,
+		Stashed:   st.dirty.Stashed,
+	}
+}
+
+// fileJSON is one changed file of "git status --porcelain": index and
+// worktree are the X and Y status letters, "." when unchanged.
+type fileJSON struct {
+	Path     string `json:"path"`
+	OrigPath string `json:"orig_path,omitempty"`
+	Index    string `json:"index"`
+	Worktree string `json:"worktree"`
+}
+
+type execJSON struct {
+	ExitCode int    `json:"exit_code"`
+	Stdout   string `json:"stdout"`
+	Stderr   string `json:"stderr"`
+}
+
+type pullJSON struct {
+	Cloned  bool   `json:"cloned"`
+	Updated bool   `json:"updated"`
+	From    string `json:"from,omitempty"`
+	To      string `json:"to,omitempty"`
+	Commits int    `json:"commits"`
 }
 
 type summaryJSON struct {
-	Total      int   `json:"total"`
-	OK         int   `json:"ok"`
-	Errors     int   `json:"errors"`
-	Skipped    int   `json:"skipped"`
-	DurationMs int64 `json:"duration_ms"`
+	Total   int `json:"total"`
+	OK      int `json:"ok"`
+	Errors  int `json:"errors"`
+	Skipped int `json:"skipped"`
+	// SkippedBy splits Skipped by kind: missing, protected, filtered.
+	SkippedBy  map[skipKind]int `json:"skipped_by"`
+	DurationMs int64            `json:"duration_ms"`
 }
 
 type commandOutputJSON struct {
-	Command   string        `json:"command"`
-	Timestamp string        `json:"timestamp"`
-	Projects  []projectJSON `json:"projects"`
-	Summary   summaryJSON   `json:"summary"`
-	Warnings  []string      `json:"warnings"`
+	SchemaVersion int           `json:"schema_version"`
+	Command       string        `json:"command"`
+	Timestamp     string        `json:"timestamp"`
+	Projects      []projectJSON `json:"projects"`
+	Summary       summaryJSON   `json:"summary"`
+	Warnings      []string      `json:"warnings"`
 }
 
 type listProjectJSON struct {
-	Name       string   `json:"name"`
-	LocalPath  string   `json:"local_path"`
-	Repository string   `json:"repository"`
-	Policy     string   `json:"policy"`
-	Provider   string   `json:"provider"`
-	Tags       []string `json:"tags"`
-	Missing    bool     `json:"missing,omitempty"`
-	Disabled   bool     `json:"disabled,omitempty"`
-	Error      string   `json:"error,omitempty"`
-	Branch     string   `json:"branch,omitempty"`
-	Ahead      int      `json:"ahead,omitempty"`
-	Behind     int      `json:"behind,omitempty"`
-	NoRemote   bool     `json:"no_remote,omitempty"`
-	Dirty      string   `json:"dirty,omitempty"`
+	Name       string     `json:"name"`
+	LocalPath  string     `json:"local_path"`
+	Repository string     `json:"repository"`
+	Policy     string     `json:"policy"`
+	Provider   string     `json:"provider"`
+	Tags       []string   `json:"tags"`
+	Missing    bool       `json:"missing,omitempty"`
+	Disabled   bool       `json:"disabled,omitempty"`
+	Error      string     `json:"error,omitempty"`
+	Branch     string     `json:"branch,omitempty"`
+	State      *stateJSON `json:"state,omitempty"`
 }
 
 type listOutputJSON struct {
-	Command   string            `json:"command"`
-	Timestamp string            `json:"timestamp"`
-	Projects  []listProjectJSON `json:"projects"`
-	Warnings  []string          `json:"warnings"`
+	SchemaVersion int               `json:"schema_version"`
+	Command       string            `json:"command"`
+	Timestamp     string            `json:"timestamp"`
+	Projects      []listProjectJSON `json:"projects"`
+	Warnings      []string          `json:"warnings"`
 }
 
 // --- tracker ---
@@ -138,7 +204,7 @@ type tracker struct {
 	total           int
 	started         time.Time
 	tty             bool // stderr is a TTY: gates the progress bar
-	colorTTY        bool // stdout is a TTY: gates ANSI styling of summary/tables
+	colorTTY        bool // stdout accepts colors (TTY, no NO_COLOR): gates ANSI styling of summary/tables
 	lastProgressLen int  // display-column width of the last progress line; guarded by outMu
 }
 
@@ -148,7 +214,7 @@ func newTracker(total int) *tracker {
 		total:    total,
 		started:  time.Now(),
 		tty:      isTTY(os.Stderr),
-		colorTTY: isTTY(os.Stdout),
+		colorTTY: colorEnabled(os.Stdout),
 	}
 }
 
@@ -177,6 +243,7 @@ func (t *tracker) sharedOutput() (*sync.Mutex, func()) {
 
 // record stores one project result and redraws the progress bar.
 func (t *tracker) record(r opResult) {
+	r = strictResult(r)
 	t.mu.Lock()
 	t.results = append(t.results, r)
 	done := len(t.results)
@@ -235,34 +302,35 @@ func (t *tracker) clearProgress() {
 func (t *tracker) printSummary(errorsLast, showSkipped bool) {
 	t.clearProgress()
 
-	var okCount, errCount, skipCount int
 	var errEntries, skipEntries []opResult
 	for _, r := range t.results {
 		switch r.status {
-		case opOK:
-			okCount++
 		case opError:
-			errCount++
 			errEntries = append(errEntries, r)
 		case opSkipped:
-			skipCount++
 			skipEntries = append(skipEntries, r)
 		}
 	}
+	n := t.counts()
 
 	elapsed := time.Since(t.started)
-	okStr := t.styleIf(okCount > 0, styleOK, fmt.Sprintf("OK: %d", okCount))
-	errStr := t.styleIf(errCount > 0, styleErr, fmt.Sprintf("Errors: %d", errCount))
-	skipStr := t.styleIf(skipCount > 0, styleSkip, fmt.Sprintf("Skipped: %d", skipCount))
+	okStr := t.styleIf(n.ok > 0, styleOK, fmt.Sprintf("OK: %d", n.ok))
+	errStr := t.styleIf(n.errors > 0, styleErr, fmt.Sprintf("Errors: %d", n.errors))
+	skipStr := t.styleIf(n.skipped > 0, styleSkip, fmt.Sprintf("Skipped: %d", n.skipped)) + n.skipDetail()
 	fmt.Fprintf(os.Stdout, "%s\n", t.applyStyle(styleDivider, "─────────────────────────────────────────"))
 	fmt.Fprintf(os.Stdout, "%s   %s   %s   Duration: %.1fs\n", okStr, errStr, skipStr, elapsed.Seconds())
 	if noopMode {
 		fmt.Fprintf(os.Stdout, "DRY-RUN — no operations performed. Remove --noop to proceed.\n")
 	}
+	if !showSkipped && !quietMode {
+		for _, line := range skipNotes(skipEntries) {
+			fmt.Fprintf(os.Stdout, "%s\n", t.applyStyle(styleSkip, line))
+		}
+	}
 	if errorsLast && len(errEntries) > 0 {
 		fmt.Fprintf(os.Stdout, "\n%s\n", t.applyStyle(styleDivider, "── Errors ────────────────────────────────"))
 		for _, r := range errEntries {
-			fmt.Fprintf(os.Stdout, "%s %s — %v\n", t.applyStyle(styleErr, "[ERR]"), r.project, r.err)
+			fmt.Fprintf(os.Stdout, "%s %s — %s\n", t.applyStyle(styleErr, "[ERR]"), r.project, errorSummaryLine(r.err))
 		}
 	}
 	if showSkipped && len(skipEntries) > 0 {
@@ -273,67 +341,150 @@ func (t *tracker) printSummary(errorsLast, showSkipped bool) {
 	}
 }
 
+// maxSkipNotes is how many projects a skip note names before "+N more".
+const maxSkipNotes = 5
+
+// skipNotes are the lines printed under the summary for the skipped projects
+// that need a decision: missing ones (a configuration to fix or a clone to
+// do) and protected ones (a pull refused on purpose). Filtered projects had
+// nothing to do and are left to --show-skipped.
+func skipNotes(skipped []opResult) []string {
+	sorted := append([]opResult(nil), skipped...)
+	sort.SliceStable(sorted, func(a, b int) bool { return sorted[a].project < sorted[b].project })
+	var lines []string
+	for _, kind := range []skipKind{skipMissing, skipProtected} {
+		var names []string
+		for _, r := range sorted {
+			if skipKindOf(r.reason) == kind {
+				names = append(names, fmt.Sprintf("%s (%s)", r.project, r.reason))
+			}
+		}
+		if len(names) == 0 {
+			continue
+		}
+		more := ""
+		if len(names) > maxSkipNotes {
+			more = fmt.Sprintf(", +%d more (--show-skipped)", len(names)-maxSkipNotes)
+			names = names[:maxSkipNotes]
+		}
+		lines = append(lines, fmt.Sprintf("  %s: %s%s", kind, strings.Join(names, ", "), more))
+	}
+	return lines
+}
+
+// resultCounts are the totals of the summary.
+type resultCounts struct {
+	ok, errors, skipped int
+	skippedBy           map[skipKind]int // every kind present, 0 included
+}
+
+func (t *tracker) counts() resultCounts {
+	n := resultCounts{skippedBy: map[skipKind]int{}}
+	for _, k := range skipKinds {
+		n.skippedBy[k] = 0
+	}
+	for _, r := range t.results {
+		switch r.status {
+		case opOK:
+			n.ok++
+		case opError:
+			n.errors++
+		case opSkipped:
+			n.skipped++
+			n.skippedBy[skipKindOf(r.reason)]++
+		}
+	}
+	return n
+}
+
+// skipDetail is the split of the skipped count, e.g. " (missing 1, filtered 2)";
+// empty when nothing was skipped.
+func (n resultCounts) skipDetail() string {
+	var parts []string
+	for _, k := range skipKinds {
+		if c := n.skippedBy[k]; c > 0 {
+			parts = append(parts, fmt.Sprintf("%s %d", k, c))
+		}
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return " (" + strings.Join(parts, ", ") + ")"
+}
+
 // printJSON serialises all results as a JSON envelope and writes to stdout.
 func (t *tracker) printJSON(command string, warnings []string) {
 	t.clearProgress()
 
 	projects := make([]projectJSON, 0, len(t.results))
-	var okCount, errCount, skipCount int
 	for _, r := range t.results {
-		p := projectJSON{
-			Name:       r.project,
-			LocalPath:  r.localPath,
-			Status:     r.statusString(),
-			Reason:     r.reason,
-			Branch:     r.branch,
-			CommitMsg:  r.commitMsg,
-			CommitDate: r.commitDate,
-		}
-		if r.err != nil {
-			p.Error = r.err.Error()
-		}
-		if r.state != nil {
-			p.Ahead = r.state.sync.Ahead
-			p.Behind = r.state.sync.Behind
-			p.NoRemote = r.state.sync.NoRemote
-			p.Dirty = r.state.dirty.Symbols()
-		}
-		if r.tagSet {
-			commits := r.commitsSinceTag
-			p.LastTag = r.lastTag
-			p.CommitsSinceTag = &commits
-			p.TagDate = r.tagDate
-			p.Unreleased = r.unreleased
-			p.UnreachableTags = r.unreachableTags
-		}
-		projects = append(projects, p)
-		switch r.status {
-		case opOK:
-			okCount++
-		case opError:
-			errCount++
-		case opSkipped:
-			skipCount++
-		}
+		projects = append(projects, r.toJSON())
 	}
+	n := t.counts()
 	if warnings == nil {
 		warnings = []string{}
 	}
+	// Projects finish in any order: sorting by name makes the output stable.
+	sort.SliceStable(projects, func(a, b int) bool { return projects[a].Name < projects[b].Name })
 	out := commandOutputJSON{
-		Command:   command,
-		Timestamp: time.Now().UTC().Format(time.RFC3339),
-		Projects:  projects,
+		SchemaVersion: jsonSchemaVersion,
+		Command:       command,
+		Timestamp:     time.Now().UTC().Format(time.RFC3339),
+		Projects:      projects,
 		Summary: summaryJSON{
 			Total:      t.total,
-			OK:         okCount,
-			Errors:     errCount,
-			Skipped:    skipCount,
+			OK:         n.ok,
+			Errors:     n.errors,
+			Skipped:    n.skipped,
+			SkippedBy:  n.skippedBy,
 			DurationMs: time.Since(t.started).Milliseconds(),
 		},
 		Warnings: warnings,
 	}
 	data, _ := json.MarshalIndent(out, "", "  ")
 	fmt.Fprintf(os.Stdout, "%s\n", data)
+}
+
+// toJSON converts a result to its JSON entry.
+func (r opResult) toJSON() projectJSON {
+	p := projectJSON{
+		Name:       r.project,
+		LocalPath:  r.localPath,
+		Status:     r.statusString(),
+		Reason:     r.reason,
+		Branch:     r.branch,
+		State:      newStateJSON(r.state),
+		CommitMsg:  r.commitMsg,
+		CommitDate: r.commitDate,
+	}
+	if r.err != nil {
+		p.Error = r.err.Error()
+	}
+	if r.status == opSkipped {
+		p.Skip = skipKindOf(r.reason)
+	}
+	if r.tagSet {
+		commits := r.commitsSinceTag
+		p.LastTag = r.lastTag
+		p.CommitsSinceTag = &commits
+		p.TagDate = r.tagDate
+		p.Unreleased = r.unreleased
+		p.UnreachableTags = r.unreachableTags
+	}
+	if r.files != nil {
+		files := make([]fileJSON, 0, len(r.files))
+		for _, f := range r.files {
+			files = append(files, fileJSON(f))
+		}
+		p.Files = &files
+	}
+	if r.execRes != nil {
+		p.Exec = &execJSON{ExitCode: r.execRes.ExitCode, Stdout: r.execRes.Stdout, Stderr: r.execRes.Stderr}
+	}
+	if r.pull != nil {
+		p.Pull = &pullJSON{Cloned: r.pull.cloned, Updated: r.pull.from != r.pull.to, From: r.pull.from, To: r.pull.to, Commits: r.pull.commits}
+	}
+	return p
 }
 
 // errors returns collected errors as a map suitable for buildError.
@@ -385,13 +536,12 @@ func (t *tracker) colorSync(s core.BranchSyncStatus, dirty bool) string {
 	}
 }
 
+// isTTY reports whether f is a terminal (Cygwin/MSYS ones included). A
+// character device is not enough: /dev/null is one.
 func isTTY(f *os.File) bool {
 	if f == nil {
 		return false
 	}
-	stat, err := f.Stat()
-	if err != nil {
-		return false
-	}
-	return stat.Mode()&os.ModeCharDevice != 0
+	fd := f.Fd()
+	return isatty.IsTerminal(fd) || isatty.IsCygwinTerminal(fd)
 }

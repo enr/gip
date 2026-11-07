@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"os/exec"
@@ -115,6 +116,13 @@ func resolveJobs(c *cli.Context) (int, error) {
 	return n, nil
 }
 
+func init() {
+	for _, c := range []*cli.Command{&commandStatus, &commandStatusFull, &commandList, &commandPull,
+		&commandFetch, &commandBranch, &commandReleases, &commandCheck} {
+		c.Before = rejectArgs
+	}
+}
+
 var commands = []*cli.Command{
 	&commandStatus,
 	&commandStatusFull,
@@ -220,15 +228,22 @@ Use -- to separate gip flags from the command and its arguments:
 }
 
 var initFlags = []cli.Flag{
-	&cli.StringFlag{Name: "output", Aliases: []string{"o"}, Usage: "output file path (default: ./.gip)"},
+	&cli.StringFlag{Name: "output", Aliases: []string{"o"}, Usage: "output file path (default: ./.gip); - prints the configuration on stdout"},
 	&cli.BoolFlag{Name: "force", Usage: "overwrite existing config without prompting"},
+	&cli.BoolFlag{Name: "absolute", Usage: "write absolute local_path values instead of paths relative to the output file or to ~"},
 	&cli.IntFlag{Name: "depth", Value: 5, Usage: "maximum directory scan depth"},
 }
 
 var commandInit = cli.Command{
-	Name:         "init",
-	Usage:        "scan a directory for git repositories and generate configuration",
-	Description:  `Scans a directory recursively for git repositories and writes a gip configuration file.`,
+	Name:  "init",
+	Usage: "scan a directory for git repositories and generate configuration",
+	Description: `Scans a directory recursively for git repositories and writes a gip configuration file.
+local_path is written relative to the output file when the repository is below
+it, else as ~/... under the home directory, so the file keeps working when the
+directory or the home moves (--absolute writes absolute paths).
+
+   gip init ~/projects -o ~/.gip
+   gip init . -o - > workspace.gip`,
 	Action:       doInit,
 	Flags:        initFlags,
 	BashComplete: bashCompleteWithFlags(initFlags),
@@ -290,13 +305,13 @@ compdef _gip gip
 func doCompletion(c *cli.Context) error {
 	shell := c.Args().First()
 	if shell == "" {
-		return exitErrorf(1, "completion requires a shell argument: bash, zsh, or fish")
+		return usageErrorf("completion requires a shell argument: bash, zsh, or fish")
 	}
 	switch shell {
 	case "fish":
 		script, err := c.App.ToFishCompletion()
 		if err != nil {
-			return exitErrorf(1, "Error generating fish completion: %v", err)
+			return exitErrorf(exitFailure, "Error generating fish completion: %v", err)
 		}
 		fmt.Fprint(os.Stdout, script)
 	case "bash":
@@ -304,7 +319,7 @@ func doCompletion(c *cli.Context) error {
 	case "zsh":
 		fmt.Fprint(os.Stdout, zshCompletionScript)
 	default:
-		return exitErrorf(1, "unsupported shell %q: supported shells are bash, zsh, fish", shell)
+		return usageErrorf("unsupported shell %q: supported shells are bash, zsh, fish", shell)
 	}
 	return nil
 }
@@ -344,24 +359,24 @@ func isTimeout(err error) bool {
 func gitStatus(c *cli.Context, untracked bool) error {
 	configurationFile, err := configurationFilePath(c)
 	if err != nil {
-		return exitErrorf(1, "Error loading configuration file %s: %v", c.String("f"), err)
+		return configurationError(c, err)
 	}
 	projects, warnings, err := projectsList(configurationFile)
 	if err != nil {
-		return exitErrorf(1, "Error loading projects list: %v", err)
+		return usageErrorf("gip: %v", err)
 	}
 	projects = filterByTag(projects, tagFilterValue(c))
 	projects = filterDisabled(projects)
 	t := newTracker(len(projects))
 	git, err := core.NewGit(ui, core.WithSharedOutput(t.sharedOutput()))
 	if err != nil {
-		return exitErrorf(1, "Error loading git: %v", err)
+		return gitUnavailable(err)
 	}
 	filter := newGitStateFilter(c)
 
 	jobs, err := resolveJobs(c)
 	if err != nil {
-		return exitErrorf(1, "%v", err)
+		return usageErrorf("%v", err)
 	}
 
 	untrackedFlag := "--untracked-files=no"
@@ -384,11 +399,15 @@ func gitStatus(c *cli.Context, untracked bool) error {
 	}
 	wg.Wait()
 	if jsonMode {
-		t.printJSON("status", warnings)
+		command := "status"
+		if untracked {
+			command = "statusfull"
+		}
+		t.printJSON(command, warnings)
 	} else {
 		t.printSummary(c.Bool("errors-last"), c.Bool("show-skipped"))
 	}
-	return buildError(t.errors())
+	return trackerError(c, t)
 }
 
 func doStatusProject(c *cli.Context, git *core.GitCommands, t *tracker, project gipProject, untracked bool, untrackedFlag string, filter gitStateFilter) {
@@ -398,8 +417,8 @@ func doStatusProject(c *cli.Context, git *core.GitCommands, t *tracker, project 
 		return
 	}
 	if !isProjectDir(line) {
-		t.withOutput(func() { warnMissingDir(line) })
-		t.record(opResult{project: project.Name, localPath: line, status: opSkipped, reason: "not a project dir"})
+		t.withOutput(func() { warnMissingDir(project.Name, line) })
+		t.record(opResult{project: project.Name, localPath: line, status: opSkipped, reason: missingReason(line)})
 		return
 	}
 	if noopMode {
@@ -423,10 +442,11 @@ func doStatusProject(c *cli.Context, git *core.GitCommands, t *tracker, project 
 		t.record(opResult{project: project.Name, localPath: line, status: opSkipped, reason: reason})
 		return
 	}
-	if err = git.Status(ctx, line, untracked); err != nil {
+	out, err := git.Status(ctx, line, untracked)
+	if err != nil {
 		t.record(opResult{project: project.Name, localPath: line, status: opError, err: err})
 	} else {
-		t.record(opResult{project: project.Name, localPath: line, status: opOK})
+		t.record(opResult{project: project.Name, localPath: line, status: opOK, files: parsePorcelain(out)})
 	}
 }
 
@@ -437,18 +457,23 @@ func statusProjectFull(ctx context.Context, git *core.GitCommands, t *tracker, p
 		t.record(opResult{project: project.Name, localPath: line, status: opError, err: err})
 		return
 	}
+	// A clean repository in sync was looked at and has nothing to report: it
+	// is OK, as with status. Skipped means "not looked at".
+	res := opResult{project: project.Name, localPath: line, state: &st, files: []statusFile{}, status: opOK}
 	isUnsynced := st.sync.NoRemote || st.sync.Behind > 0 || st.sync.Ahead > 0
 	if !st.dirty.IsDirty() && !isUnsynced {
-		t.record(opResult{project: project.Name, localPath: line, status: opSkipped, reason: "clean and in sync"})
+		t.record(res)
 		return
 	}
-	res := opResult{project: project.Name, localPath: line, state: &st}
 	if st.dirty.IsDirty() {
-		if err = git.Status(ctx, line, true); err != nil {
+		out, err := git.Status(ctx, line, true)
+		if err != nil {
 			res.status = opError
 			res.err = err
+			res.files = nil
 		} else {
 			res.status = opOK
+			res.files = parsePorcelain(out)
 		}
 	} else {
 		t.withOutput(func() {
@@ -457,6 +482,16 @@ func statusProjectFull(ctx context.Context, git *core.GitCommands, t *tracker, p
 		res.status = opOK
 	}
 	t.record(res)
+}
+
+// trackerError is the final error of a tracked command: the one-line-per-project
+// list, unless --errors-last already printed it in the summary.
+func trackerError(c *cli.Context, t *tracker) error {
+	errs := t.errors()
+	if len(errs) > 0 && !jsonMode && c.Bool("errors-last") {
+		return exitError(exitFailure, "")
+	}
+	return buildError(errs)
 }
 
 func buildError(errors map[string]error) error {
@@ -470,9 +505,9 @@ func buildError(errors map[string]error) error {
 	sort.Strings(keys)
 	var buffer bytes.Buffer
 	for _, key := range keys {
-		buffer.WriteString(fmt.Sprintf("- %s: %v\n", key, errors[key]))
+		buffer.WriteString(fmt.Sprintf("- %s: %s\n", key, errorSummaryLine(errors[key])))
 	}
-	return exitError(1, buffer.String())
+	return exitError(exitFailure, buffer.String())
 }
 
 // listRow is one project of the list table.
@@ -536,8 +571,11 @@ func readListStates(c *cli.Context, git *core.GitCommands, rows []listRow, jobs 
 func listErrors(rows []listRow) map[string]error {
 	errs := map[string]error{}
 	for _, r := range rows {
-		if r.err != nil {
+		switch {
+		case r.err != nil:
 			errs[r.project.Name] = r.err
+		case r.missing && strictMode:
+			errs[r.project.Name] = fmt.Errorf("%s (--strict)", missingReason(r.path))
 		}
 	}
 	return errs
@@ -652,11 +690,11 @@ func printListTable(rows []listRow, extended bool, t *tracker) {
 func doList(c *cli.Context) error {
 	configurationFile, err := configurationFilePath(c)
 	if err != nil {
-		return exitErrorf(1, "Error loading configuration file %s: %v", c.String("f"), err)
+		return configurationError(c, err)
 	}
 	projects, warnings, err := projectsList(configurationFile)
 	if err != nil {
-		return exitErrorf(1, "Error loading projects list: %v", err)
+		return usageErrorf("gip: %v", err)
 	}
 	projects = filterByTag(projects, tagFilterValue(c))
 	if !c.Bool("all") {
@@ -665,11 +703,11 @@ func doList(c *cli.Context) error {
 	filter := newGitStateFilter(c)
 	jobs, err := resolveJobs(c)
 	if err != nil {
-		return exitErrorf(1, "%v", err)
+		return usageErrorf("%v", err)
 	}
 	git, err := core.NewGit(ui)
 	if err != nil {
-		return exitErrorf(1, "Error loading git: %v", err)
+		return gitUnavailable(err)
 	}
 
 	rows := buildListRows(projects)
@@ -712,10 +750,7 @@ func printListJSON(rows []listRow, warnings []string) {
 		}
 		if r.state != nil {
 			entry.Branch = r.state.sync.Branch
-			entry.Ahead = r.state.sync.Ahead
-			entry.Behind = r.state.sync.Behind
-			entry.NoRemote = r.state.sync.NoRemote
-			entry.Dirty = r.state.dirty.Symbols()
+			entry.State = newStateJSON(r.state)
 		}
 		pjs = append(pjs, entry)
 	}
@@ -723,10 +758,11 @@ func printListJSON(rows []listRow, warnings []string) {
 		warnings = []string{}
 	}
 	out := listOutputJSON{
-		Command:   "list",
-		Timestamp: time.Now().UTC().Format(time.RFC3339),
-		Projects:  pjs,
-		Warnings:  warnings,
+		SchemaVersion: jsonSchemaVersion,
+		Command:       "list",
+		Timestamp:     time.Now().UTC().Format(time.RFC3339),
+		Projects:      pjs,
+		Warnings:      warnings,
 	}
 	data, _ := json.MarshalIndent(out, "", "  ")
 	fmt.Fprintf(os.Stdout, "%s\n", data)
@@ -735,32 +771,28 @@ func printListJSON(rows []listRow, warnings []string) {
 func doPull(c *cli.Context) error {
 	configurationFile, err := configurationFilePath(c)
 	if err != nil {
-		return exitErrorf(1, "Error loading configuration file %s: %v", c.String("f"), err)
-	}
-	args := c.Args().Slice()
-	if len(args) > 0 {
-		return exitErrorf(1, "Pull command does not accept any argument, found: %v", args)
+		return configurationError(c, err)
 	}
 	if c.Bool("dirty") && !c.Bool("force") {
-		return exitErrorf(1, "--dirty selects only repositories with uncommitted changes, which pull skips without --force: add --force or drop --dirty")
+		return usageErrorf("--dirty selects only repositories with uncommitted changes, which pull skips without --force: add --force or drop --dirty")
 	}
 	all := c.Bool("all")
 	ui.Confidentialf("%s PULL all? %t", configurationFile, all)
 	projects, warnings, err := projectsList(configurationFile)
 	if err != nil {
-		return exitErrorf(1, "Error loading projects list: %v", err)
+		return usageErrorf("gip: %v", err)
 	}
 	projects = filterByTag(projects, tagFilterValue(c))
 	projects = filterDisabled(projects)
 	t := newTracker(len(projects))
 	git, err := core.NewGit(ui, core.WithSharedOutput(t.sharedOutput()))
 	if err != nil {
-		return exitErrorf(1, "Error loading git: %v", err)
+		return gitUnavailable(err)
 	}
 
 	jobs, err := resolveJobs(c)
 	if err != nil {
-		return exitErrorf(1, "%v", err)
+		return usageErrorf("%v", err)
 	}
 
 	sem := make(chan struct{}, jobs)
@@ -785,7 +817,7 @@ func doPull(c *cli.Context) error {
 	} else {
 		t.printSummary(c.Bool("errors-last"), c.Bool("show-skipped"))
 	}
-	return buildError(t.errors())
+	return trackerError(c, t)
 }
 
 func pullOne(c *cli.Context, git *core.GitCommands, project gipProject, all bool, t *tracker, filter gitStateFilter) {
@@ -794,7 +826,7 @@ func pullOne(c *cli.Context, git *core.GitCommands, project gipProject, all bool
 		if noopMode {
 			t.printNoop("%s → SKIPPED  (pull_policy: never)", project.Name)
 		}
-		t.record(opResult{project: project.Name, status: opSkipped, reason: "pull_policy: never"})
+		t.record(opResult{project: project.Name, status: opSkipped, reason: reasonPullNever})
 		return
 	}
 
@@ -828,24 +860,32 @@ func pullOne(c *cli.Context, git *core.GitCommands, project gipProject, all bool
 			return
 		}
 		if !force && st.dirty.IsDirty() {
-			t.record(opResult{project: project.Name, localPath: line, status: opSkipped, reason: "uncommitted changes (use --force)"})
+			t.record(opResult{project: project.Name, localPath: line, status: opSkipped, reason: reasonUncommitted})
 			return
 		}
 	}
+	before := ""
+	if jsonMode {
+		before = headOrEmpty(ctx, git, line)
+	}
 	if err = git.Pull(ctx, line); err != nil {
 		t.record(opResult{project: project.Name, localPath: line, status: opError, err: err})
-	} else {
-		t.record(opResult{project: project.Name, localPath: line, status: opOK})
+		return
 	}
+	res := opResult{project: project.Name, localPath: line, status: opOK}
+	if jsonMode {
+		res.pull = readPullInfo(ctx, git, line, before, false)
+	}
+	t.record(res)
 }
 
 func pullMissingDir(c *cli.Context, git *core.GitCommands, project gipProject, line string, all bool, t *tracker) {
-	t.withOutput(func() { warnMissingDir(line) })
 	if !(all || project.pullAlways()) {
+		t.withOutput(func() { warnMissingDir(project.Name, line) })
 		if noopMode {
 			t.printNoop("%s → SKIPPED  (directory missing)", project.Name)
 		}
-		t.record(opResult{project: project.Name, localPath: line, status: opSkipped, reason: "local dir missing"})
+		t.record(opResult{project: project.Name, localPath: line, status: opSkipped, reason: missingReason(line)})
 		return
 	}
 	if noopMode {
@@ -857,33 +897,37 @@ func pullMissingDir(c *cli.Context, git *core.GitCommands, project gipProject, l
 	defer cancel()
 	if err := git.Clone(ctx, project.Repository, line); err != nil {
 		t.record(opResult{project: project.Name, localPath: line, status: opError, err: err})
-	} else {
-		t.record(opResult{project: project.Name, localPath: line, status: opOK})
+		return
 	}
+	res := opResult{project: project.Name, localPath: line, status: opOK}
+	if jsonMode {
+		res.pull = readPullInfo(ctx, git, line, "", true)
+	}
+	t.record(res)
 }
 
 func doFetch(c *cli.Context) error {
 	configurationFile, err := configurationFilePath(c)
 	if err != nil {
-		return exitErrorf(1, "Error loading configuration file %s: %v", c.String("f"), err)
+		return configurationError(c, err)
 	}
 	projects, warnings, err := projectsList(configurationFile)
 	if err != nil {
-		return exitErrorf(1, "Error loading projects list: %v", err)
+		return usageErrorf("gip: %v", err)
 	}
 	projects = filterByTag(projects, tagFilterValue(c))
 	projects = filterDisabled(projects)
 	t := newTracker(len(projects))
 	git, err := core.NewGit(ui, core.WithSharedOutput(t.sharedOutput()))
 	if err != nil {
-		return exitErrorf(1, "Error loading git: %v", err)
+		return gitUnavailable(err)
 	}
 
 	filter := newGitStateFilter(c)
 
 	jobs, err := resolveJobs(c)
 	if err != nil {
-		return exitErrorf(1, "%v", err)
+		return usageErrorf("%v", err)
 	}
 	sem := make(chan struct{}, jobs)
 	var wg sync.WaitGroup
@@ -904,7 +948,7 @@ func doFetch(c *cli.Context) error {
 	} else {
 		t.printSummary(c.Bool("errors-last"), c.Bool("show-skipped"))
 	}
-	return buildError(t.errors())
+	return trackerError(c, t)
 }
 
 // fetchOne fetches a single project, honouring pull_policy and the git state
@@ -915,7 +959,7 @@ func fetchOne(c *cli.Context, git *core.GitCommands, project gipProject, t *trac
 		if noopMode {
 			t.printNoop("%s → SKIPPED  (pull_policy: never)", project.Name)
 		}
-		t.record(opResult{project: project.Name, status: opSkipped, reason: "pull_policy: never"})
+		t.record(opResult{project: project.Name, status: opSkipped, reason: reasonPullNever})
 		return
 	}
 
@@ -925,11 +969,11 @@ func fetchOne(c *cli.Context, git *core.GitCommands, project gipProject, t *trac
 		return
 	}
 	if !isProjectDir(line) {
-		t.withOutput(func() { warnMissingDir(line) })
+		t.withOutput(func() { warnMissingDir(project.Name, line) })
 		if noopMode {
 			t.printNoop("%s → SKIPPED  (directory missing)", project.Name)
 		}
-		t.record(opResult{project: project.Name, localPath: line, status: opSkipped, reason: "local dir missing"})
+		t.record(opResult{project: project.Name, localPath: line, status: opSkipped, reason: missingReason(line)})
 		return
 	}
 	if noopMode {
@@ -983,11 +1027,11 @@ func branchProject(c *cli.Context, git *core.GitCommands, t *tracker, project gi
 	}
 	if !isProjectDir(line) {
 		entry.branch = "(missing)"
-		t.withOutput(func() { warnMissingDir(line) })
+		t.withOutput(func() { warnMissingDir(project.Name, line) })
 		if noopMode {
 			t.printNoop("%s → SKIPPED  (directory missing)", project.Name)
 		}
-		t.record(opResult{project: project.Name, localPath: line, status: opSkipped, reason: "local dir missing"})
+		t.record(opResult{project: project.Name, localPath: line, status: opSkipped, reason: missingReason(line)})
 		return entry, !filter.active()
 	}
 	if noopMode {
@@ -1058,24 +1102,24 @@ func printBranchTable(entries []branchEntry, extended bool, t *tracker) {
 func doBranch(c *cli.Context) error {
 	configurationFile, err := configurationFilePath(c)
 	if err != nil {
-		return exitErrorf(1, "Error loading configuration file %s: %v", c.String("f"), err)
+		return configurationError(c, err)
 	}
 	projects, warnings, err := projectsList(configurationFile)
 	if err != nil {
-		return exitErrorf(1, "Error loading projects list: %v", err)
+		return usageErrorf("gip: %v", err)
 	}
 	projects = filterByTag(projects, tagFilterValue(c))
 	projects = filterDisabled(projects)
 	t := newTracker(len(projects))
 	git, err := core.NewGit(ui, core.WithSharedOutput(t.sharedOutput()))
 	if err != nil {
-		return exitErrorf(1, "Error loading git: %v", err)
+		return gitUnavailable(err)
 	}
 	extended := c.Bool("extended")
 	filter := newGitStateFilter(c)
 	jobs, err := resolveJobs(c)
 	if err != nil {
-		return exitErrorf(1, "%v", err)
+		return usageErrorf("%v", err)
 	}
 	var entriesMu sync.Mutex
 	entries := make([]branchEntry, 0, len(projects))
@@ -1102,7 +1146,7 @@ func doBranch(c *cli.Context) error {
 		printBranchTable(entries, extended, t)
 		t.printSummary(c.Bool("errors-last"), c.Bool("show-skipped"))
 	}
-	return buildError(t.errors())
+	return trackerError(c, t)
 }
 
 func execProject(project gipProject, runner *core.CommandRunner, git *core.GitCommands, cmdName string, cmdArgs []string, filter gitStateFilter, t *tracker, c *cli.Context) {
@@ -1112,11 +1156,11 @@ func execProject(project gipProject, runner *core.CommandRunner, git *core.GitCo
 		return
 	}
 	if !isProjectDir(line) {
-		t.withOutput(func() { warnMissingDir(line) })
+		t.withOutput(func() { warnMissingDir(project.Name, line) })
 		if noopMode {
 			t.printNoop("%s → SKIPPED  (directory missing)", project.Name)
 		}
-		t.record(opResult{project: project.Name, localPath: line, status: opSkipped, reason: "not a project dir"})
+		t.record(opResult{project: project.Name, localPath: line, status: opSkipped, reason: missingReason(line)})
 		return
 	}
 	if noopMode {
@@ -1135,27 +1179,28 @@ func execProject(project gipProject, runner *core.CommandRunner, git *core.GitCo
 		t.record(opResult{project: project.Name, localPath: line, status: opSkipped, reason: reason})
 		return
 	}
-	if err = runner.Run(ctx, line, cmdName, cmdArgs); err != nil {
-		t.record(opResult{project: project.Name, localPath: line, status: opError, err: err})
+	res, err := runner.Run(ctx, line, cmdName, cmdArgs)
+	if err != nil {
+		t.record(opResult{project: project.Name, localPath: line, status: opError, err: err, execRes: &res})
 	} else {
-		t.record(opResult{project: project.Name, localPath: line, status: opOK})
+		t.record(opResult{project: project.Name, localPath: line, status: opOK, execRes: &res})
 	}
 }
 
 func doExec(c *cli.Context) error {
 	args := c.Args().Slice()
 	if len(args) == 0 {
-		return exitErrorf(1, "exec requires a command: gip exec -- <cmd> [args...]")
+		return usageErrorf("exec requires a command: gip exec -- <cmd> [args...]")
 	}
 	cmdName := args[0]
 	cmdArgs := args[1:]
 	configurationFile, err := configurationFilePath(c)
 	if err != nil {
-		return exitErrorf(1, "Error loading configuration file %s: %v", c.String("f"), err)
+		return configurationError(c, err)
 	}
 	projects, warnings, err := projectsList(configurationFile)
 	if err != nil {
-		return exitErrorf(1, "Error loading projects list: %v", err)
+		return usageErrorf("gip: %v", err)
 	}
 	projects = filterByTag(projects, tagFilterValue(c))
 	projects = filterDisabled(projects)
@@ -1167,12 +1212,12 @@ func doExec(c *cli.Context) error {
 	if filter.active() {
 		git, err = core.NewGit(ui, core.WithSharedOutput(t.sharedOutput()))
 		if err != nil {
-			return exitErrorf(1, "Error loading git: %v", err)
+			return gitUnavailable(err)
 		}
 	}
 	jobs, err := resolveJobs(c)
 	if err != nil {
-		return exitErrorf(1, "%v", err)
+		return usageErrorf("%v", err)
 	}
 	sem := make(chan struct{}, jobs)
 	var wg sync.WaitGroup
@@ -1192,7 +1237,7 @@ func doExec(c *cli.Context) error {
 	} else {
 		t.printSummary(c.Bool("errors-last"), c.Bool("show-skipped"))
 	}
-	return buildError(t.errors())
+	return trackerError(c, t)
 }
 
 // initEntry is the shape written to the generated config file.
@@ -1203,73 +1248,171 @@ type initEntry struct {
 }
 
 func doInit(c *cli.Context) error {
-	scanDir := c.Args().First()
-	if scanDir == "" {
-		scanDir = "."
+	if c.Args().Len() > 1 {
+		return usageErrorf("gip init takes one directory to scan, got %d arguments", c.Args().Len())
 	}
-	scanDir, err := projectPath(scanDir)
+	scanDir, err := initScanDir(c.Args().First())
 	if err != nil {
-		return exitErrorf(1, "Error expanding path %s: %v", scanDir, err)
-	}
-	scanDir, err = filepath.Abs(scanDir)
-	if err != nil {
-		return exitErrorf(1, "Error resolving path %s: %v", scanDir, err)
-	}
-
-	ui.Lifecyclef("Scanning %s ...", scanDir)
-
-	repos, err := scanForRepos(scanDir, c.Int("depth"))
-	if err != nil {
-		return exitErrorf(1, "Error scanning directory: %v", err)
-	}
-
-	var entries []initEntry
-	for _, repoPath := range repos {
-		name := filepath.Base(repoPath)
-		url, err := getOriginURL(repoPath)
-		if err != nil {
-			ui.Warnf("  skip %s (no origin remote)", name)
-			continue
-		}
-		ui.Lifecyclef("  found %s  %s", name, url)
-		entries = append(entries, initEntry{
-			Name:       name,
-			Repository: url,
-			LocalPath:  repoPath,
-		})
-	}
-	uniqueInitNames(entries, scanDir)
-
-	if len(entries) == 0 {
-		ui.Lifecyclef("No repositories with an origin remote found in %s", scanDir)
-		return nil
+		return err
 	}
 
 	outputPath := c.String("output")
 	if outputPath == "" {
 		outputPath = filepath.Join(".", configFileBaseName)
 	}
-
-	if _, statErr := os.Stat(outputPath); statErr == nil && !c.Bool("force") {
-		fmt.Printf("%s already exists. Overwrite? [y/N]: ", outputPath)
-		var response string
-		fmt.Scanln(&response) //nolint:errcheck
-		if !strings.HasPrefix(strings.ToLower(strings.TrimSpace(response)), "y") {
-			ui.Lifecyclef("Aborted.")
-			return nil
+	toStdout := outputPath == "-"
+	// With "-o -" the configuration goes to stdout, so the progress lines go
+	// to stderr: "gip init -o - > file" gives a clean file.
+	progress := os.Stdout
+	if toStdout {
+		progress = os.Stderr
+	}
+	if !toStdout {
+		if err := confirmOverwrite(outputPath, c.Bool("force")); err != nil {
+			return err
 		}
 	}
 
-	data, err := yaml.Marshal(entries)
+	fmt.Fprintf(progress, "Scanning %s ...\n", scanDir)
+	repos, err := scanForRepos(scanDir, c.Int("depth"))
 	if err != nil {
-		return exitErrorf(1, "Error generating YAML: %v", err)
+		return exitErrorf(exitFailure, "Error scanning directory: %v", err)
 	}
-	if err := os.WriteFile(outputPath, data, 0600); err != nil {
-		return exitErrorf(1, "Error writing %s: %v", outputPath, err)
+	entries := initEntries(repos, progress)
+	uniqueInitNames(entries, scanDir)
+	if len(entries) == 0 {
+		fmt.Fprintf(progress, "No repositories with an origin remote found in %s (scanned %d levels deep; --depth goes deeper). Nothing written.\n", scanDir, c.Int("depth"))
+		return nil
 	}
 
-	ui.Lifecyclef("Configuration written to %s (%d repositories)", outputPath, len(entries))
+	if !c.Bool("absolute") {
+		portablePaths(entries, outputPath, toStdout)
+	}
+	return writeInitConfig(entries, outputPath, toStdout, progress)
+}
+
+// initScanDir resolves the directory to scan ("." by default).
+func initScanDir(arg string) (string, error) {
+	if arg == "" {
+		arg = "."
+	}
+	dir, err := projectPath(arg)
+	if err != nil {
+		return "", usageErrorf("Error expanding path %s: %v", arg, err)
+	}
+	dir, err = filepath.Abs(dir)
+	if err != nil {
+		return "", usageErrorf("Error resolving path %s: %v", arg, err)
+	}
+	if info, statErr := os.Stat(dir); statErr != nil || !info.IsDir() {
+		return "", usageErrorf("gip init: %s is not a directory", dir)
+	}
+	return dir, nil
+}
+
+// portablePaths rewrites the local_path of entries with portableLocalPath.
+// Printed on stdout, the file's final directory is unknown: only "~" applies.
+func portablePaths(entries []initEntry, outputPath string, toStdout bool) {
+	configDir := ""
+	if !toStdout {
+		if abs, err := filepath.Abs(outputPath); err == nil {
+			configDir = filepath.Dir(abs)
+		}
+	}
+	home, _ := homeDir()
+	for i := range entries {
+		entries[i].LocalPath = portableLocalPath(entries[i].LocalPath, configDir, home)
+	}
+}
+
+// writeInitConfig writes the YAML configuration to outputPath, or to stdout.
+func writeInitConfig(entries []initEntry, outputPath string, toStdout bool, progress io.Writer) error {
+	data, err := yaml.Marshal(entries)
+	if err != nil {
+		return exitErrorf(exitFailure, "Error generating YAML: %v", err)
+	}
+	if toStdout {
+		if _, err := os.Stdout.Write(data); err != nil {
+			return exitErrorf(exitFailure, "Error writing the configuration: %v", err)
+		}
+		return nil
+	}
+	if err := os.WriteFile(outputPath, data, 0600); err != nil {
+		return exitErrorf(exitFailure, "Error writing %s: %v", outputPath, err)
+	}
+	fmt.Fprintf(progress, "Configuration written to %s (%d repositories). Check it with 'gip -f %s check'.\n", outputPath, len(entries), outputPath)
 	return nil
+}
+
+// confirmOverwrite decides whether an existing output file may be replaced:
+// with --force, or when the user answers yes on a terminal. Without a
+// terminal (CI, agents, pipes) there is nobody to ask: it is a usage error
+// that names the two ways out, instead of a prompt that reads EOF.
+func confirmOverwrite(outputPath string, force bool) error {
+	if _, err := os.Stat(outputPath); err != nil || force {
+		return nil
+	}
+	hint := "pass --force to overwrite it, or -o <file> to write elsewhere (-o - prints it)"
+	if !isTTY(os.Stdin) {
+		return usageErrorf("gip init: %s already exists: %s", outputPath, hint)
+	}
+	fmt.Printf("%s already exists. Overwrite? [y/N]: ", outputPath)
+	var response string
+	fmt.Scanln(&response) //nolint:errcheck
+	if !strings.HasPrefix(strings.ToLower(strings.TrimSpace(response)), "y") {
+		return usageErrorf("gip init: aborted, %s left unchanged (%s)", outputPath, hint)
+	}
+	return nil
+}
+
+// initEntries builds the configuration of the repositories found, skipping
+// those without an origin remote.
+func initEntries(repos []string, progress io.Writer) []initEntry {
+	var entries []initEntry
+	for _, repoPath := range repos {
+		name := filepath.Base(repoPath)
+		url, err := getOriginURL(repoPath)
+		if err != nil {
+			ui.Warnf("  skip %s (no origin remote; add one with 'git -C %s remote add origin <url>')", name, repoPath)
+			continue
+		}
+		fmt.Fprintf(progress, "  found %s  %s\n", name, url)
+		entries = append(entries, initEntry{
+			Name:       name,
+			Repository: url,
+			LocalPath:  repoPath,
+		})
+	}
+	return entries
+}
+
+// portableLocalPath writes repoPath so that the configuration keeps working
+// when moved: relative to the configuration file's directory when the
+// repository is below it (the loader resolves relative paths from there),
+// else "~/..." under the home directory, else absolute. The home directory
+// itself as configDir uses "~/..." too, the clearer form for ~/.gip.
+func portableLocalPath(repoPath, configDir, home string) string {
+	if configDir != "" && configDir != home {
+		if rel, ok := below(configDir, repoPath); ok {
+			return rel
+		}
+	}
+	if home != "" {
+		if rel, ok := below(home, repoPath); ok {
+			return "~/" + rel
+		}
+	}
+	return repoPath
+}
+
+// below returns path relative to dir, with forward slashes, when path is
+// inside dir (not dir itself).
+func below(dir, path string) (string, bool) {
+	rel, err := filepath.Rel(dir, path)
+	if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) || filepath.IsAbs(rel) {
+		return "", false
+	}
+	return filepath.ToSlash(rel), true
 }
 
 // uniqueInitNames renames entries whose directory name is shared with another
@@ -1326,11 +1469,33 @@ func getOriginURL(repoPath string) (string, error) {
 	return strings.TrimSpace(string(out)), nil
 }
 
-func warnMissingDir(dir string) {
+// warnMissingDir tells why a project is skipped and how to fix it: a
+// directory that does not exist can be cloned, one without .git cannot.
+func warnMissingDir(name, dir string) {
 	if ignoreMissingDirs {
 		return
 	}
-	ui.Warnf("%s (not a project dir)", dir)
+	if _, err := os.Stat(dir); os.IsNotExist(err) {
+		ui.Warnf("%s: %s does not exist (clone it with 'gip pull --all'; -m hides this warning)", name, dir)
+		return
+	}
+	ui.Warnf("%s: %s is not a git repository (fix local_path; -m hides this warning)", name, dir)
+}
+
+// gitUnavailable is the error of a command that cannot run git at all.
+func gitUnavailable(err error) error {
+	return exitErrorf(exitFailure, "gip: %v: install git or add its directory to PATH", err)
+}
+
+// rejectArgs is the Before hook of the commands that take no positional
+// argument: an argument there is a mistake (a project name, a misplaced flag
+// value) that must not be silently ignored.
+func rejectArgs(c *cli.Context) error {
+	if c.Args().Len() == 0 {
+		return nil
+	}
+	return usageErrorf("gip %s: unexpected argument %q: %s takes no arguments; select projects with --tag (see 'gip %s --help')",
+		c.Command.Name, c.Args().First(), c.Command.Name, c.Command.Name)
 }
 
 func exitErrorf(exitCode int, template string, args ...interface{}) error {
@@ -1341,19 +1506,41 @@ func exitError(exitCode int, message string) error {
 	return cli.Exit(message, exitCode)
 }
 
-// configurationFilePath returns the configuration file to use. When it was not
-// given explicitly with -f, its path is printed on stderr: a .gip in the
-// current directory takes precedence over ~/.gip, so the user must be able to
-// see which file (and therefore which repositories and paths) is in effect.
+// configurationFilePath returns the configuration file to use. A .gip picked
+// up from the current directory takes precedence over ~/.gip, so its path is
+// printed on stderr: the user must be able to see which file (and therefore
+// which repositories and paths) is in effect. The usual files (-f, GIP_FILE,
+// ~/.gip) are announced only with --debug, to keep every run free of noise.
 func configurationFilePath(c *cli.Context) (string, error) {
 	if c.String("f") != "" {
 		return explicitConfigurationFilePath(c)
 	}
 	path, err := defaultConfigurationFilePath()
-	if err == nil && !quietMode {
+	if err == nil && !quietMode && os.Getenv("GIP_FILE") == "" && isLocalConfiguration(path) {
 		fmt.Fprintf(os.Stderr, "gip: using configuration %s\n", path)
 	}
 	return path, err
+}
+
+// isLocalConfiguration reports whether path is the .gip of the current directory.
+func isLocalConfiguration(path string) bool {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return false
+	}
+	return filepath.Clean(path) == filepath.Join(cwd, configFileBaseName)
+}
+
+// configurationError is the single-line error for a configuration file that
+// cannot be found or resolved, with the way out when none exists yet.
+func configurationError(c *cli.Context, err error) error {
+	if errors.Is(err, errConfigNotFound) {
+		return usageErrorf("gip: %v. Create one with 'gip init' or pass -f <file>.", err)
+	}
+	if f := c.String("f"); f != "" {
+		return usageErrorf("gip: configuration file %s: %v", f, err)
+	}
+	return usageErrorf("gip: configuration file: %v", err)
 }
 
 func explicitConfigurationFilePath(c *cli.Context) (string, error) {

@@ -93,25 +93,25 @@ func (o releasesOptions) skipReason(info core.TagInfo) string {
 func doReleases(c *cli.Context) error {
 	configurationFile, err := configurationFilePath(c)
 	if err != nil {
-		return exitErrorf(1, "Error loading configuration file %s: %v", c.String("f"), err)
+		return configurationError(c, err)
 	}
 	projects, warnings, err := projectsList(configurationFile)
 	if err != nil {
-		return exitErrorf(1, "Error loading projects list: %v", err)
+		return usageErrorf("gip: %v", err)
 	}
 	projects = filterByTag(projects, tagFilterValue(c))
 	projects = filterDisabled(projects)
 	t := newTracker(len(projects))
 	git, err := core.NewGit(ui, core.WithSharedOutput(t.sharedOutput()))
 	if err != nil {
-		return exitErrorf(1, "Error loading git: %v", err)
+		return gitUnavailable(err)
 	}
 	jobs, err := resolveJobs(c)
 	if err != nil {
-		return exitErrorf(1, "%v", err)
+		return usageErrorf("%v", err)
 	}
 	if c.Int("min") < 0 {
-		return exitErrorf(1, "--min must be >= 0, got %d", c.Int("min"))
+		return usageErrorf("--min must be >= 0, got %d", c.Int("min"))
 	}
 	opts := releasesOptions{
 		match: c.String("match"), fetch: c.Bool("fetch"), pending: c.Bool("pending"), tagged: c.Bool("tagged"), min: c.Int("min"),
@@ -146,7 +146,7 @@ func doReleases(c *cli.Context) error {
 		printReleasesTable(entries, t)
 		t.printSummary(c.Bool("errors-last"), c.Bool("show-skipped"))
 	}
-	return buildError(t.errors())
+	return trackerError(c, t)
 }
 
 // releaseProject collects the tag info of one project and records its outcome.
@@ -162,11 +162,11 @@ func releaseProject(c *cli.Context, git *core.GitCommands, t *tracker, project g
 	entry.path = line
 	if !isProjectDir(line) {
 		entry.note = "(missing)"
-		t.withOutput(func() { warnMissingDir(line) })
+		t.withOutput(func() { warnMissingDir(project.Name, line) })
 		if noopMode {
 			t.printNoop("%s → SKIPPED  (directory missing)", project.Name)
 		}
-		t.record(opResult{project: project.Name, localPath: line, status: opSkipped, reason: "local dir missing"})
+		t.record(opResult{project: project.Name, localPath: line, status: opSkipped, reason: missingReason(line)})
 		return entry, !opts.filtering() && !opts.filter.active()
 	}
 	if noopMode {

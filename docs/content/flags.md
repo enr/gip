@@ -6,16 +6,17 @@ weight: 4
 
 ## Global flags
 
-These flags are available on every command and go **before** the command name (`gip --json status`, not `gip status --json`).
+These flags are available on every command and can be written before or after the command name: `gip --json status` and `gip status --json` are the same. After the command they are recognized up to the first argument that is not a flag, or `--`: in `gip exec -- git log -q` the `-q` belongs to `git log`.
 
 | Flag | Description |
 |------|-------------|
 | `-f, --file <path>` | Path to the configuration file (overrides all other lookup methods) |
-| `-d, --debug` | Verbose output: logs every git command executed and the config file path |
+| `-d, --debug` | Verbose output: logs every git command executed, the config file path and informational notices (e.g. repositories whose provider cannot be detected) |
 | `-q, --quiet` | Suppress per-project output and the progress bar; tables, warnings (on stderr) and the summary line are still printed |
 | `--json` | Emit a single JSON envelope to stdout instead of text output; takes precedence over `--quiet` |
 | `--noop` | Dry-run: print what would be done without executing any git command |
-| `-m, --ignore-missing` | Do not print the warning for projects whose `local_path` does not exist (they are skipped either way) |
+| `-m, --ignore-missing` | Do not print the warning for projects whose `local_path` does not exist or is not a git repository (they are skipped either way) |
+| `--strict` | A missing `local_path` (or a missing extra branch) is an error instead of a skipped project: the command exits with status `1`. Meant for CI, e.g. `gip --strict pull` |
 | `-v, --version` | Print version, revision and build date |
 | `-h, --help` | Show help; `gip <command> --help` shows the command's flags |
 
@@ -113,38 +114,62 @@ Each project prints its git output inline as it completes. A progress bar is sho
 
 ```text
 ─────────────────────────────────────────
-OK: 5   Errors: 1   Skipped: 2   Duration: 3.4s
+OK: 5   Errors: 1   Skipped: 3 (missing 1, filtered 2)   Duration: 3.4s
 ```
+
+The skipped projects are split by kind (only the non-zero kinds are shown): `missing` (the configured directory or branch does not exist: usually a configuration to fix), `protected` (gip refused to touch the repository: `pull_policy: never`, uncommitted changes without `--force`) and `filtered` (excluded by a filter or nothing to do). Skipped always means "not looked at or not touched": a repository that was examined and found clean counts as OK.
+
+The projects that need a decision are named under the summary, with their reason, without any flag (at most five per kind, then `+N more`):
+
+```text
+OK: 4   Errors: 0   Skipped: 3 (missing 2, protected 1)   Duration: 1.2s
+  missing: api (directory does not exist), legacy (not a git repository)
+  protected: web (uncommitted changes, use --force)
+```
+
+`filtered` projects are not named; `--show-skipped` lists every skipped project with its reason. `--quiet` prints the summary line only.
 
 ### Quiet (`--quiet`)
 
-Per-project output and the progress bar are suppressed, as is the `gip: using configuration` line. Tables (`list`, `branch`, `releases`), the final summary line and warnings and errors (on stderr) are still printed.
+Per-project output and the progress bar are suppressed, as is the `gip: using configuration` line (printed only for a `.gip` found in the current directory). Tables (`list`, `branch`, `releases`), the final summary line and warnings and errors (on stderr) are still printed.
 
 ### JSON (`--json`)
 
 A single JSON envelope is written to stdout after all projects have been processed; warnings and the `gip: using configuration` line go to stderr, so stdout can be piped to `jq`. The shape below is shared by `status`, `statusfull`, `pull`, `fetch`, `branch`, `releases` and `exec`; `list` uses its own shape without `summary` (see [list](/gip/commands/#list)) and so does `check` (see [check](/gip/commands/#check)). Extra branches appear as separate entries named `name@branch`.
 
+Every envelope starts with `schema_version` (currently `2`): it changes only when a field is removed or changes meaning, while new fields can be added without changing it. Projects are sorted by name, so two runs on the same repositories give the same order. `command` is the command that ran (`statusfull`, not `status`, for `gip statusfull`).
+
 ```json
 {
-  "command": "status",
+  "schema_version": 2,
+  "command": "statusfull",
   "timestamp": "2025-05-15T10:30:00Z",
   "projects": [
     {
+      "name": "broken",
+      "local_path": "/home/user/broken",
+      "status": "error",
+      "error": "exit status 128: fatal: not a git repository"
+    },
+    {
       "name": "frontend",
       "local_path": "/home/user/projects/frontend",
-      "status": "ok"
+      "status": "ok",
+      "state": {
+        "upstream": true, "ahead": 0, "behind": 0,
+        "dirty": true, "staged": false, "unstaged": true, "untracked": true, "stashed": false
+      },
+      "files": [
+        { "path": "src/app.ts", "index": ".", "worktree": "M" },
+        { "path": "notes.md", "index": "?", "worktree": "?" }
+      ]
     },
     {
       "name": "legacy",
       "local_path": "/home/user/projects/legacy",
       "status": "skipped",
-      "reason": "pull_policy: never"
-    },
-    {
-      "name": "broken",
-      "local_path": "/home/user/broken",
-      "status": "error",
-      "error": "exit status 128"
+      "reason": "directory does not exist",
+      "skip": "missing"
     }
   ],
   "summary": {
@@ -152,40 +177,53 @@ A single JSON envelope is written to stdout after all projects have been process
     "ok": 1,
     "errors": 1,
     "skipped": 1,
+    "skipped_by": { "missing": 1, "protected": 0, "filtered": 0 },
     "duration_ms": 1240
   },
   "warnings": []
 }
 ```
 
-`status` values: `ok`, `error`, `skipped`. `error` holds the error message of failed entries; `reason` is set for skipped entries, for example:
+`status` values: `ok`, `error`, `skipped`. `error` holds the error message of failed entries; skipped entries have a `reason` and a `skip` kind (`missing`, `protected`, `filtered`, see [Text](#text-default)), counted in `summary.skipped_by` (all three keys always present):
 
-| Reason | When |
-|--------|------|
-| `pull_policy: never` | `pull` / `fetch` on a project with `pull_policy: never` |
-| `local dir missing`, `not a project dir` | the directory does not exist or has no `.git` |
-| `uncommitted changes (use --force)` | `pull` on a dirty repo |
-| `not dirty`, `not ahead or behind`, `not behind`, `not ahead` | excluded by a git-state filter |
-| `clean and in sync` | `statusfull` on a repo with nothing to report |
-| `no commits`, `no tags`, `no commits after latest tag`, `fewer than <n> commits after latest tag` | excluded by `releases --tagged` / `--pending` / `--min` |
-| `in sync`, `branch not found locally`, `no upstream configured`, `ahead of upstream (nothing to pull)` | extra `branches` entries |
+| Reason | Kind | When |
+|--------|------|------|
+| `directory does not exist` | `missing` | `local_path` does not exist (`gip pull --all` clones it) |
+| `not a git repository` | `missing` | `local_path` exists but has no `.git` |
+| `branch not found locally` | `missing` | an extra `branches` entry that does not exist |
+| `pull_policy: never` | `protected` | `pull` / `fetch` on a project with `pull_policy: never` |
+| `uncommitted changes, use --force` | `protected` | `pull` on a dirty repo |
+| `not dirty`, `not ahead or behind`, `not behind`, `not ahead` | `filtered` | excluded by a git-state filter |
+| `no commits`, `no tags`, `no commits after latest tag`, `fewer than <n> commits after latest tag` | `filtered` | excluded by `releases --tagged` / `--pending` / `--min` |
+| `in sync`, `no upstream configured`, `ahead of upstream (nothing to pull)` | `filtered` | extra `branches` entries |
 
-#### Extended JSON fields (`branch --extended`)
+With `--strict` the `missing` entries become errors (`"status": "error"`, `"error": "directory does not exist (--strict)"`).
 
-`branch` always sets `branch`. When `--extended` (or a git-state filter) is used, each project entry may also include:
+#### Command results
+
+Each entry carries the data of the command that ran, so a script or an agent never has to run git again to read it. A field is omitted when the data was not read (skipped or failed project, `--noop`); once present, it is complete: `false`, `0` and empty values are written.
+
+| Field | Commands | Description |
+|-------|----------|-------------|
+| `files` | `status`, `statusfull` | Changed files of `git status --porcelain` (untracked ones only with `statusfull`): `path`, `orig_path` (source of a rename or copy), `index` and `worktree` (the X and Y status letters, `.` when unchanged, `?` for untracked files). `[]` for a clean tree |
+| `exec` | `exec` | `exit_code` (`-1` when the command did not start or was stopped by `--timeout`), `stdout` and `stderr` of the command, also when it failed |
+| `pull` | `pull` | `cloned` (`true` for a repository cloned by `--all` or `pull_policy: always`), `updated`, `from` and `to` (`HEAD` before and after, full hashes; `from` is omitted for a clone), `commits` (number of commits between them) |
+| `branch` | `branch`, `releases`, extra branches | Current branch name or `"(detached)"` |
+| `state` | `statusfull`, `branch --extended`, git-state filters | Upstream delta and working tree, described below |
+| `commit_msg`, `commit_date` | `branch --extended` | Last commit subject and relative date (e.g. `"2 hours ago"`) |
+
+#### The `state` object
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `branch` | string | Current branch name or `"(detached)"` |
-| `ahead` | int | Commits ahead of upstream (omitted when 0) |
-| `behind` | int | Commits behind upstream (omitted when 0) |
-| `no_remote` | bool | `true` when no upstream tracking branch is configured |
-| `dirty` | string | Dirty symbols (e.g. `"+*"`); omitted when clean |
-| `commit_msg` | string | Last commit subject line (`--extended` only) |
-| `commit_date` | string | Relative date of last commit (e.g. `"2 hours ago"`; `--extended` only) |
+| `upstream` | bool | An upstream tracking branch is configured |
+| `ahead`, `behind` | int | Commits ahead of and behind the upstream |
+| `dirty` | bool | Uncommitted changes: `staged`, `unstaged` or `untracked` (a stash alone does not count) |
+| `staged`, `unstaged`, `untracked`, `stashed` | bool | Each kind of change; `stashed` is `true` when the stash is not empty |
 
 ```json
 {
+  "schema_version": 2,
   "command": "branch",
   "timestamp": "2025-05-15T10:30:00Z",
   "projects": [
@@ -194,16 +232,22 @@ A single JSON envelope is written to stdout after all projects have been process
       "local_path": "/home/user/projects/backend",
       "status": "ok",
       "branch": "dev",
-      "ahead": 2,
-      "dirty": "+*",
+      "state": {
+        "upstream": true, "ahead": 2, "behind": 0,
+        "dirty": true, "staged": true, "unstaged": true, "untracked": false, "stashed": false
+      },
       "commit_msg": "feat: add auth endpoint",
       "commit_date": "2 hours ago"
     }
   ],
-  "summary": { "total": 1, "ok": 1, "errors": 0, "skipped": 0, "duration_ms": 45 },
+  "summary": { "total": 1, "ok": 1, "errors": 0, "skipped": 0, "skipped_by": { "missing": 0, "protected": 0, "filtered": 0 }, "duration_ms": 45 },
   "warnings": []
 }
 ```
+
+#### Changes from schema version 1
+
+Version 1 envelopes had no `schema_version`. Version 2 replaces the top-level `ahead`, `behind` (omitted when 0), `no_remote` and `dirty` (a string of symbols such as `"+*?"`) with the `state` object, sorts the projects by name, reports `statusfull` as its own command and adds `files`, `exec` and `pull`.
 
 #### Tag JSON fields (`releases`)
 
@@ -219,7 +263,7 @@ The `releases` command adds to each project entry with at least one commit:
 
 #### Git fields in `list` JSON
 
-`list` entries include `branch`, `ahead`, `behind`, `no_remote` and `dirty` whenever they are known and non-empty, with or without `--extended` (same meaning as above; no commit fields).
+`list` entries include `branch` and the `state` object whenever the repository could be read, with or without `--extended` (same meaning as above; no commit fields).
 
 No ANSI codes appear in any JSON output.
 
@@ -232,10 +276,64 @@ $ gip --noop pull
 [DRY-RUN] frontend → git pull  (in /home/user/projects/frontend)
 [DRY-RUN] legacy → SKIPPED  (pull_policy: never)
 ─────────────────────────────────────────
-OK: 1   Errors: 0   Skipped: 1   Duration: 0.0s
+OK: 1   Errors: 0   Skipped: 1 (protected 1)   Duration: 0.0s
 DRY-RUN — no operations performed. Remove --noop to proceed.
 ```
 
 ## Exit status
 
-gip exits with status `0` when every project succeeded or was skipped, and `1` when at least one project failed or the command could not start (configuration not found or invalid, bad flag values such as `--jobs 0`). The failed projects are listed on stderr.
+| Status | Meaning |
+|--------|---------|
+| `0` | Every project succeeded or was skipped |
+| `1` | At least one project failed, or is missing with `--strict`; also when gip cannot run at all (git not installed, `init` cannot write its file) |
+| `2` | Usage or configuration error, nothing was done: configuration not found, unreadable or invalid (bad YAML, duplicate names), unknown command or flag, bad flag value (`--jobs 0`, `--min -1`), missing argument (`gip exec` without a command) |
+
+So a script can tell "some repositories need attention" from "gip was called or configured wrongly":
+
+```bash
+gip --strict --json pull > result.json
+case $? in
+  0) echo "all good" ;;
+  1) jq -r '.projects[] | select(.status == "error") | .name' result.json ;;
+  2) echo "fix the gip invocation or configuration" >&2; exit 2 ;;
+esac
+```
+
+## Errors and warnings
+
+Every message says what went wrong and, where gip can tell, what to do next.
+
+A failed git command is shown once, under the project's path, with its exit status and git's own diagnostic:
+
+```text
+/home/user/projects/api
+git pull failed (exit status 128)
+fatal: could not read Username for 'https://github.com': terminal prompts disabled
+```
+
+At the end the failed projects are listed on stderr, one line each: the most telling line of the git output (`fatal: ...`), followed by a hint for well-known causes:
+
+```text
+- api: exit status 128: fatal: could not read Username for 'https://github.com': terminal prompts disabled (hint: authentication required: configure a git credential helper or use an SSH URL)
+```
+
+Hints cover missing credentials, rejected SSH keys and unknown host keys, unresolved or unreachable hosts, untrusted TLS certificates, repositories not found, a non-empty or non-git `local_path`, a stale `index.lock`, branches without upstream or upstream deleted on the remote, detached HEAD, local changes in the way of a pull, diverged branches and, for `exec`, commands not found. With `--errors-last` the list appears only in the summary's error section.
+
+A project that is skipped because of its `local_path` gets a warning naming the project and the way out (`-m` hides it):
+
+```text
+api: /home/user/projects/api does not exist (clone it with 'gip pull --all'; -m hides this warning)
+legacy: /home/user/legacy is not a git repository (fix local_path; -m hides this warning)
+```
+
+Usage errors stop the command before it touches any repository (exit status `2`):
+
+- an unknown command suggests the closest one (`Did you mean "status"?`);
+- `status`, `statusfull`, `list`, `pull`, `fetch`, `branch`, `releases` and `check` take no arguments: an argument such as `gip status frontend` is refused instead of being ignored (the command would otherwise run on every project), and the message points to `--tag`;
+- a configuration file that cannot be found suggests `gip init` or `-f`; an invalid one is reported once, with the file name and the YAML error.
+
+When git is not installed or not in `PATH`, gip says so (`git executable not found in PATH: install git or add its directory to PATH`) and exits with status `1`.
+
+## Colors
+
+Colors are used only when the output stream is a terminal. They are disabled by `NO_COLOR` (any non-empty value, see [no-color.org](https://no-color.org)) and by `TERM=dumb`, and forced with `FORCE_COLOR` (any non-empty value other than `0`), e.g. in CI systems that render ANSI in their logs. `NO_COLOR` wins over `FORCE_COLOR`. Piped or redirected output never contains escape sequences unless `FORCE_COLOR` is set.

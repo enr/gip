@@ -24,7 +24,7 @@ Projects with `disabled: true` are excluded from every command (`list --all` sho
 
 `status` runs `git status --porcelain --untracked-files=no` on all managed projects and prints the modified files of each one.
 
-`statusfull` also shows untracked files and reports the repositories that are out of sync with their upstream: a project that is clean but ahead, behind or without upstream gets a line with its sync state (`<path>  ↑2`), and a project that is clean and in sync is counted as skipped. When a git-state filter (`--dirty`, `--behind`, `--ahead`, `--unsynced`) is given, `statusfull` behaves like `status` plus untracked files.
+`statusfull` also shows untracked files and reports the repositories that are out of sync with their upstream: a project that is clean but ahead, behind or without upstream gets a line with its sync state (`<path>  ↑2`), and a project that is clean and in sync prints nothing and counts as OK (with `--json`: `"files": []` and its `state`). When a git-state filter (`--dirty`, `--behind`, `--ahead`, `--unsynced`) is given, `statusfull` behaves like `status` plus untracked files.
 
 Both commands also report the extra `branches` configured for a project (see [Extra branches](/gip/configuration/#extra-branches)).
 
@@ -121,10 +121,11 @@ gip list --dirty --extended
 
 When a filter is active, missing directories and repositories whose state cannot be read are left out of the table; the latter are still reported as errors.
 
-With `--json` the output has no `summary`. Each entry has `name`, `local_path` (resolved), `repository`, `policy`, `provider` and `tags`; `missing` and `disabled` appear when `true`, `error` when the path or the repository state cannot be read; `provider` is empty when it cannot be detected; `branch`, `ahead`, `behind`, `no_remote` and `dirty` appear when known and non-zero/non-empty, with or without `--extended`:
+With `--json` the output has no `summary`. Each entry has `name`, `local_path` (resolved), `repository`, `policy`, `provider` and `tags`; `missing` and `disabled` appear when `true`, `error` when the path or the repository state cannot be read; `provider` is empty when it cannot be detected; `branch` and the [`state` object](/gip/flags/#the-state-object) appear when the repository could be read, with or without `--extended`:
 
 ```json
 {
+  "schema_version": 2,
   "command": "list",
   "timestamp": "2025-05-15T10:30:00Z",
   "projects": [
@@ -136,8 +137,10 @@ With `--json` the output has no `summary`. Each entry has `name`, `local_path` (
       "provider": "github.com",
       "tags": ["work", "js"],
       "branch": "main",
-      "ahead": 2,
-      "dirty": "+*"
+      "state": {
+        "upstream": true, "ahead": 2, "behind": 0,
+        "dirty": true, "staged": true, "unstaged": true, "untracked": false, "stashed": false
+      }
     }
   ],
   "warnings": []
@@ -239,10 +242,11 @@ gip branch --dirty --extended
 gip branch --behind --extended
 ```
 
-With `--json`, each entry has a `branch` field; with `--extended` (or a git-state filter) it gains sync and dirty fields, and with `--extended` the commit fields. Zero, `false` and empty values are omitted:
+With `--json`, each entry has a `branch` field; with `--extended` (or a git-state filter) it gains the [`state` object](/gip/flags/#the-state-object), and with `--extended` the commit fields:
 
 ```json
 {
+  "schema_version": 2,
   "command": "branch",
   "timestamp": "2025-05-15T10:30:00Z",
   "projects": [
@@ -251,13 +255,15 @@ With `--json`, each entry has a `branch` field; with `--extended` (or a git-stat
       "local_path": "/home/user/projects/backend",
       "status": "ok",
       "branch": "dev",
-      "ahead": 2,
-      "dirty": "+*",
+      "state": {
+        "upstream": true, "ahead": 2, "behind": 0,
+        "dirty": true, "staged": true, "unstaged": true, "untracked": false, "stashed": false
+      },
       "commit_msg": "feat: add auth endpoint",
       "commit_date": "2 hours ago"
     }
   ],
-  "summary": { "total": 1, "ok": 1, "errors": 0, "skipped": 0, "duration_ms": 45 },
+  "summary": { "total": 1, "ok": 1, "errors": 0, "skipped": 0, "skipped_by": { "missing": 0, "protected": 0, "filtered": 0 }, "duration_ms": 45 },
   "warnings": []
 }
 ```
@@ -339,7 +345,7 @@ gip --noop exec -- git reset --hard origin/main
 gip exec --dirty -- git stash
 ```
 
-The command is run in the `local_path` of each project (missing directories are skipped). stdout and stderr of every invocation are collected and printed in a synchronised block so output from different projects does not interleave. A non-zero exit status is reported as an error for that project, and gip exits with status 1.
+The command is run in the `local_path` of each project (missing directories are skipped, or reported as errors with `--strict`). stdout and stderr of every invocation are collected and printed in a synchronised block so output from different projects does not interleave. A non-zero exit status is reported as an error for that project, and gip exits with status 1.
 
 ## check
 
@@ -370,7 +376,7 @@ Remote URLs are compared ignoring protocol, user, port, case and a trailing `.gi
 
 With `--remote` each repository is contacted with `git ls-remote` (network access, no change). A request for credentials is reported as a warning: hosts answer a missing private repository the same way, so its existence cannot be told.
 
-gip exits with status 1 when at least one error is found; warnings do not change the exit status.
+gip exits with status 1 when at least one error is found; warnings do not change the exit status. With `--strict` a missing directory or extra branch is an error instead of a warning, so `gip --strict check` fails on any configured path that does not exist.
 
 | Flag | Description |
 |------|-------------|
@@ -385,14 +391,15 @@ gip check --remote -j 8 -t 30
 gip --json check | jq '.projects[] | select(.status != "ok")'
 ```
 
-With `--json` the envelope has `command`, `timestamp`, `projects[]` (`name`, `local_path`, `status`: `ok`/`warning`/`error`, `issues[]` with `severity` and `message`), `summary` (`total`, `ok`, `errors`, `warnings`, `duration_ms`) and `warnings[]` (configuration warnings). With `--quiet` only the summary line is printed.
+With `--json` the envelope has `schema_version`, `command`, `timestamp`, `projects[]` (`name`, `local_path`, `status`: `ok`/`warning`/`error`, `issues[]` with `severity` and `message`), `summary` (`total`, `ok`, `errors`, `warnings`, `duration_ms`) and `warnings[]` (configuration warnings). With `--quiet` only the summary line is printed.
 
 ## init
 
 Scan a directory recursively for Git repositories and generate a gip configuration file.
 
 ```bash
-# scan ~/projects and write .gip in the current directory (asks for confirmation if it exists)
+# scan ~/projects and write .gip in the current directory
+# (on a terminal asks before overwriting an existing file)
 gip init ~/projects
 
 # write the global configuration
@@ -403,20 +410,28 @@ gip init ~/projects --output ~/work/.gip
 
 # overwrite without prompting, scan up to 3 levels deep
 gip init . --force --depth 3
+
+# print the configuration on stdout (progress goes to stderr)
+gip init ~/projects -o - > projects.gip
 ```
+
+Flags can be written before or after the directory.
 
 The directory to scan defaults to the current one. For each directory containing a `.git` entry (directory or file, so worktrees and submodules are found too), gip detects:
 
 - the directory name as `name` (when two repositories share it, their path relative to the scanned directory is used instead, since names must be unique)
 - the `origin` remote URL as `repository` (via `git remote get-url origin`)
-- the absolute path as `local_path`
+- the path as `local_path`, written to keep working when the file or the home directory moves: relative to the output file's directory when the repository is below it (relative paths are resolved from the configuration file), else `~/...` when it is under the home directory, else absolute. `--absolute` writes absolute paths. With `-o -` the final location of the file is unknown, so only the `~/...` form is used.
 
-gip does not descend into a repository it found, so nested repositories are not listed. Repositories without a configured `origin` remote are skipped with a warning. The generated file is in YAML format, written with `0600` permissions; edit it to add `tags`, `pull_policy` and the other [fields](/gip/configuration/#fields). Nothing is written when no repository is found.
+gip does not descend into a repository it found, so nested repositories are not listed. Repositories without a configured `origin` remote are skipped with a warning that shows how to add one. The generated file is in YAML format, written with `0600` permissions; edit it to add `tags`, `pull_policy` and the other [fields](/gip/configuration/#fields), then verify it with `gip check`. Nothing is written when no repository is found.
+
+When the output file already exists, `init` asks for confirmation on a terminal. Without a terminal (CI, scripts, agents) it does not wait for an answer: it exits with status `2`, leaves the file unchanged and suggests `--force`, `-o <file>` or `-o -`. A missing directory to scan is also a usage error (status `2`).
 
 | Flag | Description |
 |------|-------------|
-| `-o, --output <path>` | Output file path (default: `.gip` in the current directory) |
+| `-o, --output <path>` | Output file path (default: `.gip` in the current directory); `-` prints the configuration on stdout |
 | `--force` | Overwrite existing file without prompting |
+| `--absolute` | Write absolute `local_path` values |
 | `--depth <n>` | Maximum directory scan depth (default: 5) |
 
 ## completion

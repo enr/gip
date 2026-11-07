@@ -4,7 +4,6 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"os/user"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -15,11 +14,10 @@ import (
 )
 
 func TestProjectPath(t *testing.T) {
-	usr, err := user.Current()
-	if err != nil {
-		t.Fatalf("cannot get current user: %v", err)
-	}
-	home := usr.HomeDir
+	// "~" is $HOME, like in the shell and in the lookup of ~/.gip.
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
 	t.Setenv("GIP_TEST_SET", "/base")
 	os.Unsetenv("GIP_TEST_UNSET")
 

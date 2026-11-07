@@ -63,7 +63,7 @@ func statusExtraBranches(c *cli.Context, git *core.GitCommands, t *tracker, proj
 		skip := f.syncSkipReason(info.Ahead, info.Behind)
 		switch {
 		case !info.Exists:
-			res.status, res.reason = opSkipped, "branch not found locally"
+			res.status, res.reason = opSkipped, reasonBranchMissing
 		case !info.NoRemote && info.Ahead == 0 && info.Behind == 0:
 			res.status, res.reason = opSkipped, "in sync"
 		case skip != "":
@@ -127,7 +127,7 @@ func pullExtraBranch(ctx context.Context, git *core.GitCommands, t *tracker, pro
 	skip := f.syncSkipReason(info.Ahead, info.Behind)
 	switch {
 	case !info.Exists:
-		res.status, res.reason = opSkipped, "branch not found locally"
+		res.status, res.reason = opSkipped, reasonBranchMissing
 	case info.NoRemote || info.Remote == "":
 		res.status, res.reason = opSkipped, "no upstream configured"
 	case skip != "":

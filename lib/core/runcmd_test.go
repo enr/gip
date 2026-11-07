@@ -55,7 +55,7 @@ func TestStatusError(t *testing.T) {
 		ui:       clui.DefaultClui(),
 		executor: testGitWrapper{},
 	}
-	err := sut.Status(context.Background(), "dirpath", true)
+	_, err := sut.Status(context.Background(), "dirpath", true)
 	if err == nil {
 		t.Errorf("Expected error in status but got NIL")
 	}
@@ -95,7 +95,7 @@ func TestStatusSuccess(t *testing.T) {
 		executor: testGitWrapperSuccess{},
 	}
 	for _, untracked := range []bool{true, false} {
-		err := sut.Status(context.Background(), "dirpath", untracked)
+		_, err := sut.Status(context.Background(), "dirpath", untracked)
 		if err != nil {
 			t.Errorf("Expected no error in status (untracked=%v) but got %v", untracked, err)
 		}
