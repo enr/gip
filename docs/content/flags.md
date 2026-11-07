@@ -15,7 +15,7 @@ These flags are available on every command and can be written before or after th
 | `-q, --quiet` | Suppress per-project output and the progress bar; tables, warnings (on stderr) and the summary line are still printed |
 | `--json` | Emit a single JSON envelope to stdout instead of text output; takes precedence over `--quiet` |
 | `--noop` | Dry-run: print what would be done without executing any git command |
-| `-m, --ignore-missing` | Do not print the warning for projects whose `local_path` does not exist (they are skipped either way) |
+| `-m, --ignore-missing` | Do not print the warning for projects whose `local_path` does not exist or is not a git repository (they are skipped either way) |
 | `--strict` | A missing `local_path` (or a missing extra branch) is an error instead of a skipped project: the command exits with status `1`. Meant for CI, e.g. `gip --strict pull` |
 | `-v, --version` | Print version, revision and build date |
 | `-h, --help` | Show help; `gip <command> --help` shows the command's flags |
@@ -289,7 +289,40 @@ case $? in
 esac
 ```
 
-The failed projects are listed on stderr, one line each: the most telling line of the git output (`fatal: ...`), followed by a hint for well-known causes (missing credentials, rejected SSH key, unknown host, repository not found, diverged branches). The full git output is printed inline above it. With `--errors-last` the list appears only in the summary's error section. An unknown command suggests the closest one.
+## Errors and warnings
+
+Every message says what went wrong and, where gip can tell, what to do next.
+
+A failed git command is shown once, under the project's path, with its exit status and git's own diagnostic:
+
+```text
+/home/user/projects/api
+git pull failed (exit status 128)
+fatal: could not read Username for 'https://github.com': terminal prompts disabled
+```
+
+At the end the failed projects are listed on stderr, one line each: the most telling line of the git output (`fatal: ...`), followed by a hint for well-known causes:
+
+```text
+- api: exit status 128: fatal: could not read Username for 'https://github.com': terminal prompts disabled (hint: authentication required: configure a git credential helper or use an SSH URL)
+```
+
+Hints cover missing credentials, rejected SSH keys and unknown host keys, unresolved or unreachable hosts, untrusted TLS certificates, repositories not found, a non-empty or non-git `local_path`, a stale `index.lock`, branches without upstream or upstream deleted on the remote, detached HEAD, local changes in the way of a pull, diverged branches and, for `exec`, commands not found. With `--errors-last` the list appears only in the summary's error section.
+
+A project that is skipped because of its `local_path` gets a warning naming the project and the way out (`-m` hides it):
+
+```text
+api: /home/user/projects/api does not exist (clone it with 'gip pull --all'; -m hides this warning)
+legacy: /home/user/legacy is not a git repository (fix local_path; -m hides this warning)
+```
+
+Usage errors stop the command before it touches any repository (exit status `2`):
+
+- an unknown command suggests the closest one (`Did you mean "status"?`);
+- `status`, `statusfull`, `list`, `pull`, `fetch`, `branch`, `releases` and `check` take no arguments: `gip pull frontend` is refused instead of pulling every project, and the message points to `--tag`;
+- a configuration file that cannot be found suggests `gip init` or `-f`; an invalid one is reported once, with the file name and the YAML error.
+
+When git is not installed or not in `PATH`, gip says so (`git executable not found in PATH: install git or add its directory to PATH`) and exits with status `1`.
 
 ## Colors
 

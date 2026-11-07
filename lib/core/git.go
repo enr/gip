@@ -30,6 +30,19 @@ func failureDetail(result runcmdResult) string {
 	return fmt.Sprintf("(%d) %s", result.ExitStatus(), strings.TrimSpace(result.Stderr().String()))
 }
 
+// showFailure prints, under the project title, why a git command failed: the
+// exit status and git's own diagnostic (stderr), once. outMu must be held.
+func (g *GitCommands) showFailure(op string, result runcmdResult) {
+	if result.ExitStatus() < 0 && result.Error() != nil {
+		g.ui.Errorf("git %s failed: %s", op, failureDetail(result))
+		return
+	}
+	g.ui.Errorf("git %s failed (exit status %d)", op, result.ExitStatus())
+	if msg := strings.TrimSpace(result.Stderr().String()); msg != "" {
+		g.ui.Errorf("%s", msg)
+	}
+}
+
 // GitOption configures a GitCommands instance.
 type GitOption func(*GitCommands)
 
@@ -113,8 +126,7 @@ func (g *GitCommands) Clone(ctx context.Context, repourl string, dirpath string)
 	g.beforeDisplay()
 	g.ui.Title(dirpath)
 	if !result.Success() {
-		g.ui.Errorf("Error executing Git in %s", dirpath)
-		g.ui.Errorf("%s", failureDetail(result))
+		g.showFailure("clone", result)
 	}
 	g.ui.Lifecycle(result.Stdout().String())
 	g.outMu.Unlock()
@@ -146,8 +158,7 @@ func (g *GitCommands) Pull(ctx context.Context, dirpath string) error {
 	g.beforeDisplay()
 	g.ui.Title(dirpath)
 	if !result.Success() {
-		g.ui.Errorf("Error executing Git in %s", dirpath)
-		g.ui.Errorf("%s", failureDetail(result))
+		g.showFailure("pull", result)
 	}
 	g.ui.Lifecycle(result.Stdout().String())
 	g.outMu.Unlock()
@@ -181,8 +192,7 @@ func (g *GitCommands) Status(ctx context.Context, dirpath string, untracked bool
 		g.beforeDisplay()
 		g.ui.Title(dirpath)
 		if !result.Success() {
-			g.ui.Errorf("Error executing Git in %s", dirpath)
-			g.ui.Errorf("%s", failureDetail(result))
+			g.showFailure("status", result)
 		}
 		g.ui.Lifecycle(gitOutput)
 		g.outMu.Unlock()
@@ -215,8 +225,7 @@ func (g *GitCommands) Fetch(ctx context.Context, dirpath string) error {
 	g.beforeDisplay()
 	g.ui.Title(dirpath)
 	if !result.Success() {
-		g.ui.Errorf("Error executing Git in %s", dirpath)
-		g.ui.Errorf("%s", failureDetail(result))
+		g.showFailure("fetch", result)
 	}
 	g.ui.Lifecycle(result.Stdout().String())
 	g.outMu.Unlock()
@@ -484,7 +493,7 @@ func statusArguments(untracked bool) []string {
 func gitExecutablePath() (string, error) {
 	gitExecutable := environment.Which("git")
 	if gitExecutable == "" {
-		return "", fmt.Errorf(`git executable not found`)
+		return "", fmt.Errorf("git executable not found in PATH")
 	}
 	return gitExecutable, nil
 }

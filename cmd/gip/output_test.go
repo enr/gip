@@ -163,7 +163,7 @@ func TestCLIOutputHygiene(t *testing.T) {
 	if strings.Contains(stderr, "using configuration") {
 		t.Errorf("no configuration banner expected with -f:\n%s", stderr)
 	}
-	if !strings.Contains(stderr, "not a project dir") {
+	if !strings.Contains(stderr, "selfhosted: "+missing+" does not exist (clone it with 'gip pull --all'") {
 		t.Errorf("the missing directory warning must still be printed:\n%s", stderr)
 	}
 

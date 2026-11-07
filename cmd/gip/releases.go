@@ -104,7 +104,7 @@ func doReleases(c *cli.Context) error {
 	t := newTracker(len(projects))
 	git, err := core.NewGit(ui, core.WithSharedOutput(t.sharedOutput()))
 	if err != nil {
-		return exitErrorf(exitFailure, "Error loading git: %v", err)
+		return gitUnavailable(err)
 	}
 	jobs, err := resolveJobs(c)
 	if err != nil {
@@ -162,7 +162,7 @@ func releaseProject(c *cli.Context, git *core.GitCommands, t *tracker, project g
 	entry.path = line
 	if !isProjectDir(line) {
 		entry.note = "(missing)"
-		t.withOutput(func() { warnMissingDir(line) })
+		t.withOutput(func() { warnMissingDir(project.Name, line) })
 		if noopMode {
 			t.printNoop("%s → SKIPPED  (directory missing)", project.Name)
 		}

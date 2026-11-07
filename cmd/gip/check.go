@@ -120,7 +120,7 @@ func doCheck(c *cli.Context) error {
 	t := newTracker(len(projects))
 	git, err := core.NewGit(ui, core.WithSharedOutput(t.sharedOutput()))
 	if err != nil {
-		return exitErrorf(exitFailure, "Error loading git: %v", err)
+		return gitUnavailable(err)
 	}
 	remote := c.Bool("remote")
 

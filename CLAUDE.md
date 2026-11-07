@@ -31,7 +31,7 @@ The binary lives in `cmd/gip/` (package `main`). The library lives in `lib/core/
 ### `lib/core/`
 
 - **`runcmd.go`** — `runcmdWrapper` interface + `defaultGitWrapper` that executes the `git` binary. The interface exists solely for test injection: `stubs_test.go` provides `mockGitWrapper`.
-- **`git.go`** — `GitCommands` struct. Every public method (Clone, Pull, Status, Fetch, CurrentBranch) calls `executor.exec(runcmdWrapperRequest{})` and synchronises output through `outputMu sync.Mutex` before calling `ui.Title`/`ui.Lifecycle`. `Status` also returns the porcelain output; `Head`/`CountCommits` let `pull --json` report what changed.
+- **`git.go`** — `GitCommands` struct. Every public method (Clone, Pull, Status, Fetch, CurrentBranch) calls `executor.exec(runcmdWrapperRequest{})` and synchronises output through `outputMu sync.Mutex` before calling `ui.Title`/`ui.Lifecycle`. `Status` also returns the porcelain output; `Head`/`CountCommits` let `pull --json` report what changed. Failures are printed inline by `showFailure` ("git <op> failed (exit status N)" + stderr), once.
 - **`exec.go`** — `CommandRunner` for arbitrary shell commands (used by `gip exec`). Same mutex-guarded output pattern as `GitCommands`; `Run` returns an `ExecResult` (stdout, stderr, exit code, `-1` when not started or killed).
 
 ### `cmd/gip/`
@@ -43,7 +43,7 @@ The binary lives in `cmd/gip/` (package `main`). The library lives in `lib/core/
 | `utils.go` | Config file cascade, YAML/JSON parsing, project model, `filterByTag` |
 | `tracker.go` | `tracker` struct, JSON types, progress bar, summary/JSON output |
 | `check.go` | `check` command: read-only verification of the configuration (paths, remotes vs `repository`, shared dirs, branches; `--remote` runs `GitCommands.LsRemote`), own JSON shape |
-| `output.go` | Output hygiene: `colorEnabled` (TTY, `NO_COLOR`, `FORCE_COLOR`), `ansiStripWriter` for the clui writers, `hoistGlobalFlags` (global flags accepted after the command), `commandNotFound` (exit 2 + suggestion), `errorSummaryLine`/`errorHint` (one line per failed project) |
+| `output.go` | Output hygiene: `colorEnabled` (TTY, `NO_COLOR`, `FORCE_COLOR`), `ansiStripWriter` for the clui writers, `hoistGlobalFlags` (global flags accepted after the command), `commandNotFound` (exit 2 + suggestion), `errorSummaryLine`/`errorHint` (one line per failed project; hints in the `errorHints` table, most specific first) |
 | `exitcodes.go` | Exit statuses (`exitOK` 0, `exitFailure` 1, `exitUsage` 2 via `usageErrorf` for configuration/flag errors), skip reason constants and `skipKindOf` (missing/protected/filtered), `strictResult` (`--strict`: missing → error, applied in `tracker.record`) |
 | `results.go` | Command data for `--json`: `parsePorcelain` (status files), `pullInfo`/`readPullInfo` (HEAD before/after a pull) |
 | `filters.go` | `gitStateFilter` (`--dirty/--behind/--ahead/--unsynced`, the only place the match rule lives) and `repoState` (`readRepoState` wraps `GitCommands.StatusInfo`) |
@@ -71,7 +71,7 @@ if jsonMode { t.printJSON("cmd", warnings) } else { t.printSummary(c.Bool("error
 return buildError(t.errors())
 ```
 
-`opContext(c)` returns a `context.WithTimeout` when `--timeout` is set. Errors raised before the loop (configuration, flags, arguments) use `usageErrorf` (exit 2); skip reasons use the constants of `exitcodes.go` so `skipKindOf` can classify them.
+`opContext(c)` returns a `context.WithTimeout` when `--timeout` is set. Errors raised before the loop (configuration, flags, arguments) use `usageErrorf` (exit 2); commands without positional arguments get `rejectArgs` as `Before` hook (set in `init` in `commands.go`); `gitUnavailable` wraps `core.NewGit` errors; `warnMissingDir(name, path)` tells a missing directory from a non-git one; skip reasons use the constants of `exitcodes.go` so `skipKindOf` can classify them.
 
 ### Output modes
 

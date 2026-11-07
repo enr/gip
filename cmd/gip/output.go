@@ -217,20 +217,56 @@ func errorSummaryLine(err error) string {
 	return line
 }
 
+// errorHints maps well-known failure messages (lower case substrings of
+// git's output) to the next step. The first matching entry wins, so the more
+// specific patterns come first.
+var errorHints = []struct {
+	patterns []string
+	hint     string
+}{
+	{[]string{"could not read username", "terminal prompts disabled", "authentication failed", "could not read password"},
+		"authentication required: configure a git credential helper or use an SSH URL"},
+	{[]string{"permission denied (publickey)"},
+		"SSH key rejected: check ssh-agent and the key registered on the server"},
+	{[]string{"host key verification failed"},
+		"unknown SSH host key: connect once with ssh to accept it"},
+	{[]string{"could not resolve host", "could not resolve hostname"},
+		"host not resolved: check the repository URL and the network"},
+	{[]string{"connection timed out", "connection refused", "network is unreachable"},
+		"server not reachable: check the network, VPN or proxy"},
+	{[]string{"ssl certificate problem", "server certificate verification failed"},
+		"TLS certificate not trusted: configure http.sslCAInfo for this server"},
+	{[]string{"repository not found", "does not appear to be a git repository", "fatal: repository '"},
+		"repository not found: check the URL and your access rights"},
+	{[]string{"already exists and is not an empty directory"},
+		"local_path is not empty: move its content away or point local_path elsewhere"},
+	{[]string{"not a git repository"},
+		"local_path is not a git repository: fix local_path or remove the directory and run 'gip pull --all'"},
+	{[]string{"index.lock", "another git process seems to be running"},
+		"another git process is running in this repository (or crashed): wait, or remove .git/index.lock"},
+	{[]string{"there is no tracking information", "no tracking information for the current branch"},
+		"the current branch has no upstream: git branch --set-upstream-to=origin/<branch>"},
+	{[]string{"you are not currently on a branch"},
+		"detached HEAD: check out a branch in the project directory"},
+	{[]string{"would be overwritten by merge", "would be overwritten by checkout", "commit your changes or stash them"},
+		"local changes conflict with the incoming ones: commit or stash them first"},
+	{[]string{"not possible to fast-forward", "divergent branches", "refusing to merge unrelated histories"},
+		"branches diverged: merge or rebase in the project directory"},
+	{[]string{"couldn't find remote ref", "no such ref was fetched"},
+		"the upstream branch no longer exists on the remote: switch branch or update its upstream"},
+	{[]string{"executable file not found"},
+		"command not found: check its name and PATH"},
+}
+
 // errorHint suggests the next step for well-known failures.
 func errorHint(msg string) string {
 	m := strings.ToLower(msg)
-	switch {
-	case strings.Contains(m, "could not read username") || strings.Contains(m, "terminal prompts disabled"):
-		return "authentication required: configure a git credential helper or use an SSH URL"
-	case strings.Contains(m, "permission denied (publickey)"):
-		return "SSH key rejected: check ssh-agent and the key registered on the server"
-	case strings.Contains(m, "could not resolve host"):
-		return "host not resolved: check the repository URL and the network"
-	case strings.Contains(m, "repository not found") || strings.Contains(m, "does not appear to be a git repository"):
-		return "repository not found: check the URL and your access rights"
-	case strings.Contains(m, "not possible to fast-forward") || strings.Contains(m, "divergent branches"):
-		return "branches diverged: merge or rebase in the project directory"
+	for _, h := range errorHints {
+		for _, p := range h.patterns {
+			if strings.Contains(m, p) {
+				return h.hint
+			}
+		}
 	}
 	return ""
 }

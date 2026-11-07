@@ -115,6 +115,13 @@ func resolveJobs(c *cli.Context) (int, error) {
 	return n, nil
 }
 
+func init() {
+	for _, c := range []*cli.Command{&commandStatus, &commandStatusFull, &commandList, &commandPull,
+		&commandFetch, &commandBranch, &commandReleases, &commandCheck} {
+		c.Before = rejectArgs
+	}
+}
+
 var commands = []*cli.Command{
 	&commandStatus,
 	&commandStatusFull,
@@ -355,7 +362,7 @@ func gitStatus(c *cli.Context, untracked bool) error {
 	t := newTracker(len(projects))
 	git, err := core.NewGit(ui, core.WithSharedOutput(t.sharedOutput()))
 	if err != nil {
-		return exitErrorf(exitFailure, "Error loading git: %v", err)
+		return gitUnavailable(err)
 	}
 	filter := newGitStateFilter(c)
 
@@ -402,7 +409,7 @@ func doStatusProject(c *cli.Context, git *core.GitCommands, t *tracker, project 
 		return
 	}
 	if !isProjectDir(line) {
-		t.withOutput(func() { warnMissingDir(line) })
+		t.withOutput(func() { warnMissingDir(project.Name, line) })
 		t.record(opResult{project: project.Name, localPath: line, status: opSkipped, reason: reasonNotProjectDir})
 		return
 	}
@@ -690,7 +697,7 @@ func doList(c *cli.Context) error {
 	}
 	git, err := core.NewGit(ui)
 	if err != nil {
-		return exitErrorf(exitFailure, "Error loading git: %v", err)
+		return gitUnavailable(err)
 	}
 
 	rows := buildListRows(projects)
@@ -756,10 +763,6 @@ func doPull(c *cli.Context) error {
 	if err != nil {
 		return configurationError(c, err)
 	}
-	args := c.Args().Slice()
-	if len(args) > 0 {
-		return usageErrorf("Pull command does not accept any argument, found: %v", args)
-	}
 	if c.Bool("dirty") && !c.Bool("force") {
 		return usageErrorf("--dirty selects only repositories with uncommitted changes, which pull skips without --force: add --force or drop --dirty")
 	}
@@ -774,7 +777,7 @@ func doPull(c *cli.Context) error {
 	t := newTracker(len(projects))
 	git, err := core.NewGit(ui, core.WithSharedOutput(t.sharedOutput()))
 	if err != nil {
-		return exitErrorf(exitFailure, "Error loading git: %v", err)
+		return gitUnavailable(err)
 	}
 
 	jobs, err := resolveJobs(c)
@@ -868,7 +871,7 @@ func pullOne(c *cli.Context, git *core.GitCommands, project gipProject, all bool
 
 func pullMissingDir(c *cli.Context, git *core.GitCommands, project gipProject, line string, all bool, t *tracker) {
 	if !(all || project.pullAlways()) {
-		t.withOutput(func() { warnMissingDir(line) })
+		t.withOutput(func() { warnMissingDir(project.Name, line) })
 		if noopMode {
 			t.printNoop("%s → SKIPPED  (directory missing)", project.Name)
 		}
@@ -907,7 +910,7 @@ func doFetch(c *cli.Context) error {
 	t := newTracker(len(projects))
 	git, err := core.NewGit(ui, core.WithSharedOutput(t.sharedOutput()))
 	if err != nil {
-		return exitErrorf(exitFailure, "Error loading git: %v", err)
+		return gitUnavailable(err)
 	}
 
 	filter := newGitStateFilter(c)
@@ -956,7 +959,7 @@ func fetchOne(c *cli.Context, git *core.GitCommands, project gipProject, t *trac
 		return
 	}
 	if !isProjectDir(line) {
-		t.withOutput(func() { warnMissingDir(line) })
+		t.withOutput(func() { warnMissingDir(project.Name, line) })
 		if noopMode {
 			t.printNoop("%s → SKIPPED  (directory missing)", project.Name)
 		}
@@ -1014,7 +1017,7 @@ func branchProject(c *cli.Context, git *core.GitCommands, t *tracker, project gi
 	}
 	if !isProjectDir(line) {
 		entry.branch = "(missing)"
-		t.withOutput(func() { warnMissingDir(line) })
+		t.withOutput(func() { warnMissingDir(project.Name, line) })
 		if noopMode {
 			t.printNoop("%s → SKIPPED  (directory missing)", project.Name)
 		}
@@ -1100,7 +1103,7 @@ func doBranch(c *cli.Context) error {
 	t := newTracker(len(projects))
 	git, err := core.NewGit(ui, core.WithSharedOutput(t.sharedOutput()))
 	if err != nil {
-		return exitErrorf(exitFailure, "Error loading git: %v", err)
+		return gitUnavailable(err)
 	}
 	extended := c.Bool("extended")
 	filter := newGitStateFilter(c)
@@ -1143,7 +1146,7 @@ func execProject(project gipProject, runner *core.CommandRunner, git *core.GitCo
 		return
 	}
 	if !isProjectDir(line) {
-		t.withOutput(func() { warnMissingDir(line) })
+		t.withOutput(func() { warnMissingDir(project.Name, line) })
 		if noopMode {
 			t.printNoop("%s → SKIPPED  (directory missing)", project.Name)
 		}
@@ -1199,7 +1202,7 @@ func doExec(c *cli.Context) error {
 	if filter.active() {
 		git, err = core.NewGit(ui, core.WithSharedOutput(t.sharedOutput()))
 		if err != nil {
-			return exitErrorf(exitFailure, "Error loading git: %v", err)
+			return gitUnavailable(err)
 		}
 	}
 	jobs, err := resolveJobs(c)
@@ -1358,11 +1361,33 @@ func getOriginURL(repoPath string) (string, error) {
 	return strings.TrimSpace(string(out)), nil
 }
 
-func warnMissingDir(dir string) {
+// warnMissingDir tells why a project is skipped and how to fix it: a
+// directory that does not exist can be cloned, one without .git cannot.
+func warnMissingDir(name, dir string) {
 	if ignoreMissingDirs {
 		return
 	}
-	ui.Warnf("%s (not a project dir)", dir)
+	if _, err := os.Stat(dir); os.IsNotExist(err) {
+		ui.Warnf("%s: %s does not exist (clone it with 'gip pull --all'; -m hides this warning)", name, dir)
+		return
+	}
+	ui.Warnf("%s: %s is not a git repository (fix local_path; -m hides this warning)", name, dir)
+}
+
+// gitUnavailable is the error of a command that cannot run git at all.
+func gitUnavailable(err error) error {
+	return exitErrorf(exitFailure, "gip: %v: install git or add its directory to PATH", err)
+}
+
+// rejectArgs is the Before hook of the commands that take no positional
+// argument: an argument there is a mistake (a project name, a misplaced flag
+// value) that must not be silently ignored.
+func rejectArgs(c *cli.Context) error {
+	if c.Args().Len() == 0 {
+		return nil
+	}
+	return usageErrorf("gip %s: unexpected argument %q: %s takes no arguments; select projects with --tag (see 'gip %s --help')",
+		c.Command.Name, c.Args().First(), c.Command.Name, c.Command.Name)
 }
 
 func exitErrorf(exitCode int, template string, args ...interface{}) error {

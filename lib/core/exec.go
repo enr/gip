@@ -97,7 +97,7 @@ func (r *CommandRunner) Run(ctx context.Context, workingDir, name string, args [
 		r.ui.Lifecycle(res.Stderr)
 	}
 	if runErr != nil {
-		r.ui.Errorf("(%v)", runErr)
+		r.ui.Errorf("%s failed: %v", name, runErr)
 	}
 	r.outMu.Unlock()
 

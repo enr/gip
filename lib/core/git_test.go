@@ -1,6 +1,7 @@
 package core
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"os"
@@ -778,5 +779,25 @@ func TestGitCommands_HeadAndCountCommits(t *testing.T) {
 	gitCmd = &GitCommands{ui: clui.DefaultClui(), executor: mock}
 	if _, err := gitCmd.Head(context.Background(), "/r"); err == nil {
 		t.Error("Head must fail on an unborn branch")
+	}
+}
+
+func TestGitCommands_ShowFailure(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	ui := clui.DefaultClui()
+	ui.Color = false
+	ui.StdWriter, ui.ErrorWriter = &stdout, &stderr
+	mock := &mockGitWrapper{result: &runcmdStubResult{success: false, exitStatus: 128,
+		stderr: "fatal: not a git repository\n", err: errors.New("exit status 128")}}
+	gitCmd := &GitCommands{ui: ui, executor: mock}
+	if err := gitCmd.Pull(context.Background(), "/r"); err == nil {
+		t.Fatal("expected an error")
+	}
+	want := "git pull failed (exit status 128)\nfatal: not a git repository\n"
+	if stderr.String() != want {
+		t.Errorf("stderr = %q, want %q", stderr.String(), want)
+	}
+	if !strings.Contains(stdout.String(), "/r") {
+		t.Errorf("the project title must be printed, stdout = %q", stdout.String())
 	}
 }
