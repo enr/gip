@@ -321,6 +321,11 @@ func (t *tracker) printSummary(errorsLast, showSkipped bool) {
 	if noopMode {
 		fmt.Fprintf(os.Stdout, "DRY-RUN — no operations performed. Remove --noop to proceed.\n")
 	}
+	if !showSkipped && !quietMode {
+		for _, line := range skipNotes(skipEntries) {
+			fmt.Fprintf(os.Stdout, "%s\n", t.applyStyle(styleSkip, line))
+		}
+	}
 	if errorsLast && len(errEntries) > 0 {
 		fmt.Fprintf(os.Stdout, "\n%s\n", t.applyStyle(styleDivider, "── Errors ────────────────────────────────"))
 		for _, r := range errEntries {
@@ -333,6 +338,37 @@ func (t *tracker) printSummary(errorsLast, showSkipped bool) {
 			fmt.Fprintf(os.Stdout, "%s %s — %s\n", t.applyStyle(styleSkip, "[SKIP]"), r.project, r.reason)
 		}
 	}
+}
+
+// maxSkipNotes is how many projects a skip note names before "+N more".
+const maxSkipNotes = 5
+
+// skipNotes are the lines printed under the summary for the skipped projects
+// that need a decision: missing ones (a configuration to fix or a clone to
+// do) and protected ones (a pull refused on purpose). Filtered projects had
+// nothing to do and are left to --show-skipped.
+func skipNotes(skipped []opResult) []string {
+	sorted := append([]opResult(nil), skipped...)
+	sort.SliceStable(sorted, func(a, b int) bool { return sorted[a].project < sorted[b].project })
+	var lines []string
+	for _, kind := range []skipKind{skipMissing, skipProtected} {
+		var names []string
+		for _, r := range sorted {
+			if skipKindOf(r.reason) == kind {
+				names = append(names, fmt.Sprintf("%s (%s)", r.project, r.reason))
+			}
+		}
+		if len(names) == 0 {
+			continue
+		}
+		more := ""
+		if len(names) > maxSkipNotes {
+			more = fmt.Sprintf(", +%d more (--show-skipped)", len(names)-maxSkipNotes)
+			names = names[:maxSkipNotes]
+		}
+		lines = append(lines, fmt.Sprintf("  %s: %s%s", kind, strings.Join(names, ", "), more))
+	}
+	return lines
 }
 
 // resultCounts are the totals of the summary.

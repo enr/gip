@@ -972,7 +972,7 @@ func TestShowSkippedFlag(t *testing.T) {
 	}
 
 	out, _ = exec.Command(binPath, "-f", configPath, "pull", "--show-skipped").CombinedOutput()
-	if !bytes.Contains(out, []byte("[SKIP] repo2 — local dir missing")) {
+	if !bytes.Contains(out, []byte("[SKIP] repo2 — directory does not exist")) {
 		t.Fatalf("expected skipped project with reason:\n%s", out)
 	}
 	if bytes.Contains(out, []byte("[SKIP] repo1")) {

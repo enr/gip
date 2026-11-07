@@ -15,7 +15,7 @@ func TestSkipKindOf(t *testing.T) {
 		reasonBranchMissing: skipMissing,
 		reasonPullNever:     skipProtected,
 		reasonUncommitted:   skipProtected,
-		"clean and in sync": skipFiltered,
+		"not behind":        skipFiltered,
 		"not dirty":         skipFiltered,
 		"in sync":           skipFiltered,
 	}
@@ -50,7 +50,7 @@ func TestCountsSkipDetail(t *testing.T) {
 		{status: opOK},
 		{status: opSkipped, reason: reasonDirMissing},
 		{status: opSkipped, reason: "not dirty"},
-		{status: opSkipped, reason: "clean and in sync"},
+		{status: opSkipped, reason: "not ahead"},
 	}
 	n := tr.counts()
 	if n.ok != 1 || n.skipped != 3 || n.skippedBy[skipMissing] != 1 || n.skippedBy[skipProtected] != 0 || n.skippedBy[skipFiltered] != 2 {
@@ -146,5 +146,43 @@ func TestExitCodes(t *testing.T) {
 	}
 	if env.Summary.SkippedBy["missing"] != 1 || env.Projects[0]["skip"] != "missing" {
 		t.Errorf("skip kind: summary %+v, projects %v", env.Summary, env.Projects)
+	}
+}
+
+func TestMissingReason(t *testing.T) {
+	root := t.TempDir()
+	if got := missingReason(filepath.Join(root, "nope")); got != reasonDirMissing {
+		t.Errorf("missing directory: %q", got)
+	}
+	if got := missingReason(root); got != reasonNotProjectDir {
+		t.Errorf("directory without .git: %q", got)
+	}
+}
+
+func TestSkipNotes(t *testing.T) {
+	skipped := []opResult{
+		{project: "z", status: opSkipped, reason: reasonDirMissing},
+		{project: "b", status: opSkipped, reason: "not dirty"},
+		{project: "a", status: opSkipped, reason: reasonNotProjectDir},
+		{project: "p", status: opSkipped, reason: reasonUncommitted},
+	}
+	want := []string{
+		"  missing: a (not a git repository), z (directory does not exist)",
+		"  protected: p (uncommitted changes, use --force)",
+	}
+	if got := skipNotes(skipped); strings.Join(got, "\n") != strings.Join(want, "\n") {
+		t.Errorf("skipNotes:\n got: %q\nwant: %q", got, want)
+	}
+	if got := skipNotes([]opResult{{project: "b", reason: "not dirty"}}); len(got) != 0 {
+		t.Errorf("filtered projects need no note, got %q", got)
+	}
+
+	var many []opResult
+	for i := 0; i < maxSkipNotes+2; i++ {
+		many = append(many, opResult{project: string(rune('a' + i)), reason: reasonDirMissing})
+	}
+	got := skipNotes(many)
+	if len(got) != 1 || !strings.HasSuffix(got[0], ", +2 more (--show-skipped)") {
+		t.Errorf("long list must be capped: %q", got)
 	}
 }

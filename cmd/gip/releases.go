@@ -166,7 +166,7 @@ func releaseProject(c *cli.Context, git *core.GitCommands, t *tracker, project g
 		if noopMode {
 			t.printNoop("%s → SKIPPED  (directory missing)", project.Name)
 		}
-		t.record(opResult{project: project.Name, localPath: line, status: opSkipped, reason: reasonDirMissing})
+		t.record(opResult{project: project.Name, localPath: line, status: opSkipped, reason: missingReason(line)})
 		return entry, !opts.filtering() && !opts.filter.active()
 	}
 	if noopMode {

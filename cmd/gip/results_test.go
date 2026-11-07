@@ -89,6 +89,15 @@ func jsonEnvelope(t *testing.T, binPath, cfg string, args ...string) map[string]
 	return env
 }
 
+// assertCleanOK verifies the entry of a clean repository in sync.
+func assertCleanOK(t *testing.T, p map[string]interface{}) {
+	t.Helper()
+	files, ok := p["files"].([]interface{})
+	if p["status"] != "ok" || !ok || len(files) != 0 {
+		t.Errorf("clean repository in sync: expected ok with \"files\": [], got %v", p)
+	}
+}
+
 // checkEnvelope verifies the envelope metadata and the order of the projects.
 func checkEnvelope(t *testing.T, env map[string]interface{}, command string) {
 	t.Helper()
@@ -141,6 +150,9 @@ func TestJSONCarriesResults(t *testing.T) {
 	if st := ahead["state"].(map[string]interface{}); st["ahead"] != 1.0 || st["dirty"] != false {
 		t.Errorf("ahead state: %v", st)
 	}
+
+	// statusfull: a clean repository in sync is OK with nothing to list.
+	assertCleanOK(t, ps["stash"])
 
 	// status (no untracked files): the untracked repo has nothing to list.
 	ps = envelopeProjects(jsonEnvelope(t, binPath, cfg, "status"))

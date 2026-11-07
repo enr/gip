@@ -44,7 +44,7 @@ The binary lives in `cmd/gip/` (package `main`). The library lives in `lib/core/
 | `tracker.go` | `tracker` struct, JSON types, progress bar, summary/JSON output |
 | `check.go` | `check` command: read-only verification of the configuration (paths, remotes vs `repository`, shared dirs, branches; `--remote` runs `GitCommands.LsRemote`), own JSON shape |
 | `output.go` | Output hygiene: `colorEnabled` (TTY, `NO_COLOR`, `FORCE_COLOR`), `ansiStripWriter` for the clui writers, `hoistGlobalFlags` (global flags accepted after the command), `commandNotFound` (exit 2 + suggestion), `errorSummaryLine`/`errorHint` (one line per failed project; hints in the `errorHints` table, most specific first) |
-| `exitcodes.go` | Exit statuses (`exitOK` 0, `exitFailure` 1, `exitUsage` 2 via `usageErrorf` for configuration/flag errors), skip reason constants and `skipKindOf` (missing/protected/filtered), `strictResult` (`--strict`: missing → error, applied in `tracker.record`) |
+| `exitcodes.go` | Exit statuses (`exitOK` 0, `exitFailure` 1, `exitUsage` 2 via `usageErrorf` for configuration/flag errors), skip reason constants (`missingReason(dir)` picks "directory does not exist" / "not a git repository") and `skipKindOf` (missing/protected/filtered; skipped = not looked at or not touched, a clean repo is OK), `strictResult` (`--strict`: missing → error, applied in `tracker.record`) |
 | `results.go` | Command data for `--json`: `parsePorcelain` (status files), `pullInfo`/`readPullInfo` (HEAD before/after a pull) |
 | `filters.go` | `gitStateFilter` (`--dirty/--behind/--ahead/--unsynced`, the only place the match rule lives) and `repoState` (`readRepoState` wraps `GitCommands.StatusInfo`) |
 
@@ -106,7 +106,7 @@ type gipProject struct {
 ### Tracker / JSON output
 
 `tracker` accumulates `opResult` values (one per project). Fields: `project`, `localPath`, `status` (opOK/opError/opSkipped), `err`, `reason`, `branch`, `state *repoState` (sync/dirty, nil when not read), `commitMsg`/`commitDate`, plus tag fields (`tagSet`, `lastTag`, `commitsSinceTag`, `tagDate`, `unreleased`) set by `releases`, and the command results reported by `--json` (`files []statusFile` from `parsePorcelain` for status/statusfull, `execRes *core.ExecResult` for exec, `pull *pullInfo` for pull; `cmd/gip/results.go`) (`cmd/gip/releases.go`, backed by `GitCommands.LatestTag`; `--fetch` runs `GitCommands.FetchTags` first). At the end:
-- `printSummary(errorsLast bool)` — text table with ANSI color (TTY only).
+- `printSummary(errorsLast, showSkipped bool)` — summary line with ANSI color (TTY only), then `skipNotes` (missing/protected projects named, unless `--show-skipped` or `--quiet`).
 - `printJSON(command, warnings)` — single JSON object: `schema_version` (`jsonSchemaVersion`; bump it only when a field is removed or changes meaning), `command`, `timestamp`, `projects[]` (sorted by name; built by `opResult.toJSON`, sync/dirty in the `state` object), `summary{total,ok,errors,skipped,skipped_by,duration_ms}` (counts from `tracker.counts`, shared with the text summary), `warnings[]`.
 
 `list` uses a separate `listOutputJSON` / `listProjectJSON` shape (includes repository, policy, provider, tags, missing, disabled, error, state); `check` has its own `checkOutputJSON`. All three carry `schema_version`.

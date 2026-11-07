@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"os"
 )
 
 // Exit statuses. Scripts and CI can tell "the repositories need attention"
@@ -21,12 +22,21 @@ func usageErrorf(template string, args ...interface{}) error {
 // Skip reasons that classify a skipped project (see skipKindOf). The other
 // reasons come from filters and mean "nothing to do".
 const (
-	reasonNotProjectDir = "not a project dir"
-	reasonDirMissing    = "local dir missing"
+	reasonNotProjectDir = "not a git repository"
+	reasonDirMissing    = "directory does not exist"
 	reasonBranchMissing = "branch not found locally"
 	reasonPullNever     = "pull_policy: never"
-	reasonUncommitted   = "uncommitted changes (use --force)"
+	reasonUncommitted   = "uncommitted changes, use --force"
 )
+
+// missingReason tells a local_path that does not exist (pull --all can clone
+// it) from one that exists without being a git repository.
+func missingReason(dir string) string {
+	if _, err := os.Stat(dir); os.IsNotExist(err) {
+		return reasonDirMissing
+	}
+	return reasonNotProjectDir
+}
 
 // skipKind groups the reasons a project was skipped for.
 type skipKind string

@@ -24,7 +24,7 @@ Projects with `disabled: true` are excluded from every command (`list --all` sho
 
 `status` runs `git status --porcelain --untracked-files=no` on all managed projects and prints the modified files of each one.
 
-`statusfull` also shows untracked files and reports the repositories that are out of sync with their upstream: a project that is clean but ahead, behind or without upstream gets a line with its sync state (`<path>  ↑2`), and a project that is clean and in sync is counted as skipped. When a git-state filter (`--dirty`, `--behind`, `--ahead`, `--unsynced`) is given, `statusfull` behaves like `status` plus untracked files.
+`statusfull` also shows untracked files and reports the repositories that are out of sync with their upstream: a project that is clean but ahead, behind or without upstream gets a line with its sync state (`<path>  ↑2`), and a project that is clean and in sync prints nothing and counts as OK (with `--json`: `"files": []` and its `state`). When a git-state filter (`--dirty`, `--behind`, `--ahead`, `--unsynced`) is given, `statusfull` behaves like `status` plus untracked files.
 
 Both commands also report the extra `branches` configured for a project (see [Extra branches](/gip/configuration/#extra-branches)).
 

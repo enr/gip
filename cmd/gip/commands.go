@@ -410,7 +410,7 @@ func doStatusProject(c *cli.Context, git *core.GitCommands, t *tracker, project 
 	}
 	if !isProjectDir(line) {
 		t.withOutput(func() { warnMissingDir(project.Name, line) })
-		t.record(opResult{project: project.Name, localPath: line, status: opSkipped, reason: reasonNotProjectDir})
+		t.record(opResult{project: project.Name, localPath: line, status: opSkipped, reason: missingReason(line)})
 		return
 	}
 	if noopMode {
@@ -449,12 +449,14 @@ func statusProjectFull(ctx context.Context, git *core.GitCommands, t *tracker, p
 		t.record(opResult{project: project.Name, localPath: line, status: opError, err: err})
 		return
 	}
+	// A clean repository in sync was looked at and has nothing to report: it
+	// is OK, as with status. Skipped means "not looked at".
+	res := opResult{project: project.Name, localPath: line, state: &st, files: []statusFile{}, status: opOK}
 	isUnsynced := st.sync.NoRemote || st.sync.Behind > 0 || st.sync.Ahead > 0
 	if !st.dirty.IsDirty() && !isUnsynced {
-		t.record(opResult{project: project.Name, localPath: line, status: opSkipped, reason: "clean and in sync"})
+		t.record(res)
 		return
 	}
-	res := opResult{project: project.Name, localPath: line, state: &st, files: []statusFile{}}
 	if st.dirty.IsDirty() {
 		out, err := git.Status(ctx, line, true)
 		if err != nil {
@@ -565,7 +567,7 @@ func listErrors(rows []listRow) map[string]error {
 		case r.err != nil:
 			errs[r.project.Name] = r.err
 		case r.missing && strictMode:
-			errs[r.project.Name] = fmt.Errorf("%s (--strict)", reasonDirMissing)
+			errs[r.project.Name] = fmt.Errorf("%s (--strict)", missingReason(r.path))
 		}
 	}
 	return errs
@@ -875,7 +877,7 @@ func pullMissingDir(c *cli.Context, git *core.GitCommands, project gipProject, l
 		if noopMode {
 			t.printNoop("%s → SKIPPED  (directory missing)", project.Name)
 		}
-		t.record(opResult{project: project.Name, localPath: line, status: opSkipped, reason: reasonDirMissing})
+		t.record(opResult{project: project.Name, localPath: line, status: opSkipped, reason: missingReason(line)})
 		return
 	}
 	if noopMode {
@@ -963,7 +965,7 @@ func fetchOne(c *cli.Context, git *core.GitCommands, project gipProject, t *trac
 		if noopMode {
 			t.printNoop("%s → SKIPPED  (directory missing)", project.Name)
 		}
-		t.record(opResult{project: project.Name, localPath: line, status: opSkipped, reason: reasonDirMissing})
+		t.record(opResult{project: project.Name, localPath: line, status: opSkipped, reason: missingReason(line)})
 		return
 	}
 	if noopMode {
@@ -1021,7 +1023,7 @@ func branchProject(c *cli.Context, git *core.GitCommands, t *tracker, project gi
 		if noopMode {
 			t.printNoop("%s → SKIPPED  (directory missing)", project.Name)
 		}
-		t.record(opResult{project: project.Name, localPath: line, status: opSkipped, reason: reasonDirMissing})
+		t.record(opResult{project: project.Name, localPath: line, status: opSkipped, reason: missingReason(line)})
 		return entry, !filter.active()
 	}
 	if noopMode {
@@ -1150,7 +1152,7 @@ func execProject(project gipProject, runner *core.CommandRunner, git *core.GitCo
 		if noopMode {
 			t.printNoop("%s → SKIPPED  (directory missing)", project.Name)
 		}
-		t.record(opResult{project: project.Name, localPath: line, status: opSkipped, reason: reasonNotProjectDir})
+		t.record(opResult{project: project.Name, localPath: line, status: opSkipped, reason: missingReason(line)})
 		return
 	}
 	if noopMode {

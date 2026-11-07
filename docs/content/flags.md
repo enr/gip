@@ -117,7 +117,17 @@ Each project prints its git output inline as it completes. A progress bar is sho
 OK: 5   Errors: 1   Skipped: 3 (missing 1, filtered 2)   Duration: 3.4s
 ```
 
-The skipped projects are split by kind (only the non-zero kinds are shown): `missing` (the configured directory or branch does not exist: usually a configuration to fix), `protected` (gip refused to touch the repository: `pull_policy: never`, uncommitted changes without `--force`) and `filtered` (nothing to do: clean, in sync, excluded by a filter). `--show-skipped` lists them with their reason.
+The skipped projects are split by kind (only the non-zero kinds are shown): `missing` (the configured directory or branch does not exist: usually a configuration to fix), `protected` (gip refused to touch the repository: `pull_policy: never`, uncommitted changes without `--force`) and `filtered` (excluded by a filter or nothing to do). Skipped always means "not looked at or not touched": a repository that was examined and found clean counts as OK.
+
+The projects that need a decision are named under the summary, with their reason, without any flag (at most five per kind, then `+N more`):
+
+```text
+OK: 4   Errors: 0   Skipped: 3 (missing 2, protected 1)   Duration: 1.2s
+  missing: api (directory does not exist), legacy (not a git repository)
+  protected: web (uncommitted changes, use --force)
+```
+
+`filtered` projects are not named; `--show-skipped` lists every skipped project with its reason. `--quiet` prints the summary line only.
 
 ### Quiet (`--quiet`)
 
@@ -158,8 +168,8 @@ Every envelope starts with `schema_version` (currently `2`): it changes only whe
       "name": "legacy",
       "local_path": "/home/user/projects/legacy",
       "status": "skipped",
-      "reason": "clean and in sync",
-      "skip": "filtered"
+      "reason": "directory does not exist",
+      "skip": "missing"
     }
   ],
   "summary": {
@@ -167,7 +177,7 @@ Every envelope starts with `schema_version` (currently `2`): it changes only whe
     "ok": 1,
     "errors": 1,
     "skipped": 1,
-    "skipped_by": { "missing": 0, "protected": 0, "filtered": 1 },
+    "skipped_by": { "missing": 1, "protected": 0, "filtered": 0 },
     "duration_ms": 1240
   },
   "warnings": []
@@ -178,16 +188,16 @@ Every envelope starts with `schema_version` (currently `2`): it changes only whe
 
 | Reason | Kind | When |
 |--------|------|------|
-| `local dir missing`, `not a project dir` | `missing` | the directory does not exist or has no `.git` |
+| `directory does not exist` | `missing` | `local_path` does not exist (`gip pull --all` clones it) |
+| `not a git repository` | `missing` | `local_path` exists but has no `.git` |
 | `branch not found locally` | `missing` | an extra `branches` entry that does not exist |
 | `pull_policy: never` | `protected` | `pull` / `fetch` on a project with `pull_policy: never` |
-| `uncommitted changes (use --force)` | `protected` | `pull` on a dirty repo |
+| `uncommitted changes, use --force` | `protected` | `pull` on a dirty repo |
 | `not dirty`, `not ahead or behind`, `not behind`, `not ahead` | `filtered` | excluded by a git-state filter |
-| `clean and in sync` | `filtered` | `statusfull` on a repo with nothing to report |
 | `no commits`, `no tags`, `no commits after latest tag`, `fewer than <n> commits after latest tag` | `filtered` | excluded by `releases --tagged` / `--pending` / `--min` |
 | `in sync`, `no upstream configured`, `ahead of upstream (nothing to pull)` | `filtered` | extra `branches` entries |
 
-With `--strict` the `missing` entries become errors (`"status": "error"`, `"error": "local dir missing (--strict)"`).
+With `--strict` the `missing` entries become errors (`"status": "error"`, `"error": "directory does not exist (--strict)"`).
 
 #### Command results
 
