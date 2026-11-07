@@ -319,7 +319,7 @@ legacy: /home/user/legacy is not a git repository (fix local_path; -m hides this
 Usage errors stop the command before it touches any repository (exit status `2`):
 
 - an unknown command suggests the closest one (`Did you mean "status"?`);
-- `status`, `statusfull`, `list`, `pull`, `fetch`, `branch`, `releases` and `check` take no arguments: `gip pull frontend` is refused instead of pulling every project, and the message points to `--tag`;
+- `status`, `statusfull`, `list`, `pull`, `fetch`, `branch`, `releases` and `check` take no arguments: an argument such as `gip status frontend` is refused instead of being ignored (the command would otherwise run on every project), and the message points to `--tag`;
 - a configuration file that cannot be found suggests `gip init` or `-f`; an invalid one is reported once, with the file name and the YAML error.
 
 When git is not installed or not in `PATH`, gip says so (`git executable not found in PATH: install git or add its directory to PATH`) and exits with status `1`.
