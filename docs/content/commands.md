@@ -398,7 +398,8 @@ With `--json` the envelope has `schema_version`, `command`, `timestamp`, `projec
 Scan a directory recursively for Git repositories and generate a gip configuration file.
 
 ```bash
-# scan ~/projects and write .gip in the current directory (asks for confirmation if it exists)
+# scan ~/projects and write .gip in the current directory
+# (on a terminal asks before overwriting an existing file)
 gip init ~/projects
 
 # write the global configuration
@@ -409,20 +410,28 @@ gip init ~/projects --output ~/work/.gip
 
 # overwrite without prompting, scan up to 3 levels deep
 gip init . --force --depth 3
+
+# print the configuration on stdout (progress goes to stderr)
+gip init ~/projects -o - > projects.gip
 ```
+
+Flags can be written before or after the directory.
 
 The directory to scan defaults to the current one. For each directory containing a `.git` entry (directory or file, so worktrees and submodules are found too), gip detects:
 
 - the directory name as `name` (when two repositories share it, their path relative to the scanned directory is used instead, since names must be unique)
 - the `origin` remote URL as `repository` (via `git remote get-url origin`)
-- the absolute path as `local_path`
+- the path as `local_path`, written to keep working when the file or the home directory moves: relative to the output file's directory when the repository is below it (relative paths are resolved from the configuration file), else `~/...` when it is under the home directory, else absolute. `--absolute` writes absolute paths. With `-o -` the final location of the file is unknown, so only the `~/...` form is used.
 
-gip does not descend into a repository it found, so nested repositories are not listed. Repositories without a configured `origin` remote are skipped with a warning. The generated file is in YAML format, written with `0600` permissions; edit it to add `tags`, `pull_policy` and the other [fields](/gip/configuration/#fields). Nothing is written when no repository is found.
+gip does not descend into a repository it found, so nested repositories are not listed. Repositories without a configured `origin` remote are skipped with a warning that shows how to add one. The generated file is in YAML format, written with `0600` permissions; edit it to add `tags`, `pull_policy` and the other [fields](/gip/configuration/#fields), then verify it with `gip check`. Nothing is written when no repository is found.
+
+When the output file already exists, `init` asks for confirmation on a terminal. Without a terminal (CI, scripts, agents) it does not wait for an answer: it exits with status `2`, leaves the file unchanged and suggests `--force`, `-o <file>` or `-o -`. A missing directory to scan is also a usage error (status `2`).
 
 | Flag | Description |
 |------|-------------|
-| `-o, --output <path>` | Output file path (default: `.gip` in the current directory) |
+| `-o, --output <path>` | Output file path (default: `.gip` in the current directory); `-` prints the configuration on stdout |
 | `--force` | Overwrite existing file without prompting |
+| `--absolute` | Write absolute `local_path` values |
 | `--depth <n>` | Maximum directory scan depth (default: 5) |
 
 ## completion

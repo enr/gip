@@ -224,3 +224,26 @@ func runGip(t *testing.T, binPath string, args ...string) (string, string, int) 
 	}
 	return stdout.String(), stderr.String(), code
 }
+
+func TestMoveFlagsBeforeArgs(t *testing.T) {
+	commands := []*cli.Command{
+		{Name: "init", Flags: []cli.Flag{
+			&cli.StringFlag{Name: "output", Aliases: []string{"o"}},
+			&cli.BoolFlag{Name: "force"},
+			&cli.IntFlag{Name: "depth"},
+		}},
+		{Name: "status"},
+	}
+	cases := []struct{ in, want []string }{
+		{[]string{"gip", "init", "dir", "-o", "x", "--force"}, []string{"gip", "init", "-o", "x", "--force", "dir"}},
+		{[]string{"gip", "init", "--depth", "3", "dir"}, []string{"gip", "init", "--depth", "3", "dir"}},
+		{[]string{"gip", "-f", "c", "init", "dir", "--output=x"}, []string{"gip", "-f", "c", "init", "--output=x", "dir"}},
+		{[]string{"gip", "init"}, []string{"gip", "init"}},
+		{[]string{"gip", "status", "x", "-q"}, []string{"gip", "status", "x", "-q"}},
+	}
+	for _, tc := range cases {
+		if got := moveFlagsBeforeArgs(tc.in, testGlobals(), commands); !reflect.DeepEqual(got, tc.want) {
+			t.Errorf("moveFlagsBeforeArgs(%q)\n got: %q\nwant: %q", tc.in, got, tc.want)
+		}
+	}
+}

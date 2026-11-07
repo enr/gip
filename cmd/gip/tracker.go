@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"charm.land/lipgloss/v2"
+	"github.com/mattn/go-isatty"
 
 	"github.com/enr/gip/lib/core"
 )
@@ -535,13 +536,12 @@ func (t *tracker) colorSync(s core.BranchSyncStatus, dirty bool) string {
 	}
 }
 
+// isTTY reports whether f is a terminal (Cygwin/MSYS ones included). A
+// character device is not enough: /dev/null is one.
 func isTTY(f *os.File) bool {
 	if f == nil {
 		return false
 	}
-	stat, err := f.Stat()
-	if err != nil {
-		return false
-	}
-	return stat.Mode()&os.ModeCharDevice != 0
+	fd := f.Fd()
+	return isatty.IsTerminal(fd) || isatty.IsCygwinTerminal(fd)
 }

@@ -43,8 +43,9 @@ The binary lives in `cmd/gip/` (package `main`). The library lives in `lib/core/
 | `utils.go` | Config file cascade, YAML/JSON parsing, project model, `filterByTag` |
 | `tracker.go` | `tracker` struct, JSON types, progress bar, summary/JSON output |
 | `check.go` | `check` command: read-only verification of the configuration (paths, remotes vs `repository`, shared dirs, branches; `--remote` runs `GitCommands.LsRemote`), own JSON shape |
-| `output.go` | Output hygiene: `colorEnabled` (TTY, `NO_COLOR`, `FORCE_COLOR`), `ansiStripWriter` for the clui writers, `hoistGlobalFlags` (global flags accepted after the command), `commandNotFound` (exit 2 + suggestion), `errorSummaryLine`/`errorHint` (one line per failed project; hints in the `errorHints` table, most specific first) |
+| `output.go` | Output hygiene: `colorEnabled` (TTY, `NO_COLOR`, `FORCE_COLOR`), `ansiStripWriter` for the clui writers, `hoistGlobalFlags` (global flags accepted after the command), `moveFlagsBeforeArgs` (flags after the positional argument of `init`), `commandNotFound` (exit 2 + suggestion), `errorSummaryLine`/`errorHint` (one line per failed project; hints in the `errorHints` table, most specific first) |
 | `exitcodes.go` | Exit statuses (`exitOK` 0, `exitFailure` 1, `exitUsage` 2 via `usageErrorf` for configuration/flag errors), skip reason constants (`missingReason(dir)` picks "directory does not exist" / "not a git repository") and `skipKindOf` (missing/protected/filtered; skipped = not looked at or not touched, a clean repo is OK), `strictResult` (`--strict`: missing → error, applied in `tracker.record`) |
+| `commands.go` (init) | `doInit` → `initScanDir`, `confirmOverwrite` (no prompt without a TTY: exit 2), `initEntries`, `portablePaths`/`portableLocalPath` (relative to the output file, else `~/`, else absolute), `writeInitConfig` (`-o -` = stdout) |
 | `results.go` | Command data for `--json`: `parsePorcelain` (status files), `pullInfo`/`readPullInfo` (HEAD before/after a pull) |
 | `filters.go` | `gitStateFilter` (`--dirty/--behind/--ahead/--unsynced`, the only place the match rule lives) and `repoState` (`readRepoState` wraps `GitCommands.StatusInfo`) |
 
@@ -79,6 +80,8 @@ return buildError(t.errors())
 - **`--quiet`**: clui verbosity → Low; only the summary line is printed.
 - **`--json`**: clui verbosity → Low (suppresses inline output); `tracker.printJSON` emits a single JSON envelope after `wg.Wait()`.
 - **`--noop`**: skips all git calls; `tracker.printNoop` writes `[DRY-RUN]` lines.
+
+`homeDir()` (`utils.go`) is what `~` means everywhere: `$HOME`/`%USERPROFILE%` via `os.UserHomeDir`, falling back to the account's home.
 
 ### Config file cascade (`utils.go` → `defaultConfigurationFilePath`)
 

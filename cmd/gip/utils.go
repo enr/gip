@@ -249,6 +249,20 @@ func validateProject(i int, p gipProject, warn func(format string, args ...inter
 	}
 }
 
+// homeDir is the directory "~" stands for: $HOME (%USERPROFILE% on Windows),
+// as in the shell and in the lookup of ~/.gip, falling back to the account's
+// home directory when the variable is not set.
+func homeDir() (string, error) {
+	if dir, err := os.UserHomeDir(); err == nil {
+		return dir, nil
+	}
+	usr, err := user.Current()
+	if err != nil {
+		return "", err
+	}
+	return usr.HomeDir, nil
+}
+
 func projectPath(ppath string) (string, error) {
 	// An empty path would resolve to the current working directory and make
 	// gip operate on whatever repository it happens to be launched from.
@@ -257,11 +271,10 @@ func projectPath(ppath string) (string, error) {
 	}
 	retpath := ppath
 	if ppath == "~" || strings.HasPrefix(ppath, "~/") {
-		usr, err := user.Current()
+		dir, err := homeDir()
 		if err != nil {
 			return "", err
 		}
-		dir := usr.HomeDir
 		relpath := strings.TrimPrefix(ppath, "~")
 		retpath = filepath.FromSlash(path.Join(dir, relpath))
 	}

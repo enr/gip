@@ -52,7 +52,7 @@ The config file is a list of project entries in YAML or JSON. Each entry describ
 |-------|----------|-------------|
 | `name` | yes | Descriptive name for the project. Must be unique across the file. |
 | `repository` | yes | Remote URL (HTTPS or SSH). Used to clone missing repos (`pull_policy: always` or `gip pull --all`) and to detect the provider shown by `list`. |
-| `local_path` | yes | Local directory path. `~` and environment variables are expanded; an unset or empty variable is an error. A relative path is resolved against the directory of the configuration file, not the current directory. |
+| `local_path` | yes | Local directory path. `~` (the `HOME` directory, `USERPROFILE` on Windows, as in the shell) and environment variables are expanded; an unset or empty variable is an error. A relative path is resolved against the directory of the configuration file, not the current directory. |
 | `pull_policy` | no | `never` — always skip this project for `pull` and `fetch`. `always` — clone via `git clone` if `local_path` does not exist. Omit for default behaviour: operate only on already-present directories. Values are case-insensitive. |
 | `branches` | no | Extra local branches reported by `status` and fast-forwarded by `pull` (see [Extra branches](#extra-branches)). |
 | `tags` | no | List of free-form labels. Used by `--tag` filtering (see [Tag filtering](#tag-filtering)). |

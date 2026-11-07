@@ -270,3 +270,39 @@ func errorHint(msg string) string {
 	}
 	return ""
 }
+
+// commandsWithArgs take positional arguments that users write before the
+// flags ("gip init ~/projects -o ~/.gip"): the flag parser stops at the first
+// argument, so the flags are moved before it.
+var commandsWithArgs = map[string]bool{"init": true}
+
+// moveFlagsBeforeArgs reorders, for the commands in commandsWithArgs, the
+// arguments after the command name: flags (with their values) first, then
+// the positional arguments. "--" and what follows are left untouched.
+func moveFlagsBeforeArgs(args []string, globals []cli.Flag, commands []*cli.Command) []string {
+	cmdIdx := commandIndex(args, flagArity(globals))
+	if cmdIdx < 0 {
+		return args
+	}
+	cmd := findCommand(commands, args[cmdIdx])
+	if cmd == nil || !commandsWithArgs[cmd.Name] {
+		return args
+	}
+	arity := flagArity(cmd.Flags)
+	var flags, positional []string
+	i := cmdIdx + 1
+	for i < len(args) && args[i] != "--" {
+		if !isFlagArg(args[i]) {
+			positional = append(positional, args[i])
+			i++
+			continue
+		}
+		n := flagSpan(args, i, arity[flagName(args[i])])
+		flags = append(flags, args[i:i+n]...)
+		i += n
+	}
+	out := append([]string{}, args[:cmdIdx+1]...)
+	out = append(out, flags...)
+	out = append(out, positional...)
+	return append(out, args[i:]...)
+}

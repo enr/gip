@@ -76,7 +76,9 @@ func main() {
 
 	// Errors of the commands exit through cli.HandleExitCoder with their own
 	// status; what reaches here is a usage error found by the flag parser.
-	if err := app.Run(hoistGlobalFlags(os.Args, app.Flags, app.Commands)); err != nil {
+	args := hoistGlobalFlags(os.Args, app.Flags, app.Commands)
+	args = moveFlagsBeforeArgs(args, app.Flags, app.Commands)
+	if err := app.Run(args); err != nil {
 		os.Exit(exitUsage)
 	}
 }

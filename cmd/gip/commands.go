@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"os/exec"
@@ -227,15 +228,22 @@ Use -- to separate gip flags from the command and its arguments:
 }
 
 var initFlags = []cli.Flag{
-	&cli.StringFlag{Name: "output", Aliases: []string{"o"}, Usage: "output file path (default: ./.gip)"},
+	&cli.StringFlag{Name: "output", Aliases: []string{"o"}, Usage: "output file path (default: ./.gip); - prints the configuration on stdout"},
 	&cli.BoolFlag{Name: "force", Usage: "overwrite existing config without prompting"},
+	&cli.BoolFlag{Name: "absolute", Usage: "write absolute local_path values instead of paths relative to the output file or to ~"},
 	&cli.IntFlag{Name: "depth", Value: 5, Usage: "maximum directory scan depth"},
 }
 
 var commandInit = cli.Command{
-	Name:         "init",
-	Usage:        "scan a directory for git repositories and generate configuration",
-	Description:  `Scans a directory recursively for git repositories and writes a gip configuration file.`,
+	Name:  "init",
+	Usage: "scan a directory for git repositories and generate configuration",
+	Description: `Scans a directory recursively for git repositories and writes a gip configuration file.
+local_path is written relative to the output file when the repository is below
+it, else as ~/... under the home directory, so the file keeps working when the
+directory or the home moves (--absolute writes absolute paths).
+
+   gip init ~/projects -o ~/.gip
+   gip init . -o - > workspace.gip`,
 	Action:       doInit,
 	Flags:        initFlags,
 	BashComplete: bashCompleteWithFlags(initFlags),
@@ -1240,73 +1248,171 @@ type initEntry struct {
 }
 
 func doInit(c *cli.Context) error {
-	scanDir := c.Args().First()
-	if scanDir == "" {
-		scanDir = "."
+	if c.Args().Len() > 1 {
+		return usageErrorf("gip init takes one directory to scan, got %d arguments", c.Args().Len())
 	}
-	scanDir, err := projectPath(scanDir)
+	scanDir, err := initScanDir(c.Args().First())
 	if err != nil {
-		return usageErrorf("Error expanding path %s: %v", scanDir, err)
-	}
-	scanDir, err = filepath.Abs(scanDir)
-	if err != nil {
-		return usageErrorf("Error resolving path %s: %v", scanDir, err)
-	}
-
-	ui.Lifecyclef("Scanning %s ...", scanDir)
-
-	repos, err := scanForRepos(scanDir, c.Int("depth"))
-	if err != nil {
-		return exitErrorf(exitFailure, "Error scanning directory: %v", err)
-	}
-
-	var entries []initEntry
-	for _, repoPath := range repos {
-		name := filepath.Base(repoPath)
-		url, err := getOriginURL(repoPath)
-		if err != nil {
-			ui.Warnf("  skip %s (no origin remote)", name)
-			continue
-		}
-		ui.Lifecyclef("  found %s  %s", name, url)
-		entries = append(entries, initEntry{
-			Name:       name,
-			Repository: url,
-			LocalPath:  repoPath,
-		})
-	}
-	uniqueInitNames(entries, scanDir)
-
-	if len(entries) == 0 {
-		ui.Lifecyclef("No repositories with an origin remote found in %s", scanDir)
-		return nil
+		return err
 	}
 
 	outputPath := c.String("output")
 	if outputPath == "" {
 		outputPath = filepath.Join(".", configFileBaseName)
 	}
-
-	if _, statErr := os.Stat(outputPath); statErr == nil && !c.Bool("force") {
-		fmt.Printf("%s already exists. Overwrite? [y/N]: ", outputPath)
-		var response string
-		fmt.Scanln(&response) //nolint:errcheck
-		if !strings.HasPrefix(strings.ToLower(strings.TrimSpace(response)), "y") {
-			ui.Lifecyclef("Aborted.")
-			return nil
+	toStdout := outputPath == "-"
+	// With "-o -" the configuration goes to stdout, so the progress lines go
+	// to stderr: "gip init -o - > file" gives a clean file.
+	progress := os.Stdout
+	if toStdout {
+		progress = os.Stderr
+	}
+	if !toStdout {
+		if err := confirmOverwrite(outputPath, c.Bool("force")); err != nil {
+			return err
 		}
 	}
 
+	fmt.Fprintf(progress, "Scanning %s ...\n", scanDir)
+	repos, err := scanForRepos(scanDir, c.Int("depth"))
+	if err != nil {
+		return exitErrorf(exitFailure, "Error scanning directory: %v", err)
+	}
+	entries := initEntries(repos, progress)
+	uniqueInitNames(entries, scanDir)
+	if len(entries) == 0 {
+		fmt.Fprintf(progress, "No repositories with an origin remote found in %s (scanned %d levels deep; --depth goes deeper). Nothing written.\n", scanDir, c.Int("depth"))
+		return nil
+	}
+
+	if !c.Bool("absolute") {
+		portablePaths(entries, outputPath, toStdout)
+	}
+	return writeInitConfig(entries, outputPath, toStdout, progress)
+}
+
+// initScanDir resolves the directory to scan ("." by default).
+func initScanDir(arg string) (string, error) {
+	if arg == "" {
+		arg = "."
+	}
+	dir, err := projectPath(arg)
+	if err != nil {
+		return "", usageErrorf("Error expanding path %s: %v", arg, err)
+	}
+	dir, err = filepath.Abs(dir)
+	if err != nil {
+		return "", usageErrorf("Error resolving path %s: %v", arg, err)
+	}
+	if info, statErr := os.Stat(dir); statErr != nil || !info.IsDir() {
+		return "", usageErrorf("gip init: %s is not a directory", dir)
+	}
+	return dir, nil
+}
+
+// portablePaths rewrites the local_path of entries with portableLocalPath.
+// Printed on stdout, the file's final directory is unknown: only "~" applies.
+func portablePaths(entries []initEntry, outputPath string, toStdout bool) {
+	configDir := ""
+	if !toStdout {
+		if abs, err := filepath.Abs(outputPath); err == nil {
+			configDir = filepath.Dir(abs)
+		}
+	}
+	home, _ := homeDir()
+	for i := range entries {
+		entries[i].LocalPath = portableLocalPath(entries[i].LocalPath, configDir, home)
+	}
+}
+
+// writeInitConfig writes the YAML configuration to outputPath, or to stdout.
+func writeInitConfig(entries []initEntry, outputPath string, toStdout bool, progress io.Writer) error {
 	data, err := yaml.Marshal(entries)
 	if err != nil {
 		return exitErrorf(exitFailure, "Error generating YAML: %v", err)
 	}
+	if toStdout {
+		if _, err := os.Stdout.Write(data); err != nil {
+			return exitErrorf(exitFailure, "Error writing the configuration: %v", err)
+		}
+		return nil
+	}
 	if err := os.WriteFile(outputPath, data, 0600); err != nil {
 		return exitErrorf(exitFailure, "Error writing %s: %v", outputPath, err)
 	}
-
-	ui.Lifecyclef("Configuration written to %s (%d repositories)", outputPath, len(entries))
+	fmt.Fprintf(progress, "Configuration written to %s (%d repositories). Check it with 'gip -f %s check'.\n", outputPath, len(entries), outputPath)
 	return nil
+}
+
+// confirmOverwrite decides whether an existing output file may be replaced:
+// with --force, or when the user answers yes on a terminal. Without a
+// terminal (CI, agents, pipes) there is nobody to ask: it is a usage error
+// that names the two ways out, instead of a prompt that reads EOF.
+func confirmOverwrite(outputPath string, force bool) error {
+	if _, err := os.Stat(outputPath); err != nil || force {
+		return nil
+	}
+	hint := "pass --force to overwrite it, or -o <file> to write elsewhere (-o - prints it)"
+	if !isTTY(os.Stdin) {
+		return usageErrorf("gip init: %s already exists: %s", outputPath, hint)
+	}
+	fmt.Printf("%s already exists. Overwrite? [y/N]: ", outputPath)
+	var response string
+	fmt.Scanln(&response) //nolint:errcheck
+	if !strings.HasPrefix(strings.ToLower(strings.TrimSpace(response)), "y") {
+		return usageErrorf("gip init: aborted, %s left unchanged (%s)", outputPath, hint)
+	}
+	return nil
+}
+
+// initEntries builds the configuration of the repositories found, skipping
+// those without an origin remote.
+func initEntries(repos []string, progress io.Writer) []initEntry {
+	var entries []initEntry
+	for _, repoPath := range repos {
+		name := filepath.Base(repoPath)
+		url, err := getOriginURL(repoPath)
+		if err != nil {
+			ui.Warnf("  skip %s (no origin remote; add one with 'git -C %s remote add origin <url>')", name, repoPath)
+			continue
+		}
+		fmt.Fprintf(progress, "  found %s  %s\n", name, url)
+		entries = append(entries, initEntry{
+			Name:       name,
+			Repository: url,
+			LocalPath:  repoPath,
+		})
+	}
+	return entries
+}
+
+// portableLocalPath writes repoPath so that the configuration keeps working
+// when moved: relative to the configuration file's directory when the
+// repository is below it (the loader resolves relative paths from there),
+// else "~/..." under the home directory, else absolute. The home directory
+// itself as configDir uses "~/..." too, the clearer form for ~/.gip.
+func portableLocalPath(repoPath, configDir, home string) string {
+	if configDir != "" && configDir != home {
+		if rel, ok := below(configDir, repoPath); ok {
+			return rel
+		}
+	}
+	if home != "" {
+		if rel, ok := below(home, repoPath); ok {
+			return "~/" + rel
+		}
+	}
+	return repoPath
+}
+
+// below returns path relative to dir, with forward slashes, when path is
+// inside dir (not dir itself).
+func below(dir, path string) (string, bool) {
+	rel, err := filepath.Rel(dir, path)
+	if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) || filepath.IsAbs(rel) {
+		return "", false
+	}
+	return filepath.ToSlash(rel), true
 }
 
 // uniqueInitNames renames entries whose directory name is shared with another
