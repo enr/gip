@@ -92,7 +92,7 @@ backend     dev       ↑2        +*     feat: add auth endpoint   2 hours ago ~
 dotfiles    main      ↓1        —      docs: update README       1 week ago  ~/dotfiles
 ```
 
-STATUS colour (TTY only): green = synced · magenta = ahead · yellow = behind · red = diverged · white = no remote  
+STATUS colour (TTY only): green = synced · magenta = ahead · yellow = behind · red = diverged · white = no usable upstream (`local-only`, `no-upstream`, `upstream-gone`, `detached`)  
 DIRTY symbols: `+` staged · `*` unstaged · `?` untracked · `$` stash
 
 ## Focus on repos that need attention

@@ -278,45 +278,64 @@ func TestGitCommands_StatusInfo(t *testing.T) {
 		name          string
 		statusOutput  string
 		stashOutput   string
+		remoteRefs    string // for-each-ref refs/remotes output, read only without upstream
 		wantSync      BranchSyncStatus
+		wantLabel     string
 		wantDirty     DirtyStatus
 		expectedError bool
 	}{
 		{
 			name:         "synced no changes",
 			statusOutput: porcelainSynced,
-			wantSync:     BranchSyncStatus{Branch: "main", Ahead: 0, Behind: 0, NoRemote: false},
+			wantSync:     BranchSyncStatus{Branch: "main", Ahead: 0, Behind: 0, Upstream: "origin/main"},
 			wantDirty:    DirtyStatus{},
 		},
 		{
 			name:         "ahead with staged file",
 			statusOutput: porcelainAhead,
-			wantSync:     BranchSyncStatus{Branch: "feature", Ahead: 2, Behind: 0, NoRemote: false},
+			wantSync:     BranchSyncStatus{Branch: "feature", Ahead: 2, Behind: 0, Upstream: "origin/feature"},
 			wantDirty:    DirtyStatus{Staged: true},
 		},
 		{
 			name:         "behind no changes",
 			statusOutput: porcelainBehind,
-			wantSync:     BranchSyncStatus{Branch: "main", Ahead: 0, Behind: 3, NoRemote: false},
+			wantSync:     BranchSyncStatus{Branch: "main", Ahead: 0, Behind: 3, Upstream: "origin/main"},
 			wantDirty:    DirtyStatus{},
 		},
 		{
 			name:         "diverged with untracked",
 			statusOutput: porcelainDiverged,
-			wantSync:     BranchSyncStatus{Branch: "main", Ahead: 1, Behind: 2, NoRemote: false},
+			wantSync:     BranchSyncStatus{Branch: "main", Ahead: 1, Behind: 2, Upstream: "origin/main"},
 			wantDirty:    DirtyStatus{Untracked: true},
 		},
 		{
-			name:         "no remote",
+			name:         "no upstream, never pushed",
 			statusOutput: porcelainNoRemote,
+			remoteRefs:   "main\nHEAD\n",
 			wantSync:     BranchSyncStatus{Branch: "local-only", NoRemote: true},
 			wantDirty:    DirtyStatus{},
+			wantLabel:    SyncLocalOnly,
+		},
+		{
+			name:         "no upstream, pushed but not tracked",
+			statusOutput: porcelainNoRemote,
+			remoteRefs:   "main\nlocal-only\n",
+			wantSync:     BranchSyncStatus{Branch: "local-only", NoRemote: true, OnRemote: true},
+			wantDirty:    DirtyStatus{},
+			wantLabel:    SyncNoUpstream,
+		},
+		{
+			name:         "upstream gone",
+			statusOutput: "# branch.oid abc\n# branch.head feat\n# branch.upstream origin/feat\n",
+			wantSync:     BranchSyncStatus{Branch: "feat", NoRemote: true, Upstream: "origin/feat"},
+			wantDirty:    DirtyStatus{},
+			wantLabel:    SyncUpstreamGone,
 		},
 		{
 			name:         "stash present",
 			statusOutput: porcelainSynced,
 			stashOutput:  "stash@{0}: WIP on main: abc fix\n",
-			wantSync:     BranchSyncStatus{Branch: "main"},
+			wantSync:     BranchSyncStatus{Branch: "main", Upstream: "origin/main"},
 			wantDirty:    DirtyStatus{Stashed: true},
 		},
 		{
@@ -324,6 +343,7 @@ func TestGitCommands_StatusInfo(t *testing.T) {
 			statusOutput: "# branch.oid abc\n# branch.head (detached)\n",
 			wantSync:     BranchSyncStatus{Branch: "(detached)", NoRemote: true},
 			wantDirty:    DirtyStatus{},
+			wantLabel:    SyncDetached,
 		},
 	}
 
@@ -336,6 +356,7 @@ func TestGitCommands_StatusInfo(t *testing.T) {
 					&runcmdStubResult{success: true, stdout: "git version 2.34.1\n"},
 					&runcmdStubResult{success: true, stdout: tc.statusOutput},
 					&runcmdStubResult{success: true, stdout: tc.stashOutput},
+					&runcmdStubResult{success: true, stdout: tc.remoteRefs},
 				},
 			}
 			gitCmd := &GitCommands{ui: ui, executor: mock}
@@ -356,8 +377,16 @@ func TestGitCommands_StatusInfo(t *testing.T) {
 			if dirty != tc.wantDirty {
 				t.Errorf("dirty: got %+v, want %+v", dirty, tc.wantDirty)
 			}
-			if len(mock.requests) != 3 {
-				t.Errorf("expected 3 git calls (version, status, stash list), got %d", len(mock.requests))
+			if tc.wantLabel != "" && sync.SyncLabel() != tc.wantLabel {
+				t.Errorf("label: got %q, want %q", sync.SyncLabel(), tc.wantLabel)
+			}
+			// The remote branches are listed only for a branch without upstream.
+			wantCalls := 3
+			if sync.NoRemote && sync.Upstream == "" && sync.Branch != "(detached)" {
+				wantCalls = 4
+			}
+			if len(mock.requests) != wantCalls {
+				t.Errorf("expected %d git calls (version, status, stash list[, remote refs]), got %d", wantCalls, len(mock.requests))
 			}
 		})
 	}
@@ -430,24 +459,32 @@ func TestGitCommands_BranchInfos(t *testing.T) {
 		"rel\torigin/rel-1.x\torigin\tbehind 2\t \trefs/heads/rel-1.x\n" +
 		"main\torigin/main\torigin\t\t*\trefs/heads/main\n" +
 		"gone\torigin/gone\torigin\tgone\t \trefs/heads/gone\n" +
-		"local\t\t\t\t \t\n"
-	mock := &mockGitWrapper{result: &runcmdStubResult{success: true, stdout: out}}
+		"local\t\t\t\t \t\n" +
+		"pushed\t\t\t\t \t\n"
+	mock := &mockGitWrapper{results: []runcmdResult{
+		&runcmdStubResult{success: true, stdout: out},
+		&runcmdStubResult{success: true, stdout: "main\npushed\n"},
+	}}
 	g := &GitCommands{ui: clui.DefaultClui(), executor: mock}
 
-	infos, err := g.BranchInfos(context.Background(), "/tmp/r", []string{"dev", "rel", "main", "gone", "local", "missing"})
+	infos, err := g.BranchInfos(context.Background(), "/tmp/r", []string{"dev", "rel", "main", "gone", "local", "pushed", "missing"})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	want := []BranchInfo{
-		{Name: "dev", Exists: true, Remote: "origin", RemoteRef: "refs/heads/dev", Ahead: 1},
-		{Name: "rel", Exists: true, Remote: "origin", RemoteRef: "refs/heads/rel-1.x", Behind: 2},
-		{Name: "main", Exists: true, Remote: "origin", RemoteRef: "refs/heads/main", CheckedOut: true},
-		{Name: "gone", Exists: true, Remote: "origin", RemoteRef: "refs/heads/gone", NoRemote: true},
+		{Name: "dev", Exists: true, Upstream: "origin/dev", Remote: "origin", RemoteRef: "refs/heads/dev", Ahead: 1},
+		{Name: "rel", Exists: true, Upstream: "origin/rel-1.x", Remote: "origin", RemoteRef: "refs/heads/rel-1.x", Behind: 2},
+		{Name: "main", Exists: true, Upstream: "origin/main", Remote: "origin", RemoteRef: "refs/heads/main", CheckedOut: true},
+		{Name: "gone", Exists: true, Upstream: "origin/gone", Remote: "origin", RemoteRef: "refs/heads/gone", NoRemote: true},
 		{Name: "local", Exists: true, NoRemote: true},
+		{Name: "pushed", Exists: true, NoRemote: true, OnRemote: true},
 		{Name: "missing"},
 	}
 	if !reflect.DeepEqual(infos, want) {
 		t.Fatalf("got %+v, want %+v", infos, want)
+	}
+	if len(mock.requests) != 2 {
+		t.Fatalf("expected 2 git calls (branches, remote refs once), got %d", len(mock.requests))
 	}
 	if got := mock.requests[0].args[len(mock.requests[0].args)-1]; got != "refs/heads/missing" {
 		t.Fatalf("expected refs/heads/ patterns, last arg %q", got)

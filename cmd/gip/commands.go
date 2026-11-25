@@ -450,7 +450,7 @@ func doStatusProject(c *cli.Context, git *core.GitCommands, t *tracker, project 
 	}
 }
 
-// statusProjectFull handles "status sf": shows unsynced repos (ahead/behind/no-remote) together with dirty ones.
+// statusProjectFull handles "status sf": shows unsynced repos (ahead/behind/no-upstream) together with dirty ones.
 func statusProjectFull(ctx context.Context, git *core.GitCommands, t *tracker, project gipProject, line string) {
 	st, err := readRepoState(ctx, git, line)
 	if err != nil {

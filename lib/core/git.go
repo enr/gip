@@ -296,13 +296,28 @@ type BranchSyncStatus struct {
 	Branch   string
 	Ahead    int
 	Behind   int
-	NoRemote bool // true when no upstream tracking branch is configured
+	NoRemote bool // true when there is no usable upstream (none configured, or gone)
+	// Upstream is the configured upstream (e.g. "origin/main"), set also when
+	// it no longer exists on the remote.
+	Upstream string
+	// OnRemote reports, for a branch without upstream, that a remote-tracking
+	// branch with the same name exists (pushed but not tracked).
+	OnRemote bool
 }
 
-// SyncLabel returns a compact display string (e.g. "synced", "↑2", "↓3", "↑1↓2", "no-remote").
+// Labels for a branch without usable upstream.
+const (
+	SyncDetached     = "detached"      // detached HEAD: no branch to track
+	SyncUpstreamGone = "upstream-gone" // upstream configured, deleted on the remote
+	SyncNoUpstream   = "no-upstream"   // on a remote under the same name, not tracked
+	SyncLocalOnly    = "local-only"    // never pushed: no remote branch with this name
+)
+
+// SyncLabel returns a compact display string (e.g. "synced", "↑2", "↓3",
+// "↑1↓2", or one of the Sync* labels when there is no usable upstream).
 func (s BranchSyncStatus) SyncLabel() string {
 	if s.NoRemote {
-		return "no-remote"
+		return s.noUpstreamLabel()
 	}
 	if s.Ahead == 0 && s.Behind == 0 {
 		return "synced"
@@ -314,6 +329,20 @@ func (s BranchSyncStatus) SyncLabel() string {
 		return fmt.Sprintf("↑%d", s.Ahead)
 	}
 	return fmt.Sprintf("↓%d", s.Behind)
+}
+
+// noUpstreamLabel tells why a branch has no usable upstream.
+func (s BranchSyncStatus) noUpstreamLabel() string {
+	switch {
+	case s.Branch == "(detached)":
+		return SyncDetached
+	case s.Upstream != "":
+		return SyncUpstreamGone
+	case s.OnRemote:
+		return SyncNoUpstream
+	default:
+		return SyncLocalOnly
+	}
 }
 
 // DirtyStatus captures working-tree and index state.
@@ -372,6 +401,8 @@ func parseStatusHeader(line string, sync *BranchSyncStatus, dirty *DirtyStatus) 
 	switch {
 	case strings.HasPrefix(line, "# branch.head "):
 		sync.Branch = strings.TrimPrefix(line, "# branch.head ")
+	case strings.HasPrefix(line, "# branch.upstream "):
+		sync.Upstream = strings.TrimPrefix(line, "# branch.upstream ")
 	case strings.HasPrefix(line, "# branch.ab "):
 		sync.NoRemote = false
 		fmt.Sscanf(strings.TrimPrefix(line, "# branch.ab "), "+%d -%d", &sync.Ahead, &sync.Behind)
@@ -416,20 +447,42 @@ func (g *GitCommands) StatusInfo(ctx context.Context, dirpath string) (BranchSyn
 	for _, line := range strings.Split(r.Stdout().String(), "\n") {
 		parseStatusLine(line, &sync, &dirty)
 	}
-	if showStash {
-		return sync, dirty, nil
+	if !showStash {
+		stash := g.executor.exec(runcmdWrapperRequest{
+			ctx:        ctx,
+			args:       []string{"stash", "list"},
+			workingDir: dirpath,
+		})
+		if stash.Success() && strings.TrimSpace(stash.Stdout().String()) != "" {
+			dirty.Stashed = true
+		}
 	}
-
-	stash := g.executor.exec(runcmdWrapperRequest{
-		ctx:        ctx,
-		args:       []string{"stash", "list"},
-		workingDir: dirpath,
-	})
-	if stash.Success() && strings.TrimSpace(stash.Stdout().String()) != "" {
-		dirty.Stashed = true
+	if sync.NoRemote && sync.Upstream == "" && sync.Branch != "(detached)" {
+		sync.OnRemote = g.remoteBranchNames(ctx, dirpath)[sync.Branch]
 	}
 
 	return sync, dirty, nil
+}
+
+// remoteBranchNames returns the branch names that have a remote-tracking ref
+// (refs/remotes/<remote>/<name>), read from local refs: no network access.
+// Errors yield an empty set, i.e. "not on a remote".
+func (g *GitCommands) remoteBranchNames(ctx context.Context, dirpath string) map[string]bool {
+	r := g.executor.exec(runcmdWrapperRequest{
+		ctx:        ctx,
+		args:       []string{"for-each-ref", "--format=%(refname:lstrip=3)", "refs/remotes"},
+		workingDir: dirpath,
+	})
+	names := make(map[string]bool)
+	if !r.Success() {
+		return names
+	}
+	for _, line := range strings.Split(r.Stdout().String(), "\n") {
+		if name := strings.TrimSpace(line); name != "" && name != "HEAD" {
+			names[name] = true
+		}
+	}
+	return names
 }
 
 // statusShowsStash reports whether the installed git prints the stash count in
@@ -502,12 +555,19 @@ func gitExecutablePath() (string, error) {
 type BranchInfo struct {
 	Name       string
 	Exists     bool   // false when the branch is not present locally
+	Upstream   string // configured upstream (e.g. origin/main), also when gone
 	Remote     string // remote name of the upstream, empty when none
 	RemoteRef  string // upstream ref on the remote (e.g. refs/heads/main), empty when none
 	Ahead      int
 	Behind     int
 	NoRemote   bool // no upstream configured, or upstream is gone
+	OnRemote   bool // no upstream configured, but a remote branch has the same name
 	CheckedOut bool // the branch is HEAD of this worktree
+}
+
+// SyncStatus returns the branch state in the shape used for the current branch.
+func (b BranchInfo) SyncStatus() BranchSyncStatus {
+	return BranchSyncStatus{Branch: b.Name, Ahead: b.Ahead, Behind: b.Behind, NoRemote: b.NoRemote, Upstream: b.Upstream, OnRemote: b.OnRemote}
 }
 
 func validRefArg(s string) bool {
@@ -536,7 +596,7 @@ func parseBranchInfos(stdout string) map[string]BranchInfo {
 		if len(f) < 6 {
 			continue
 		}
-		info := BranchInfo{Name: f[0], Exists: true, Remote: f[2], RemoteRef: f[5], CheckedOut: f[4] == "*"}
+		info := BranchInfo{Name: f[0], Exists: true, Upstream: f[1], Remote: f[2], RemoteRef: f[5], CheckedOut: f[4] == "*"}
 		var gone bool
 		info.Ahead, info.Behind, gone = parseTrack(f[3])
 		info.NoRemote = f[1] == "" || gone
@@ -567,12 +627,20 @@ func (g *GitCommands) BranchInfos(ctx context.Context, dirpath string, branches 
 	}
 	found := parseBranchInfos(r.Stdout().String())
 	out := make([]BranchInfo, 0, len(branches))
+	var remote map[string]bool
 	for _, b := range branches {
-		if info, ok := found[b]; ok {
-			out = append(out, info)
-		} else {
+		info, ok := found[b]
+		if !ok {
 			out = append(out, BranchInfo{Name: b})
+			continue
 		}
+		if info.NoRemote && info.Upstream == "" {
+			if remote == nil {
+				remote = g.remoteBranchNames(ctx, dirpath)
+			}
+			info.OnRemote = remote[b]
+		}
+		out = append(out, info)
 	}
 	return out, nil
 }

@@ -100,7 +100,10 @@ infra       main      ↑1↓3      *      ~/work/infra            default   git
 | `↑N` | N commits ahead of upstream | Magenta |
 | `↓N` | N commits behind upstream | Yellow |
 | `↑N↓M` | Diverged — N ahead, M behind | Red |
-| `no-remote` | No upstream tracking branch configured | White |
+| `local-only` | Branch never pushed: no upstream and no remote branch with the same name | White |
+| `no-upstream` | Branch on the remote under the same name, but not tracked (`git branch -u`) | White |
+| `upstream-gone` | Upstream configured but deleted on the remote | White |
+| `detached` | Detached HEAD: no branch to track | White |
 
 In `list`, `synced*` marks a repo in sync with its upstream but with uncommitted changes.
 
@@ -355,7 +358,7 @@ Verify the configuration without changing anything. Every enabled project (filte
 website  /home/me/Projects/website
   [ERR]  no remote points to repository https://bitbucket.org/me/website.git (found: origin https://github.com/me/site.git)
 tools  /opt/tools
-  [WARN] branch master has no upstream
+  [WARN] branch master has no upstream and was never pushed
 ─────────────────────────────────────────
 OK: 36   Errors: 1   Warnings: 1   Duration: 0.1s
 ```

@@ -59,7 +59,7 @@ func statusExtraBranches(c *cli.Context, git *core.GitCommands, t *tracker, proj
 	for _, info := range infos {
 		t.expect(1)
 		res := opResult{project: branchLabel(project, info.Name), localPath: line, branch: info.Name}
-		sync := core.BranchSyncStatus{Branch: info.Name, Ahead: info.Ahead, Behind: info.Behind, NoRemote: info.NoRemote}
+		sync := info.SyncStatus()
 		skip := f.syncSkipReason(info.Ahead, info.Behind)
 		switch {
 		case !info.Exists:

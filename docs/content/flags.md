@@ -68,7 +68,10 @@ Available on `branch` and `list`. On `branch` it runs additional git calls per r
 | `↑N` | N commits ahead of upstream | Magenta |
 | `↓N` | N commits behind upstream | Yellow |
 | `↑N↓M` | Diverged — N ahead, M behind | Red |
-| `no-remote` | No upstream tracking branch | White |
+| `local-only` | Branch never pushed: no upstream and no remote branch with the same name | White |
+| `no-upstream` | Branch on the remote under the same name, but not tracked (`git branch -u`) | White |
+| `upstream-gone` | Upstream configured but deleted on the remote | White |
+| `detached` | Detached HEAD: no branch to track | White |
 
 `list` shows `synced*` for a repo in sync with its upstream but with uncommitted changes.
 

@@ -253,7 +253,7 @@ func checkBranches(ctx context.Context, git *core.GitCommands, project gipProjec
 	case st.sync.Branch == "(detached)":
 		e.warnf("detached HEAD")
 	case st.sync.NoRemote:
-		e.warnf("branch %s has no upstream", st.sync.Branch)
+		e.warnf("%s", noUpstreamWarning(st.sync, ""))
 	}
 
 	extras := project.extraBranches(st.sync.Branch)
@@ -270,8 +270,21 @@ func checkBranches(ctx context.Context, git *core.GitCommands, project gipProjec
 		case !b.Exists:
 			e.missingf("branch %s (in branches) not found locally", b.Name)
 		case b.NoRemote:
-			e.warnf("branch %s (in branches) has no upstream", b.Name)
+			e.warnf("%s", noUpstreamWarning(b.SyncStatus(), " (in branches)"))
 		}
+	}
+}
+
+// noUpstreamWarning says why a branch has no usable upstream; where is
+// appended to the branch name (e.g. " (in branches)").
+func noUpstreamWarning(s core.BranchSyncStatus, where string) string {
+	switch s.SyncLabel() {
+	case core.SyncUpstreamGone:
+		return fmt.Sprintf("branch %s%s: upstream %s no longer exists on the remote", s.Branch, where, s.Upstream)
+	case core.SyncNoUpstream:
+		return fmt.Sprintf("branch %s%s has no upstream, but the remote has a branch with the same name (git branch -u)", s.Branch, where)
+	default:
+		return fmt.Sprintf("branch %s%s has no upstream and was never pushed", s.Branch, where)
 	}
 }
 
