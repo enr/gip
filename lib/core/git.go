@@ -448,20 +448,24 @@ func (g *GitCommands) StatusInfo(ctx context.Context, dirpath string) (BranchSyn
 		parseStatusLine(line, &sync, &dirty)
 	}
 	if !showStash {
-		stash := g.executor.exec(runcmdWrapperRequest{
-			ctx:        ctx,
-			args:       []string{"stash", "list"},
-			workingDir: dirpath,
-		})
-		if stash.Success() && strings.TrimSpace(stash.Stdout().String()) != "" {
-			dirty.Stashed = true
-		}
+		dirty.Stashed = g.hasStash(ctx, dirpath)
 	}
 	if sync.NoRemote && sync.Upstream == "" && sync.Branch != "(detached)" {
 		sync.OnRemote = g.remoteBranchNames(ctx, dirpath)[sync.Branch]
 	}
 
 	return sync, dirty, nil
+}
+
+// hasStash reports whether "git stash list" shows at least one entry, for a
+// git whose porcelain v2 status does not report the stash. Errors yield false.
+func (g *GitCommands) hasStash(ctx context.Context, dirpath string) bool {
+	r := g.executor.exec(runcmdWrapperRequest{
+		ctx:        ctx,
+		args:       []string{"stash", "list"},
+		workingDir: dirpath,
+	})
+	return r.Success() && strings.TrimSpace(r.Stdout().String()) != ""
 }
 
 // remoteBranchNames returns the branch names that have a remote-tracking ref
@@ -605,18 +609,28 @@ func parseBranchInfos(stdout string) map[string]BranchInfo {
 	return found
 }
 
-// BranchInfos returns one entry per requested branch (same order), reading
-// local refs only: no network access, no change to the repository.
-func (g *GitCommands) BranchInfos(ctx context.Context, dirpath string, branches []string) ([]BranchInfo, error) {
-	if strings.HasPrefix(dirpath, "-") {
-		return nil, fmt.Errorf("invalid dirpath: cannot start with '-'")
-	}
+// branchInfoArgs builds the "git for-each-ref" arguments that read the given
+// local branches, rejecting names that could be taken for options.
+func branchInfoArgs(branches []string) ([]string, error) {
 	args := []string{"for-each-ref", branchInfoFormat}
 	for _, b := range branches {
 		if !validRefArg(b) {
 			return nil, fmt.Errorf("invalid branch name %q", b)
 		}
 		args = append(args, "refs/heads/"+b)
+	}
+	return args, nil
+}
+
+// BranchInfos returns one entry per requested branch (same order), reading
+// local refs only: no network access, no change to the repository.
+func (g *GitCommands) BranchInfos(ctx context.Context, dirpath string, branches []string) ([]BranchInfo, error) {
+	if strings.HasPrefix(dirpath, "-") {
+		return nil, fmt.Errorf("invalid dirpath: cannot start with '-'")
+	}
+	args, err := branchInfoArgs(branches)
+	if err != nil {
+		return nil, err
 	}
 	if len(branches) == 0 {
 		return nil, nil

@@ -247,6 +247,68 @@ func TestGitCommands_Status(t *testing.T) {
 	}
 }
 
+type statusInfoCase struct {
+	name          string
+	statusOutput  string
+	stashOutput   string
+	remoteRefs    string // for-each-ref refs/remotes output, read only without upstream
+	wantSync      BranchSyncStatus
+	wantLabel     string
+	wantDirty     DirtyStatus
+	expectedError bool
+}
+
+// checkStatusInfo runs StatusInfo against a git without "# stash" in
+// porcelain v2 and checks the result and the git calls made.
+func checkStatusInfo(t *testing.T, tc statusInfoCase) {
+	t.Helper()
+	ui := clui.DefaultClui()
+	mock := &mockGitWrapper{
+		results: []runcmdResult{
+			// A git without "# stash" in porcelain v2: stash list is run.
+			&runcmdStubResult{success: true, stdout: "git version 2.34.1\n"},
+			&runcmdStubResult{success: true, stdout: tc.statusOutput},
+			&runcmdStubResult{success: true, stdout: tc.stashOutput},
+			&runcmdStubResult{success: true, stdout: tc.remoteRefs},
+		},
+	}
+	gitCmd := &GitCommands{ui: ui, executor: mock}
+
+	sync, dirty, err := gitCmd.StatusInfo(context.Background(), "/tmp/repo")
+	if tc.expectedError {
+		if err == nil {
+			t.Fatal("expected error, got nil")
+		}
+		return
+	}
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if sync != tc.wantSync {
+		t.Errorf("sync: got %+v, want %+v", sync, tc.wantSync)
+	}
+	if dirty != tc.wantDirty {
+		t.Errorf("dirty: got %+v, want %+v", dirty, tc.wantDirty)
+	}
+	if tc.wantLabel != "" && sync.SyncLabel() != tc.wantLabel {
+		t.Errorf("label: got %q, want %q", sync.SyncLabel(), tc.wantLabel)
+	}
+	checkStatusInfoCalls(t, sync, len(mock.requests))
+}
+
+// checkStatusInfoCalls checks the number of git calls: the remote branches
+// are listed only for a branch without upstream.
+func checkStatusInfoCalls(t *testing.T, sync BranchSyncStatus, calls int) {
+	t.Helper()
+	wantCalls := 3
+	if sync.NoRemote && sync.Upstream == "" && sync.Branch != "(detached)" {
+		wantCalls = 4
+	}
+	if calls != wantCalls {
+		t.Errorf("expected %d git calls (version, status, stash list[, remote refs]), got %d", wantCalls, calls)
+	}
+}
+
 func TestGitCommands_StatusInfo(t *testing.T) {
 	porcelainSynced := `# branch.oid abc123
 # branch.head main
@@ -274,16 +336,7 @@ func TestGitCommands_StatusInfo(t *testing.T) {
 # branch.head local-only
 `
 
-	tests := []struct {
-		name          string
-		statusOutput  string
-		stashOutput   string
-		remoteRefs    string // for-each-ref refs/remotes output, read only without upstream
-		wantSync      BranchSyncStatus
-		wantLabel     string
-		wantDirty     DirtyStatus
-		expectedError bool
-	}{
+	tests := []statusInfoCase{
 		{
 			name:         "synced no changes",
 			statusOutput: porcelainSynced,
@@ -348,47 +401,7 @@ func TestGitCommands_StatusInfo(t *testing.T) {
 	}
 
 	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			ui := clui.DefaultClui()
-			mock := &mockGitWrapper{
-				results: []runcmdResult{
-					// A git without "# stash" in porcelain v2: stash list is run.
-					&runcmdStubResult{success: true, stdout: "git version 2.34.1\n"},
-					&runcmdStubResult{success: true, stdout: tc.statusOutput},
-					&runcmdStubResult{success: true, stdout: tc.stashOutput},
-					&runcmdStubResult{success: true, stdout: tc.remoteRefs},
-				},
-			}
-			gitCmd := &GitCommands{ui: ui, executor: mock}
-
-			sync, dirty, err := gitCmd.StatusInfo(context.Background(), "/tmp/repo")
-			if tc.expectedError {
-				if err == nil {
-					t.Fatal("expected error, got nil")
-				}
-				return
-			}
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-			if sync != tc.wantSync {
-				t.Errorf("sync: got %+v, want %+v", sync, tc.wantSync)
-			}
-			if dirty != tc.wantDirty {
-				t.Errorf("dirty: got %+v, want %+v", dirty, tc.wantDirty)
-			}
-			if tc.wantLabel != "" && sync.SyncLabel() != tc.wantLabel {
-				t.Errorf("label: got %q, want %q", sync.SyncLabel(), tc.wantLabel)
-			}
-			// The remote branches are listed only for a branch without upstream.
-			wantCalls := 3
-			if sync.NoRemote && sync.Upstream == "" && sync.Branch != "(detached)" {
-				wantCalls = 4
-			}
-			if len(mock.requests) != wantCalls {
-				t.Errorf("expected %d git calls (version, status, stash list[, remote refs]), got %d", wantCalls, len(mock.requests))
-			}
-		})
+		t.Run(tc.name, func(t *testing.T) { checkStatusInfo(t, tc) })
 	}
 
 	t.Run("injection prevention", func(t *testing.T) {
