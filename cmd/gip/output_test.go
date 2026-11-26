@@ -70,6 +70,12 @@ func TestHoistGlobalFlags(t *testing.T) {
 	}
 }
 
+// gitStderrError builds an error that carries raw git stderr, trailing
+// newlines included, as the git wrapper does.
+func gitStderrError(msg string) error {
+	return errors.New(msg)
+}
+
 func TestErrorSummaryLine(t *testing.T) {
 	cases := []struct {
 		err  error
@@ -77,10 +83,10 @@ func TestErrorSummaryLine(t *testing.T) {
 	}{
 		{errors.New("exit status 1"), "exit status 1"},
 		{
-			errors.New("exit status 128: Cloning into '/x'...\nfatal: could not read Username for 'https://github.com': terminal prompts disabled\n"),
+			gitStderrError("exit status 128: Cloning into '/x'...\nfatal: could not read Username for 'https://github.com': terminal prompts disabled\n"),
 			"exit status 128: fatal: could not read Username for 'https://github.com': terminal prompts disabled (hint: authentication required: configure a git credential helper or use an SSH URL)",
 		},
-		{errors.New("exit status 2: first\nsecond\n\n"), "exit status 2: second"},
+		{gitStderrError("exit status 2: first\nsecond\n\n"), "exit status 2: second"},
 		{errors.New("ssh: connect\nfatal: Could not resolve host: nowhere"), "ssh: fatal: Could not resolve host: nowhere (hint: host not resolved: check the repository URL and the network)"},
 	}
 	for _, tc := range cases {
