@@ -18,6 +18,9 @@ func TestSameRepository(t *testing.T) {
 		{"git@gitlab.com:group/sub/proj.git", "https://user@gitlab.com/group/sub/proj"},
 		{"/srv/git/a.git", "file:///srv/git/a.git"},
 		{"/srv/git/a.git", "/srv/git/a"},
+		{"file://localhost/srv/git/a.git", "/srv/git/a"},
+		{`file://C:\srv\git\a.git`, `C:\srv\git\a.git`},
+		{"file:///C:/srv/git/a.git", "C:/srv/git/a.git"},
 	}
 	for _, p := range same {
 		if !sameRepository(p[0], p[1]) {

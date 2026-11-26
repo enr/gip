@@ -99,20 +99,28 @@ func (e checkEntry) status() string {
 	return "ok"
 }
 
-func doCheck(c *cli.Context) error {
+// checkProjects loads the enabled projects selected by --tag and maps every
+// enabled project's local_path to the projects using it: shared directories
+// are looked for among all of them, not only the selected ones.
+func checkProjects(c *cli.Context) ([]gipProject, []string, map[string][]string, error) {
 	configurationFile, err := configurationFilePath(c)
 	if err != nil {
-		return configurationError(c, err)
+		return nil, nil, nil, configurationError(c, err)
 	}
 	projects, warnings, err := projectsList(configurationFile)
 	if err != nil {
-		return usageErrorf("gip: %v", err)
+		return nil, nil, nil, usageErrorf("gip: %v", err)
 	}
 	projects = filterDisabled(projects)
-	// Shared directories are looked for among all the enabled projects, not
-	// only among the ones selected by --tag.
 	sharedPaths := projectsByPath(projects)
-	projects = filterByTag(projects, tagFilterValue(c))
+	return filterByTag(projects, tagFilterValue(c)), warnings, sharedPaths, nil
+}
+
+func doCheck(c *cli.Context) error {
+	projects, warnings, sharedPaths, err := checkProjects(c)
+	if err != nil {
+		return err
+	}
 	jobs, err := resolveJobs(c)
 	if err != nil {
 		return usageErrorf("%v", err)
@@ -158,6 +166,11 @@ func doCheck(c *cli.Context) error {
 	} else {
 		printCheckReport(entries, warnings, t)
 	}
+	return buildError(checkErrors(entries))
+}
+
+// checkErrors maps each project with errors to its first error.
+func checkErrors(entries []checkEntry) map[string]error {
 	errs := make(map[string]error)
 	for _, e := range entries {
 		for _, i := range e.issues {
@@ -167,7 +180,7 @@ func doCheck(c *cli.Context) error {
 			}
 		}
 	}
-	return buildError(errs)
+	return errs
 }
 
 // checkProject runs the per-project checks. It never modifies the repository.
@@ -341,15 +354,15 @@ func repositoryKey(raw string) string {
 	s = strings.TrimSuffix(s, "/")
 	s = strings.TrimSuffix(s, ".git")
 	s = strings.TrimSuffix(s, "/")
+	if len(s) >= len("file://") && strings.EqualFold(s[:len("file://")], "file://") {
+		return fileURLPath(s[len("file://"):])
+	}
 	var host, path string
 	switch {
 	case strings.Contains(s, "://"):
 		u, err := url.Parse(s)
 		if err != nil {
 			return s
-		}
-		if u.Scheme == "file" {
-			return filepath.Clean(u.Path)
 		}
 		host, path = u.Hostname(), u.Path
 	case isSCPLike(s):
@@ -363,6 +376,22 @@ func repositoryKey(raw string) string {
 		return filepath.Clean(s)
 	}
 	return strings.ToLower(host + "/" + strings.Trim(path, "/"))
+}
+
+// fileURLPath turns what follows "file://" into a local path. It is not
+// parsed as a URL: on Windows "file://C:\x" is common and url.Parse rejects
+// it, while "file:///C:/x" has a leading slash before the drive letter.
+func fileURLPath(rest string) string {
+	if len(rest) >= len("localhost/") && strings.EqualFold(rest[:len("localhost/")], "localhost/") {
+		rest = rest[len("localhost"):]
+	}
+	if p, err := url.PathUnescape(rest); err == nil {
+		rest = p
+	}
+	if len(rest) >= 3 && rest[0] == '/' && rest[2] == ':' {
+		rest = rest[1:]
+	}
+	return filepath.Clean(rest)
 }
 
 // isSCPLike matches git's "[user@]host:path" form, which has a colon before
